@@ -1,0 +1,576 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, In } from 'typeorm';
+import axios from 'axios';
+import { distance } from 'fastest-levenshtein';
+import { Card } from '../../entities/card.entity';
+
+interface ScryfallCard {
+  id: string;
+  name: string;
+  set: string;
+  collector_number: string;
+  set_name: string;
+  mana_cost?: string;
+  cmc?: number;
+  type_line: string;
+  oracle_text?: string;
+  colors?: string[];
+  color_identity?: string[];
+  power?: string;
+  toughness?: string;
+  loyalty?: string;
+  rarity: string;
+  image_uris?: {
+    normal?: string;
+    small?: string;
+    art_crop?: string;
+    png?: string;
+  };
+  prices?: {
+    usd?: string;
+    usd_foil?: string;
+  };
+  layout?: string;
+  card_faces?: any[];
+}
+
+interface ScryfallSearchResponse {
+  object: string;
+  total_cards: number;
+  has_more: boolean;
+  data: ScryfallCard[];
+}
+
+@Injectable()
+export class CardsService {
+  private readonly SCRYFALL_API = 'https://api.scryfall.com';
+  private readonly CACHE_TTL_HOURS = 24;
+
+  constructor(
+    @InjectRepository(Card)
+    private cardRepository: Repository<Card>,
+  ) {}
+
+  /**
+   * Get a card by Scryfall ID, fetching from Scryfall if not cached or stale
+   */
+  async getOrFetch(scryfallId: string): Promise<Card> {
+    // Check cache first
+    const cached = await this.cardRepository.findOne({
+      where: { scryfallId },
+    });
+
+    if (cached && !this.isStale(cached.fetchedAt)) {
+      return cached;
+    }
+
+    // Fetch from Scryfall
+    const scryfallCard = await this.fetchFromScryfall(scryfallId);
+    if (!scryfallCard) {
+      throw new NotFoundException(`Card not found: ${scryfallId}`);
+    }
+
+    // Upsert to database
+    return this.upsertCard(scryfallCard);
+  }
+
+  /**
+   * Get multiple cards by Scryfall IDs, fetching missing ones from Scryfall
+   */
+  async getOrFetchMany(scryfallIds: string[]): Promise<Card[]> {
+    if (scryfallIds.length === 0) return [];
+
+    // Get cached cards
+    const cached = await this.cardRepository.find({
+      where: { scryfallId: In(scryfallIds) },
+    });
+
+    const cachedMap = new Map(cached.map((c) => [c.scryfallId, c]));
+    const validCached: Card[] = [];
+    const toFetch: string[] = [];
+
+    for (const id of scryfallIds) {
+      const card = cachedMap.get(id);
+      if (card && !this.isStale(card.fetchedAt)) {
+        validCached.push(card);
+      } else {
+        toFetch.push(id);
+      }
+    }
+
+    if (toFetch.length === 0) {
+      return validCached;
+    }
+
+    // Fetch missing cards from Scryfall using collection endpoint
+    const fetched = await this.fetchCollectionFromScryfall(toFetch);
+    const upserted = await Promise.all(
+      fetched.map((card) => this.upsertCard(card)),
+    );
+
+    return [...validCached, ...upserted];
+  }
+
+  /**
+   * Search cards by name
+   */
+  async searchByName(
+    query: string,
+    page = 1,
+  ): Promise<{ cards: Card[]; hasMore: boolean; totalCards: number }> {
+    const response = await this.searchScryfall(query, page);
+
+    // Cache search results
+    const cards = await Promise.all(
+      response.data.map((card) => this.upsertCard(card)),
+    );
+
+    return {
+      cards,
+      hasMore: response.has_more,
+      totalCards: response.total_cards,
+    };
+  }
+
+  /**
+   * Search for a card by exact name (for adding to decks)
+   */
+  async searchByExactName(cardName: string): Promise<Card | null> {
+    // Check cache first
+    const cached = await this.cardRepository.findOne({
+      where: { name: cardName },
+    });
+
+    if (cached && !this.isStale(cached.fetchedAt)) {
+      return cached;
+    }
+
+    // Fetch from Scryfall using exact name search
+    try {
+      await this.rateLimitDelay();
+
+      const response = await axios.get(`${this.SCRYFALL_API}/cards/named`, {
+        params: { exact: cardName },
+      });
+
+      return this.upsertCard(response.data);
+    } catch (error: any) {
+      console.log(`[Scryfall] Card not found: ${cardName}`);
+      return null;
+    }
+  }
+
+  /**
+   * Autocomplete card names
+   */
+  async autocomplete(query: string): Promise<string[]> {
+    try {
+      const response = await axios.get(
+        `${this.SCRYFALL_API}/cards/autocomplete`,
+        {
+          params: { q: query },
+        },
+      );
+      return response.data.data || [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get a single card by set code and collector number
+   */
+  async getBySetAndNumber(setCode: string, collectorNumber: string): Promise<Card | null> {
+    // Check cache first
+    const cached = await this.cardRepository.findOne({
+      where: {
+        setCode: setCode.toLowerCase(),
+        collectorNumber: collectorNumber,
+      },
+    });
+
+    if (cached && !this.isStale(cached.fetchedAt)) {
+      return cached;
+    }
+
+    // Fetch from Scryfall
+    try {
+      await this.rateLimitDelay();
+      
+      const response = await axios.get(
+        `${this.SCRYFALL_API}/cards/${setCode.toLowerCase()}/${collectorNumber}`,
+      );
+      
+      return this.upsertCard(response.data);
+    } catch (error: any) {
+      console.log(`[Scryfall] Card not found: ${setCode}/${collectorNumber}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get all printings of a card by name
+   */
+  async getPrints(cardName: string): Promise<Card[]> {
+    try {
+      console.log(`[Scryfall] Fetching prints for: "${cardName}"`);
+      await this.rateLimitDelay();
+
+      // Use Scryfall search with unique:prints to get all printings
+      // The !"name" operator means exact name match
+      const response = await axios.get(`${this.SCRYFALL_API}/cards/search`, {
+        params: {
+          q: `!"${cardName}" game:paper`,
+          unique: 'prints',
+          order: 'released',
+          dir: 'desc',
+        },
+      });
+
+      console.log(`[Scryfall] Found ${response.data.total_cards} printings`);
+
+      const prints: Card[] = [];
+
+      // Fetch all pages if there are more
+      let data = response.data;
+      while (data.data && data.data.length > 0) {
+        const cards = await Promise.all(
+          data.data.map((card: ScryfallCard) => this.upsertCard(card)),
+        );
+        prints.push(...cards);
+
+        if (!data.has_more) break;
+
+        // Fetch next page
+        await this.rateLimitDelay();
+        const nextResponse = await axios.get(data.next_page);
+        data = nextResponse.data;
+      }
+
+      console.log(`[Scryfall] Successfully cached ${prints.length} printings`);
+      return prints;
+    } catch (error: any) {
+      console.error(`[Scryfall] Failed to get prints for: "${cardName}"`, error.response?.data || error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Fuzzy match a card name with optional set/collector number
+   * Returns top matches ranked by Levenshtein distance
+   */
+  async fuzzyMatchCard(
+    cardName: string,
+    options?: {
+      setCode?: string;
+      collectorNumber?: string;
+      maxDistance?: number;
+      limit?: number;
+    },
+  ): Promise<Array<{
+    card: Card;
+    distance: number;
+    confidence: number;
+  }>> {
+    const maxDist = options?.maxDistance || 5;
+    const limit = options?.limit || 5;
+
+    try {
+      // First try: Search Scryfall with the query
+      // This handles some fuzzy matching on Scryfall's end
+      let query = cardName;
+
+      // If set code provided, add it to query for better accuracy
+      if (options?.setCode) {
+        query = `${cardName} set:${options.setCode}`;
+      }
+
+      await this.rateLimitDelay();
+      const scryfallResults = await this.searchScryfall(query, 1);
+
+      if (scryfallResults.data && scryfallResults.data.length > 0) {
+        // Cache and rank the results
+        const cards = await Promise.all(
+          scryfallResults.data.map((card) => this.upsertCard(card)),
+        );
+
+        // Calculate Levenshtein distance for ranking
+        const rankedResults = cards
+          .map((card) => {
+            const dist = distance(
+              cardName.toLowerCase(),
+              card.name.toLowerCase(),
+            );
+
+            // Calculate confidence score (0-1)
+            // Lower distance = higher confidence
+            const maxLength = Math.max(cardName.length, card.name.length);
+            const confidence = Math.max(0, 1 - dist / maxLength);
+
+            // Bonus for matching set code
+            let adjustedConfidence = confidence;
+            if (options?.setCode && card.setCode === options.setCode.toLowerCase()) {
+              adjustedConfidence = Math.min(1, confidence + 0.2);
+            }
+
+            // Bonus for matching collector number
+            if (options?.collectorNumber && card.collectorNumber === options.collectorNumber) {
+              adjustedConfidence = Math.min(1, adjustedConfidence + 0.1);
+            }
+
+            return {
+              card,
+              distance: dist,
+              confidence: adjustedConfidence,
+            };
+          })
+          .filter((result) => result.distance <= maxDist)
+          .sort((a, b) => a.distance - b.distance)
+          .slice(0, limit);
+
+        if (rankedResults.length > 0) {
+          return rankedResults;
+        }
+      }
+
+      // Fallback: Get all unique card names from database and compute distances
+      console.log('[FuzzyMatch] Using database fallback for:', cardName);
+      const allCards = await this.cardRepository
+        .createQueryBuilder('card')
+        .select(['card.scryfallId', 'card.name'])
+        .distinct(true)
+        .addSelect('MIN(card.fetchedAt)', 'fetchedAt')
+        .groupBy('card.name')
+        .addGroupBy('card.scryfallId')
+        .limit(10000) // Limit to avoid memory issues
+        .getRawMany();
+
+      const fuzzyResults = allCards
+        .map((c: any) => ({
+          name: c.card_name,
+          scryfallId: c.card_scryfallId,
+          distance: distance(cardName.toLowerCase(), c.card_name.toLowerCase()),
+        }))
+        .filter((c) => c.distance <= maxDist)
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, limit);
+
+      // Fetch full card objects
+      const results = await Promise.all(
+        fuzzyResults.map(async (result) => {
+          const card = await this.getOrFetch(result.scryfallId);
+          const maxLength = Math.max(cardName.length, card.name.length);
+          const confidence = Math.max(0, 1 - result.distance / maxLength);
+
+          return {
+            card,
+            distance: result.distance,
+            confidence,
+          };
+        }),
+      );
+
+      return results;
+    } catch (error: any) {
+      console.error('[FuzzyMatch] Error:', error.message);
+      return [];
+    }
+  }
+
+  private async fetchFromScryfall(
+    scryfallId: string,
+  ): Promise<ScryfallCard | null> {
+    try {
+      // Rate limit: 50ms between requests
+      await this.rateLimitDelay();
+
+      const response = await axios.get(
+        `${this.SCRYFALL_API}/cards/${scryfallId}`,
+      );
+      return response.data;
+    } catch {
+      return null;
+    }
+  }
+
+  private async fetchCollectionFromScryfall(
+    scryfallIds: string[],
+  ): Promise<ScryfallCard[]> {
+    try {
+      await this.rateLimitDelay();
+
+      const identifiers = scryfallIds.map((id) => ({ id }));
+      const response = await axios.post(
+        `${this.SCRYFALL_API}/cards/collection`,
+        { identifiers },
+      );
+      return response.data.data || [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Fetch cards by set code and collector number
+   */
+  async getOrFetchManyBySetCollector(
+    cards: Array<{ setCode: string; collectorNumber: string }>,
+  ): Promise<Card[]> {
+    if (cards.length === 0) return [];
+
+    // Check which cards we already have in the database
+    const cached: Card[] = [];
+    const toFetch: Array<{ setCode: string; collectorNumber: string }> = [];
+
+    for (const card of cards) {
+      const existing = await this.cardRepository.findOne({
+        where: {
+          setCode: card.setCode.toLowerCase(),
+          collectorNumber: card.collectorNumber,
+        },
+      });
+      if (existing && !this.isStale(existing.fetchedAt)) {
+        cached.push(existing);
+      } else {
+        toFetch.push(card);
+      }
+    }
+
+    if (toFetch.length === 0) {
+      return cached;
+    }
+
+    // Fetch from Scryfall using collection endpoint with set/collector_number
+    const fetched = await this.fetchCollectionBySetCollector(toFetch);
+    const upserted = await Promise.all(
+      fetched.map((card) => this.upsertCard(card)),
+    );
+
+    return [...cached, ...upserted];
+  }
+
+  private async fetchCollectionBySetCollector(
+    cards: Array<{ setCode: string; collectorNumber: string }>,
+  ): Promise<ScryfallCard[]> {
+    const BATCH_SIZE = 75; // Scryfall limit
+    const allResults: ScryfallCard[] = [];
+
+    // Split into batches of 75
+    for (let i = 0; i < cards.length; i += BATCH_SIZE) {
+      const batch = cards.slice(i, i + BATCH_SIZE);
+
+      try {
+        await this.rateLimitDelay();
+
+        const identifiers = batch.map((c) => ({
+          set: c.setCode.toLowerCase(),
+          collector_number: c.collectorNumber,
+        }));
+
+        console.log(
+          `[Scryfall] Fetching batch ${Math.floor(i / BATCH_SIZE) + 1}:`,
+          identifiers.slice(0, 3),
+          `... (${identifiers.length} cards)`,
+        );
+
+        const response = await axios.post(
+          `${this.SCRYFALL_API}/cards/collection`,
+          { identifiers },
+        );
+
+        const notFound = response.data.not_found || [];
+        if (notFound.length > 0) {
+          console.log('[Scryfall] Cards not found:', notFound.slice(0, 5));
+        }
+
+        allResults.push(...(response.data.data || []));
+      } catch (error: any) {
+        console.error('[Scryfall] Error fetching batch:', error.message);
+        // Continue with next batch instead of failing completely
+      }
+    }
+
+    return allResults;
+  }
+
+  private async searchScryfall(
+    query: string,
+    page: number,
+  ): Promise<ScryfallSearchResponse> {
+    try {
+      await this.rateLimitDelay();
+
+      const response = await axios.get(`${this.SCRYFALL_API}/cards/search`, {
+        params: { q: query, page },
+      });
+      return response.data;
+    } catch {
+      return { object: 'list', total_cards: 0, has_more: false, data: [] };
+    }
+  }
+
+  private async upsertCard(scryfallCard: ScryfallCard): Promise<Card> {
+    const cardData: Partial<Card> = {
+      scryfallId: scryfallCard.id,
+      name: scryfallCard.name,
+      setCode: scryfallCard.set,
+      collectorNumber: scryfallCard.collector_number,
+      setName: scryfallCard.set_name,
+      manaCost: scryfallCard.mana_cost || null,
+      cmc: scryfallCard.cmc || null,
+      typeLine: scryfallCard.type_line,
+      oracleText: scryfallCard.oracle_text || null,
+      colors: scryfallCard.colors || [],
+      colorIdentity: scryfallCard.color_identity || [],
+      power: scryfallCard.power || null,
+      toughness: scryfallCard.toughness || null,
+      loyalty: scryfallCard.loyalty || null,
+      rarity: scryfallCard.rarity,
+      imageNormal: scryfallCard.image_uris?.normal || null,
+      imageSmall: scryfallCard.image_uris?.small || null,
+      imageArtCrop: scryfallCard.image_uris?.art_crop || null,
+      imagePng: scryfallCard.image_uris?.png || null,
+      priceUsd: scryfallCard.prices?.usd
+        ? parseFloat(scryfallCard.prices.usd)
+        : null,
+      priceUsdFoil: scryfallCard.prices?.usd_foil
+        ? parseFloat(scryfallCard.prices.usd_foil)
+        : null,
+      layout: scryfallCard.layout || null,
+      cardFaces: scryfallCard.card_faces || null,
+      pricesUpdatedAt: new Date(),
+    };
+
+    // Handle double-faced cards that don't have image_uris at top level
+    if (!cardData.imageNormal && scryfallCard.card_faces?.[0]?.image_uris) {
+      const frontFace = scryfallCard.card_faces[0];
+      cardData.imageNormal = frontFace.image_uris.normal || null;
+      cardData.imageSmall = frontFace.image_uris.small || null;
+      cardData.imageArtCrop = frontFace.image_uris.art_crop || null;
+      cardData.imagePng = frontFace.image_uris.png || null;
+    }
+
+    await this.cardRepository.upsert(cardData, ['scryfallId']);
+
+    return this.cardRepository.findOneOrFail({
+      where: { scryfallId: scryfallCard.id },
+    });
+  }
+
+  private isStale(fetchedAt: Date): boolean {
+    const ageHours =
+      (Date.now() - fetchedAt.getTime()) / (1000 * 60 * 60);
+    return ageHours > this.CACHE_TTL_HOURS;
+  }
+
+  private lastRequestTime = 0;
+  private async rateLimitDelay(): Promise<void> {
+    const now = Date.now();
+    const elapsed = now - this.lastRequestTime;
+    if (elapsed < 100) {
+      await new Promise((resolve) => setTimeout(resolve, 100 - elapsed));
+    }
+    this.lastRequestTime = Date.now();
+  }
+}

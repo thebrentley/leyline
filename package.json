@@ -1,0 +1,19 @@
+{
+  "name": "decktutor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DeckTutor - MTG Deck Management App",
+  "workspaces": [
+    "apps/api",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w @decktutor/api",
+    "build:api": "npm run build -w @decktutor/api",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,319 @@
+import {
+  DrawerContentComponentProps,
+  DrawerContentScrollView,
+} from "@react-navigation/drawer";
+import Constants from "expo-constants";
+import { router } from "expo-router";
+import { Drawer } from "expo-router/drawer";
+import {
+  ChevronRight,
+  CircleHelp,
+  FolderSync,
+  Home,
+  Layers,
+  Library,
+  LogOut,
+  MessageSquarePlus,
+  Moon,
+  Settings,
+} from "lucide-react-native";
+import { colorScheme, useColorScheme } from "nativewind";
+import { useState } from "react";
+import { Pressable, Switch, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
+import { useAuth } from "~/contexts/AuthContext";
+
+interface DrawerItemProps {
+  icon: React.ReactNode;
+  label: string;
+  onPress?: () => void;
+  rightText?: string;
+  isDark: boolean;
+  isActive?: boolean;
+}
+
+function DrawerItem({ icon, label, onPress, rightText, isDark, isActive }: DrawerItemProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className={`flex-row items-center justify-between px-6 py-4 ${
+        isActive
+          ? isDark
+            ? "bg-slate-800"
+            : "bg-slate-100"
+          : isDark
+            ? "active:bg-slate-800/50"
+            : "active:bg-slate-50"
+      }`}
+    >
+      <View className="flex-row items-center gap-4">
+        {icon}
+        <Text
+          className={`text-base ${
+            isActive
+              ? "font-semibold text-emerald-500"
+              : isDark
+                ? "text-white"
+                : "text-slate-900"
+          }`}
+        >
+          {label}
+        </Text>
+      </View>
+      <View className="flex-row items-center gap-2">
+        {rightText && (
+          <Text className={isDark ? "text-slate-500" : "text-slate-400"}>
+            {rightText}
+          </Text>
+        )}
+        <ChevronRight size={20} color={isDark ? "#475569" : "#cbd5e1"} />
+      </View>
+    </Pressable>
+  );
+}
+
+function Divider({ isDark }: { isDark: boolean }) {
+  return <View className={`h-px ${isDark ? "bg-slate-800" : "bg-slate-100"}`} />;
+}
+
+function CustomDrawerContent(props: DrawerContentComponentProps) {
+  const { colorScheme: currentScheme } = useColorScheme();
+  const isDark = currentScheme === "dark";
+  const { user, signOut } = useAuth();
+  const insets = useSafeAreaInsets();
+  const iconColor = isDark ? "#94a3b8" : "#64748b";
+  const appVersion = Constants.expoConfig?.version || "1.0.0";
+
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  const toggleTheme = () => {
+    colorScheme.set(isDark ? "light" : "dark");
+  };
+
+  const handleLogout = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  const currentRoute = props.state.routes[props.state.index]?.name;
+
+  return (
+    <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+      <DrawerContentScrollView
+        {...props}
+        contentContainerStyle={{ paddingTop: insets.top }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* User Profile Header */}
+        <Pressable
+          onPress={() => props.navigation.navigate("profile")}
+          className={`mb-6 flex-row items-center gap-4 px-6 py-4 ${
+            isDark ? "active:bg-slate-800/50" : "active:bg-slate-50"
+          }`}
+        >
+          {/* Avatar */}
+          <View className="h-14 w-14 items-center justify-center rounded-full bg-emerald-500">
+            <Text className="text-xl font-bold text-white">
+              {(user?.displayName || user?.email)?.charAt(0).toUpperCase() || "U"}
+            </Text>
+          </View>
+          {/* Name & Edit */}
+          <View className="flex-1">
+            <Text
+              className={`text-lg font-semibold ${
+                isDark ? "text-white" : "text-slate-900"
+              }`}
+            >
+              {user?.displayName || user?.email?.split("@")[0] || "User"}
+            </Text>
+            <View className="flex-row items-center gap-1">
+              <Text className={isDark ? "text-slate-400" : "text-slate-500"}>
+                Edit profile
+              </Text>
+              <ChevronRight size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+            </View>
+          </View>
+        </Pressable>
+
+        <Divider isDark={isDark} />
+
+        {/* Navigation Items */}
+        <DrawerItem
+          icon={<Home size={24} color={currentRoute === "index" ? "#10b981" : iconColor} />}
+          label="Home"
+          onPress={() => props.navigation.navigate("index")}
+          isDark={isDark}
+          isActive={currentRoute === "index"}
+        />
+        <Divider isDark={isDark} />
+
+        <DrawerItem
+          icon={<Layers size={24} color={currentRoute === "decks" ? "#10b981" : iconColor} />}
+          label="Decks"
+          onPress={() => props.navigation.navigate("decks")}
+          isDark={isDark}
+          isActive={currentRoute === "decks"}
+        />
+        <Divider isDark={isDark} />
+
+        <DrawerItem
+          icon={<Library size={24} color={currentRoute === "collection" ? "#10b981" : iconColor} />}
+          label="Collection"
+          onPress={() => props.navigation.navigate("collection")}
+          isDark={isDark}
+          isActive={currentRoute === "collection"}
+        />
+        <Divider isDark={isDark} />
+
+        {/* Settings Section */}
+        <View className="mt-4">
+          <Text
+            className={`px-6 pb-2 text-xs font-medium uppercase tracking-wider ${
+              isDark ? "text-slate-500" : "text-slate-400"
+            }`}
+          >
+            Settings
+          </Text>
+        </View>
+
+        <DrawerItem
+          icon={<FolderSync size={24} color={iconColor} />}
+          label="Archidekt"
+          onPress={() => router.push("/archidekt")}
+          isDark={isDark}
+          rightText={user?.archidektUsername ? `@${user.archidektUsername}` : undefined}
+        />
+        <Divider isDark={isDark} />
+
+        <DrawerItem
+          icon={<Settings size={24} color={iconColor} />}
+          label="Settings"
+          isDark={isDark}
+        />
+        <Divider isDark={isDark} />
+
+        {/* Dark Mode Toggle */}
+        <View
+          className={`flex-row items-center justify-between px-6 py-4`}
+        >
+          <View className="flex-row items-center gap-4">
+            <Moon size={24} color={iconColor} />
+            <Text
+              className={`text-base ${isDark ? "text-white" : "text-slate-900"}`}
+            >
+              Dark mode
+            </Text>
+          </View>
+          <Switch
+            value={isDark}
+            onValueChange={toggleTheme}
+            trackColor={{ false: "#cbd5e1", true: "#10b981" }}
+            thumbColor="#ffffff"
+          />
+        </View>
+        <Divider isDark={isDark} />
+
+        <DrawerItem
+          icon={<CircleHelp size={24} color={iconColor} />}
+          label="Help Center"
+          isDark={isDark}
+        />
+        <Divider isDark={isDark} />
+
+        <DrawerItem
+          icon={<MessageSquarePlus size={24} color={iconColor} />}
+          label="Give us feedback"
+          isDark={isDark}
+        />
+        <Divider isDark={isDark} />
+
+        {/* Log out */}
+        <Pressable
+          onPress={handleLogout}
+          className={`flex-row items-center gap-4 px-6 py-4 ${
+            isDark ? "active:bg-slate-800/50" : "active:bg-slate-50"
+          }`}
+        >
+          <LogOut size={24} color={iconColor} />
+          <Text className={`text-base ${isDark ? "text-white" : "text-slate-900"}`}>
+            Log out
+          </Text>
+        </Pressable>
+      </DrawerContentScrollView>
+
+      {/* Footer */}
+      <View
+        className="items-center gap-1 pb-4"
+        style={{ paddingBottom: insets.bottom + 16 }}
+      >
+        <Text className={isDark ? "text-slate-600" : "text-slate-400"}>
+          Version {appVersion}
+        </Text>
+        <Pressable>
+          <Text className={isDark ? "text-slate-500" : "text-slate-400"}>
+            Terms of Service
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Logout Confirmation */}
+      <ConfirmDialog
+        visible={showLogoutConfirm}
+        title="Log out"
+        message="Are you sure you want to log out?"
+        confirmText="Log out"
+        cancelText="Cancel"
+        destructive={true}
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          signOut();
+        }}
+        onCancel={() => setShowLogoutConfirm(false)}
+      />
+    </View>
+  );
+}
+
+export default function DrawerLayout() {
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === "dark";
+
+  return (
+    <Drawer
+      drawerContent={(props) => <CustomDrawerContent {...props} />}
+      screenOptions={{
+        headerShown: false,
+        drawerStyle: {
+          backgroundColor: isDark ? "#020617" : "#ffffff",
+          width: 320,
+        },
+        swipeEnabled: true,
+      }}
+    >
+      <Drawer.Screen
+        name="index"
+        options={{
+          drawerLabel: "Home",
+        }}
+      />
+      <Drawer.Screen
+        name="decks"
+        options={{
+          drawerLabel: "Decks",
+        }}
+      />
+      <Drawer.Screen
+        name="collection"
+        options={{
+          drawerLabel: "Collection",
+        }}
+      />
+      <Drawer.Screen
+        name="profile"
+        options={{
+          drawerItemStyle: { display: "none" },
+        }}
+      />
+    </Drawer>
+  );
+}
