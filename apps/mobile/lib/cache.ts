@@ -99,6 +99,8 @@ export const CACHE_KEYS = {
   COLLECTION_STATS: "collection:stats",
   ARCHIDEKT_STATUS: "archidekt:status",
   VIEW_MODE: "preferences:viewMode",
+  SEARCH_STATE_DECK: (deckId: string) => `search:state:deck:${deckId}`,
+  SEARCH_STATE_COLLECTION: "search:state:collection",
 };
 
 // TTL values in minutes

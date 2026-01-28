@@ -847,6 +847,29 @@ export default function DeckDetailScreen() {
     return Object.values(basicLandCounts).reduce((sum, qty) => sum + qty, 0);
   }, [basicLandCounts]);
 
+  // Compute existing card IDs for visual indicators in search
+  const existingCardIds = useMemo(() => {
+    if (!deck) return new Set<string>();
+    const ids = new Set<string>();
+
+    // Add all commander cards
+    for (const card of deck.commanders) {
+      ids.add(card.scryfallId);
+    }
+
+    // Add all mainboard cards
+    for (const card of deck.mainboard) {
+      ids.add(card.scryfallId);
+    }
+
+    // Add all sideboard cards
+    for (const card of deck.sideboard) {
+      ids.add(card.scryfallId);
+    }
+
+    return ids;
+  }, [deck]);
+
   // Build sections from deck data (excluding basic lands)
   const sections: CardSection[] = useMemo(() => {
     if (!deck) return [];
@@ -1254,9 +1277,6 @@ export default function DeckDetailScreen() {
   const handleAddCardFromSearch = useCallback(
     async (card: CardSearchResult) => {
       if (!deck) return;
-
-      // Close the search modal and dismiss keyboard
-      setScryfallSearchVisible(false);
 
       try {
         const result = await decksApi.addCardToDeck(
@@ -3981,6 +4001,9 @@ export default function DeckDetailScreen() {
         onSelectCard={handleAddCardFromSearch}
         title="Add Card to Deck"
         placeholder="Search for a card..."
+        searchContext="deck"
+        searchContextId={id}
+        existingCardIds={existingCardIds}
       />
     </>
   );

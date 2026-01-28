@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle, Search, X } from "lucide-react-native";
+import { ArrowLeft, CheckCircle, Plus, RotateCcw, Search, X } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cardsApi, type CardSearchResult } from "~/lib/api";
 import { showToast } from "~/lib/toast";
 import { useResponsive } from "~/hooks/useResponsive";
+import { useSearchState } from "~/hooks/useSearchState";
 
 interface ScryfallSearchProps {
   visible: boolean;
@@ -23,6 +24,11 @@ interface ScryfallSearchProps {
   onSelectCard: (card: CardSearchResult) => void;
   title?: string;
   placeholder?: string;
+  // Context for persistent search state
+  searchContext?: 'deck' | 'collection';
+  searchContextId?: string; // deck ID if searchContext is 'deck'
+  // Existing cards for visual indicators
+  existingCardIds?: Set<string>; // Set of scryfallIds already in deck/collection
 }
 
 export function ScryfallSearch({
@@ -30,17 +36,29 @@ export function ScryfallSearch({
   onClose,
   onSelectCard,
   title = "Search Cards",
-  placeholder = "Search Scryfall...",
+  placeholder = "Search with Scryfall syntax (e.g., c:r t:dragon mv>=4)...",
+  searchContext = 'collection',
+  searchContextId,
+  existingCardIds = new Set(),
 }: ScryfallSearchProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const insets = useSafeAreaInsets();
   const { isDesktop } = useResponsive();
 
+  // Persistent search state
+  const {
+    query: savedQuery,
+    setQuery: setSavedQuery,
+    hasSavedSearch,
+    clearSearchState,
+  } = useSearchState(searchContext, searchContextId);
+
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CardSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(false);
+  const [totalCards, setTotalCards] = useState(0);
   const [page, setPage] = useState(1);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -50,21 +68,28 @@ export function ScryfallSearch({
   const [loadingEditions, setLoadingEditions] = useState(false);
   const [selectedEdition, setSelectedEdition] = useState<CardSearchResult | null>(null);
 
+  // Card detail modal state
+  const [detailCard, setDetailCard] = useState<CardSearchResult | null>(null);
+  const [addingCardId, setAddingCardId] = useState<string | null>(null);
+
   const searchCards = useCallback(
     async (searchQuery: string, pageNum = 1) => {
-      if (!searchQuery.trim() || searchQuery.trim().length < 3) {
+      if (!searchQuery.trim() || searchQuery.trim().length < 2) {
         setResults([]);
         setHasMore(false);
+        setTotalCards(0);
         return;
       }
 
       setLoading(true);
       try {
-        const result = await cardsApi.search(searchQuery, pageNum);
+        // Use local search API with Scryfall syntax
+        const result = await cardsApi.searchLocal(searchQuery, pageNum, 50);
         if (result.error) {
           showToast.error(result.error);
           setResults([]);
           setHasMore(false);
+          setTotalCards(0);
         } else if (result.data) {
           if (pageNum === 1) {
             setResults(result.data.cards);
@@ -72,17 +97,29 @@ export function ScryfallSearch({
             setResults((prev) => [...prev, ...result.data.cards]);
           }
           setHasMore(result.data.hasMore);
+          setTotalCards(result.data.totalCards);
+
+          // Save search state with result count
+          setSavedQuery(searchQuery, result.data.totalCards);
         }
       } catch (err: any) {
         showToast.error(err?.message || "Search failed");
         setResults([]);
         setHasMore(false);
+        setTotalCards(0);
       } finally {
         setLoading(false);
       }
     },
-    [],
+    [setSavedQuery],
   );
+
+  // Load saved query when modal opens
+  useEffect(() => {
+    if (visible && savedQuery && !query) {
+      setQuery(savedQuery);
+    }
+  }, [visible, savedQuery]);
 
   // Debounced search as user types
   useEffect(() => {
@@ -91,10 +128,11 @@ export function ScryfallSearch({
       clearTimeout(debounceTimerRef.current);
     }
 
-    // Clear results if query is less than 3 characters
-    if (query.trim().length < 3) {
+    // Clear results if query is less than 2 characters (local search is fast!)
+    if (query.trim().length < 2) {
       setResults([]);
       setHasMore(false);
+      setTotalCards(0);
       setLoading(false);
       return;
     }
@@ -103,7 +141,7 @@ export function ScryfallSearch({
     debounceTimerRef.current = setTimeout(() => {
       setPage(1);
       searchCards(query, 1);
-    }, 500); // 500ms debounce
+    }, 300); // 300ms debounce (faster for local search)
 
     // Cleanup on unmount or query change
     return () => {
@@ -179,6 +217,26 @@ export function ScryfallSearch({
     setEditions([]);
   }, []);
 
+  const handleAddCardDirectly = useCallback(async (card: CardSearchResult) => {
+    setAddingCardId(card.scryfallId);
+    try {
+      onSelectCard(card);
+      showToast.success(`Added ${card.name} to ${title.includes("Collection") ? "collection" : "deck"}`);
+    } catch (err: any) {
+      showToast.error(err?.message || "Failed to add card");
+    } finally {
+      setAddingCardId(null);
+    }
+  }, [onSelectCard, title]);
+
+  const handleShowCardDetail = useCallback((card: CardSearchResult) => {
+    setDetailCard(card);
+  }, []);
+
+  const handleCloseDetailModal = useCallback(() => {
+    setDetailCard(null);
+  }, []);
+
   const handleClose = useCallback(() => {
     setQuery("");
     setResults([]);
@@ -252,15 +310,42 @@ export function ScryfallSearch({
               </Pressable>
             )}
           </View>
-          {query.trim().length > 0 && query.trim().length < 3 && !selectedCardName && (
-            <Text
-              className={`text-xs mt-2 ${
-                isDark ? "text-slate-500" : "text-slate-400"
-              }`}
-            >
-              Type at least 3 characters to search
-            </Text>
-          )}
+
+          {/* Search hints and result count */}
+          <View className="mt-2 flex-row items-center justify-between">
+            {query.trim().length > 0 && query.trim().length < 2 && !selectedCardName ? (
+              <Text
+                className={`text-xs ${
+                  isDark ? "text-slate-500" : "text-slate-400"
+                }`}
+              >
+                Type at least 2 characters to search
+              </Text>
+            ) : totalCards > 0 && !selectedCardName ? (
+              <Text
+                className={`text-xs ${
+                  isDark ? "text-slate-400" : "text-slate-500"
+                }`}
+              >
+                {totalCards} card{totalCards !== 1 ? 's' : ''} found
+              </Text>
+            ) : (
+              <View />
+            )}
+
+            {/* Resume last search button */}
+            {hasSavedSearch && !query && !selectedCardName && (
+              <Pressable
+                onPress={() => setQuery(savedQuery)}
+                className="flex-row items-center gap-1 px-2 py-1 rounded"
+              >
+                <RotateCcw size={14} color="#7C3AED" />
+                <Text className="text-xs text-purple-500 font-medium">
+                  Resume last search
+                </Text>
+              </Pressable>
+            )}
+          </View>
         </View>
 
         {/* Edition Selection View */}
@@ -423,10 +508,10 @@ export function ScryfallSearch({
             <Text
               className={`mt-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}
             >
-              Searching Scryfall...
+              Searching cards...
             </Text>
           </View>
-        ) : results.length === 0 && query.trim().length >= 3 ? (
+        ) : results.length === 0 && query.trim().length >= 2 ? (
           <View className="flex-1 items-center justify-center px-8">
             <Search size={48} color={isDark ? "#334155" : "#cbd5e1"} />
             <Text
@@ -459,7 +544,7 @@ export function ScryfallSearch({
                 isDark ? "text-slate-500" : "text-slate-400"
               }`}
             >
-              Type at least 3 characters to start searching
+              Use Scryfall syntax: c:red t:dragon mv{'>'}=4
             </Text>
           </View>
         ) : (
@@ -467,76 +552,114 @@ export function ScryfallSearch({
             data={results}
             keyExtractor={(item) => item.scryfallId}
             keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => handleSelectCardFromSearch(item)}
+            renderItem={({ item }) => {
+              const isInDeck = existingCardIds.has(item.scryfallId);
+              return (
+              <View
                 className={`flex-row items-center gap-3 px-4 py-3 border-b ${
-                  isDark
-                    ? "border-slate-800 active:bg-slate-900"
-                    : "border-slate-100 active:bg-slate-50"
+                  isDark ? "border-slate-800" : "border-slate-100"
                 }`}
               >
-                {item.imageSmall ? (
-                  <Image
-                    source={{ uri: item.imageSmall }}
-                    className="h-16 w-12 rounded"
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View
-                    className={`h-16 w-12 rounded items-center justify-center ${
-                      isDark ? "bg-slate-800" : "bg-slate-200"
-                    }`}
-                  >
-                    <Text
-                      className={`text-xs ${
-                        isDark ? "text-slate-500" : "text-slate-400"
-                      }`}
-                    >
-                      No
-                    </Text>
-                    <Text
-                      className={`text-xs ${
-                        isDark ? "text-slate-500" : "text-slate-400"
-                      }`}
-                    >
-                      Image
-                    </Text>
+                <Pressable
+                  onPress={() => handleShowCardDetail(item)}
+                  className={`flex-row items-center gap-3 flex-1 ${
+                    isDark ? "active:opacity-70" : "active:opacity-70"
+                  }`}
+                >
+                  <View className="relative">
+                    {item.imageSmall ? (
+                      <Image
+                        source={{ uri: item.imageSmall }}
+                        className="h-16 w-12 rounded"
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        className={`h-16 w-12 rounded items-center justify-center ${
+                          isDark ? "bg-slate-800" : "bg-slate-200"
+                        }`}
+                      >
+                        <Text
+                          className={`text-xs ${
+                            isDark ? "text-slate-500" : "text-slate-400"
+                          }`}
+                        >
+                          No
+                        </Text>
+                        <Text
+                          className={`text-xs ${
+                            isDark ? "text-slate-500" : "text-slate-400"
+                          }`}
+                        >
+                          Image
+                        </Text>
+                      </View>
+                    )}
+                    {isInDeck && (
+                      <View className="absolute -top-1 -right-1 bg-green-500 rounded-full p-0.5">
+                        <CheckCircle size={14} color="#fff" fill="#22c55e" />
+                      </View>
+                    )}
                   </View>
-                )}
-                <View className="flex-1">
-                  <Text
-                    className={`font-medium ${
-                      isDark ? "text-white" : "text-slate-900"
-                    }`}
-                  >
-                    {item.name}
-                  </Text>
-                  <Text
-                    className={`text-xs ${
-                      isDark ? "text-slate-400" : "text-slate-500"
-                    }`}
-                  >
-                    {item.setName} • {item.setCode?.toUpperCase()} #
-                    {item.collectorNumber}
-                  </Text>
-                  {item.typeLine && (
+                  <View className="flex-1">
+                    <View className="flex-row items-center gap-2">
+                      <Text
+                        className={`font-medium ${
+                          isDark ? "text-white" : "text-slate-900"
+                        }`}
+                      >
+                        {item.name}
+                      </Text>
+                      {isInDeck && (
+                        <View className="px-1.5 py-0.5 bg-green-500/20 rounded">
+                          <Text className="text-xs text-green-600 dark:text-green-400 font-medium">
+                            In {searchContext === 'deck' ? 'Deck' : 'Collection'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                     <Text
-                      className={`text-xs mt-0.5 ${
-                        isDark ? "text-slate-500" : "text-slate-400"
+                      className={`text-xs ${
+                        isDark ? "text-slate-400" : "text-slate-500"
                       }`}
                     >
-                      {item.typeLine}
+                      {item.setName} • {item.setCode?.toUpperCase()} #
+                      {item.collectorNumber}
+                    </Text>
+                    {item.typeLine && (
+                      <Text
+                        className={`text-xs mt-0.5 ${
+                          isDark ? "text-slate-500" : "text-slate-400"
+                        }`}
+                      >
+                        {item.typeLine}
+                      </Text>
+                    )}
+                  </View>
+                  {item.priceUsd && (
+                    <Text className="text-purple-500 font-medium text-sm">
+                      ${item.priceUsd}
                     </Text>
                   )}
-                </View>
-                {item.priceUsd && (
-                  <Text className="text-purple-500 font-medium">
-                    ${item.priceUsd}
-                  </Text>
-                )}
-              </Pressable>
-            )}
+                </Pressable>
+                <Pressable
+                  onPress={() => handleAddCardDirectly(item)}
+                  disabled={addingCardId === item.scryfallId}
+                  className={`px-3 py-2 rounded ${
+                    addingCardId === item.scryfallId
+                      ? "bg-slate-600"
+                      : "bg-purple-500 active:bg-purple-600"
+                  }`}
+                >
+                  {addingCardId === item.scryfallId ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Plus size={18} color="#fff" />
+                  )}
+                </Pressable>
+              </View>
+              );
+            }}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.5}
             ListFooterComponent={
@@ -549,6 +672,174 @@ export function ScryfallSearch({
           />
         )}
       </View>
+  );
+
+  // Card Detail Modal
+  const detailModal = detailCard && (
+    <Modal
+      visible={!!detailCard}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={handleCloseDetailModal}
+      statusBarTranslucent
+    >
+      <View className="flex-1 bg-black/80">
+        <Pressable
+          onPress={handleCloseDetailModal}
+          className="flex-1"
+        >
+          <View className="flex-1 items-center justify-center p-6">
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View
+                className={`w-full max-w-2xl rounded-lg overflow-hidden ${
+                  isDark ? "bg-slate-900" : "bg-white"
+                }`}
+              >
+                {/* Close button */}
+                <View className="absolute top-4 right-4 z-10">
+                  <Pressable
+                    onPress={handleCloseDetailModal}
+                    className={`p-2 rounded-full ${
+                      isDark ? "bg-slate-800/90" : "bg-white/90"
+                    }`}
+                  >
+                    <X size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+                  </Pressable>
+                </View>
+
+                {/* Horizontal layout with image on left and content on right */}
+                <View className="flex-row p-6 gap-6">
+                  {/* Card image */}
+                  <View className="flex-shrink-0">
+                    {detailCard.imageUrl ? (
+                      <Image
+                        source={{ uri: detailCard.imageUrl }}
+                        className="w-72 h-[28rem] rounded-lg"
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View
+                        className={`w-72 h-[28rem] rounded-lg items-center justify-center ${
+                          isDark ? "bg-slate-800" : "bg-slate-200"
+                        }`}
+                      >
+                        <Text
+                          className={`text-lg ${
+                            isDark ? "text-slate-500" : "text-slate-400"
+                          }`}
+                        >
+                          No Image Available
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Card details */}
+                  <View className="flex-1 justify-between">
+                    <View>
+                      <Text
+                        className={`text-2xl font-bold mb-3 ${
+                          isDark ? "text-white" : "text-slate-900"
+                        }`}
+                      >
+                        {detailCard.name}
+                      </Text>
+
+                      {detailCard.manaCost && (
+                        <Text
+                          className={`text-base mb-3 ${
+                            isDark ? "text-slate-300" : "text-slate-700"
+                          }`}
+                        >
+                          {detailCard.manaCost}
+                        </Text>
+                      )}
+
+                      {detailCard.typeLine && (
+                        <Text
+                          className={`text-base mb-4 ${
+                            isDark ? "text-slate-400" : "text-slate-600"
+                          }`}
+                        >
+                          {detailCard.typeLine}
+                        </Text>
+                      )}
+
+                      <View className="mb-4">
+                        <Text
+                          className={`text-sm ${
+                            isDark ? "text-slate-400" : "text-slate-500"
+                          }`}
+                        >
+                          {detailCard.setName}
+                        </Text>
+                        <Text
+                          className={`text-sm ${
+                            isDark ? "text-slate-400" : "text-slate-500"
+                          }`}
+                        >
+                          {detailCard.setCode?.toUpperCase()} #{detailCard.collectorNumber}
+                        </Text>
+                      </View>
+
+                      <View className="flex-row items-center justify-between mb-4">
+                        <Text
+                          className={`text-base capitalize ${
+                            detailCard.rarity === "mythic"
+                              ? "text-orange-500 font-semibold"
+                              : detailCard.rarity === "rare"
+                              ? "text-yellow-500 font-semibold"
+                              : detailCard.rarity === "uncommon"
+                              ? isDark ? "text-slate-300" : "text-slate-600"
+                              : isDark ? "text-slate-400" : "text-slate-500"
+                          }`}
+                        >
+                          {detailCard.rarity}
+                        </Text>
+                        {detailCard.priceUsd && (
+                          <Text className="text-xl text-purple-500 font-bold">
+                            ${detailCard.priceUsd}
+                          </Text>
+                        )}
+                      </View>
+
+                      {detailCard.priceUsdFoil && (
+                        <Text
+                          className={`text-base mb-4 ${
+                            isDark ? "text-slate-400" : "text-slate-500"
+                          }`}
+                        >
+                          Foil: ${detailCard.priceUsdFoil}
+                        </Text>
+                      )}
+                    </View>
+
+                    {/* Add button */}
+                    <Pressable
+                      onPress={() => handleAddCardDirectly(detailCard)}
+                      disabled={addingCardId === detailCard.scryfallId}
+                      className={`py-3 px-6 rounded-lg ${
+                        addingCardId === detailCard.scryfallId
+                          ? "bg-slate-600"
+                          : "bg-purple-500 active:bg-purple-600"
+                      }`}
+                    >
+                      {addingCardId === detailCard.scryfallId ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text className="text-white text-center font-semibold text-base">
+                          Add to {title.includes("Collection") ? "Collection" : "Deck"}
+                        </Text>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            </Pressable>
+          </View>
+        </Pressable>
+      </View>
+    </Modal>
   );
 
   // On desktop, render as a fixed right panel
@@ -572,20 +863,24 @@ export function ScryfallSearch({
         >
           {content}
         </View>
+        {detailModal}
       </>
     );
   }
 
   // On mobile, render as a modal
   return (
-    <Modal
-      visible={visible}
-      transparent={false}
-      animationType="slide"
-      onRequestClose={handleClose}
-      statusBarTranslucent
-    >
-      {content}
-    </Modal>
+    <>
+      <Modal
+        visible={visible}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={handleClose}
+        statusBarTranslucent
+      >
+        {content}
+      </Modal>
+      {detailModal}
+    </>
   );
 }

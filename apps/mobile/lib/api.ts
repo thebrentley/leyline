@@ -616,8 +616,25 @@ export const cardsApi = {
   }>> {
     const params = new URLSearchParams({ q: query });
     if (page) params.set("page", page.toString());
-    
+
     return request(`/cards/search?${params.toString()}`);
+  },
+
+  async searchLocal(
+    query: string,
+    page?: number,
+    limit?: number
+  ): Promise<ApiResponse<{
+    cards: CardSearchResult[];
+    hasMore: boolean;
+    totalCards: number;
+    page?: number;
+  }>> {
+    const params = new URLSearchParams({ q: query });
+    if (page) params.set("page", page.toString());
+    if (limit) params.set("limit", limit.toString());
+
+    return request(`/cards/search/local?${params.toString()}`);
   },
 
   async autocomplete(query: string): Promise<ApiResponse<{ suggestions: string[] }>> {

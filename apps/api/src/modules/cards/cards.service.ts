@@ -4,6 +4,9 @@ import { Repository, In } from 'typeorm';
 import axios from 'axios';
 import { distance } from 'fastest-levenshtein';
 import { Card } from '../../entities/card.entity';
+import { SearchParserService } from './search-parser.service';
+import { SearchBuilderService } from './search-builder.service';
+import { SearchResult } from './dto/search-criteria.dto';
 
 interface ScryfallCard {
   id: string;
@@ -50,6 +53,8 @@ export class CardsService {
   constructor(
     @InjectRepository(Card)
     private cardRepository: Repository<Card>,
+    private searchParser: SearchParserService,
+    private searchBuilder: SearchBuilderService,
   ) {}
 
   /**
@@ -130,6 +135,42 @@ export class CardsService {
       cards,
       hasMore: response.has_more,
       totalCards: response.total_cards,
+    };
+  }
+
+  /**
+   * Search cards locally using Scryfall-style syntax
+   * Example queries: "c:r t:dragon mv>=4", "lightning bolt", "o:draw r:rare"
+   */
+  async searchLocal(
+    query: string,
+    page = 1,
+    pageSize = 50,
+  ): Promise<SearchResult> {
+    // Parse the query into structured criteria
+    const criteria = this.searchParser.parse(query);
+
+    // Build the TypeORM query
+    let queryBuilder = this.cardRepository.createQueryBuilder('card');
+    queryBuilder = this.searchBuilder.buildQuery(queryBuilder, criteria);
+
+    // Add sorting (alphabetical by name)
+    queryBuilder.orderBy('card.name', 'ASC');
+
+    // Get total count before pagination
+    const totalCards = await queryBuilder.getCount();
+
+    // Apply pagination
+    queryBuilder.skip((page - 1) * pageSize).take(pageSize);
+
+    // Execute query
+    const cards = await queryBuilder.getMany();
+
+    return {
+      cards,
+      hasMore: totalCards > page * pageSize,
+      totalCards,
+      page,
     };
   }
 

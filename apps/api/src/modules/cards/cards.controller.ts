@@ -69,6 +69,44 @@ export class CardsController {
     };
   }
 
+  @Get('search/local')
+  async searchLocal(
+    @Query('q') query: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const pageSize = limit ? parseInt(limit, 10) : 50;
+    const result = await this.cardsService.searchLocal(query, pageNum, pageSize);
+
+    // Format for mobile (same format as regular search for compatibility)
+    return {
+      cards: result.cards.map((card) => ({
+        scryfallId: card.scryfallId,
+        name: card.name,
+        setCode: card.setCode,
+        setName: card.setName,
+        collectorNumber: card.collectorNumber,
+        manaCost: card.manaCost,
+        cmc: card.cmc,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        rarity: card.rarity,
+        colors: card.colors,
+        colorIdentity: card.colorIdentity,
+        imageUrl: card.imageNormal,
+        imageSmall: card.imageSmall,
+        imageArtCrop: card.imageArtCrop,
+        priceUsd: card.priceUsd,
+        priceUsdFoil: card.priceUsdFoil,
+        layout: card.layout,
+      })),
+      hasMore: result.hasMore,
+      totalCards: result.totalCards,
+      page: result.page,
+    };
+  }
+
   @Get('autocomplete')
   async autocomplete(@Query('q') query: string) {
     const suggestions = await this.cardsService.autocomplete(query);

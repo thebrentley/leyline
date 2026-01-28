@@ -15,7 +15,7 @@ import {
   XCircle,
 } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -1243,6 +1243,17 @@ export default function CollectionScreen() {
     navigation.dispatch(DrawerActions.openDrawer());
   };
 
+  // Compute existing card IDs for visual indicators in search
+  const existingCardIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const card of cards) {
+      if (card) {
+        ids.add(card.scryfallId);
+      }
+    }
+    return ids;
+  }, [cards]);
+
   const handleCardPress = useCallback((card: CollectionCard) => {
     setSelectedCard(card);
     setDetailModalVisible(true);
@@ -1305,9 +1316,6 @@ export default function CollectionScreen() {
 
   const handleAddCardFromSearch = useCallback(
     async (card: CardSearchResult) => {
-      // Close the search modal and dismiss keyboard
-      setScryfallSearchVisible(false);
-
       const success = await handleAddCard(card.scryfallId, 1, 0);
       if (success) {
         showToast.success(`Added ${card.name} to collection`);
@@ -1816,6 +1824,8 @@ export default function CollectionScreen() {
         onSelectCard={handleAddCardFromSearch}
         title="Add Card to Collection"
         placeholder="Search for a card..."
+        searchContext="collection"
+        existingCardIds={existingCardIds}
       />
 
       {/* Card Scanner */}
