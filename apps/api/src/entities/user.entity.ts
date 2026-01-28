@@ -19,35 +19,35 @@ export class User {
   @Column({ type: 'varchar', unique: true })
   email: string;
 
-  @Column({ type: 'varchar' })
+  @Column({ name: 'password_hash', type: 'varchar' })
   passwordHash: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'display_name', type: 'varchar', nullable: true })
   displayName: string | null;
 
   // Archidekt connection (optional, connected after registration)
-  @Column({ type: 'int', nullable: true, unique: true })
+  @Column({ name: 'archidekt_id', type: 'int', nullable: true, unique: true })
   archidektId: number | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'archidekt_username', type: 'text', nullable: true })
   archidektUsername: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'archidekt_email', type: 'text', nullable: true })
   archidektEmail: string | null; // Email used for Archidekt login
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'archidekt_token', type: 'text', nullable: true })
   archidektToken: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'archidekt_password', type: 'text', nullable: true })
   archidektPassword: string | null; // TODO: encrypt this
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ name: 'archidekt_connected_at', type: 'timestamp', nullable: true })
   archidektConnectedAt: Date | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
   @OneToMany(() => Deck, (deck) => deck.user)

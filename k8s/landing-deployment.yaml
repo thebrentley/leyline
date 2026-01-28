@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: leyline-landing
+  namespace: default
+  labels:
+    app: leyline-landing
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: leyline-landing
+  template:
+    metadata:
+      labels:
+        app: leyline-landing
+    spec:
+      containers:
+      - name: landing
+        image: 394802158542.dkr.ecr.us-west-1.amazonaws.com/leyline-landing:latest
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        # Add your environment variables here
+        # - name: NEXT_PUBLIC_API_URL
+        #   value: "https://api.leyline.com"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: leyline-landing
+  namespace: default
+  labels:
+    app: leyline-landing
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: leyline-landing

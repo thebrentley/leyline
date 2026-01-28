@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Deck Tutor",
+    "name": "Leyline | MTG Everything. Connected",
     "slug": "decktutor",
     "scheme": "decktutor",
     "version": "1.0.0",
@@ -31,7 +31,7 @@
       "package": "com.decktutor.mobile"
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "./public/favicon.png",
       "bundler": "metro"
     },
     "plugins": [

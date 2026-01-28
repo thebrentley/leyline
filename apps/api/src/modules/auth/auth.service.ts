@@ -9,9 +9,9 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import * as crypto from 'crypto';
 import axios from 'axios';
 import { User } from '../../entities/user.entity';
+import { EncryptionService } from '../../common/services/encryption.service';
 
 interface JwtPayload {
   sub: string;
@@ -49,30 +49,8 @@ export class AuthService {
     private userRepository: Repository<User>,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private encryptionService: EncryptionService,
   ) {}
-
-  // Encryption key derived from JWT_SECRET
-  private getEncryptionKey(): Buffer {
-    const secret = this.configService.get('JWT_SECRET') || 'fallback-secret';
-    return crypto.scryptSync(secret, 'archidekt-salt', 32);
-  }
-
-  private encrypt(text: string): string {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv('aes-256-cbc', this.getEncryptionKey(), iv);
-    let encrypted = cipher.update(text, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    return iv.toString('hex') + ':' + encrypted;
-  }
-
-  private decrypt(encrypted: string): string {
-    const [ivHex, encryptedText] = encrypted.split(':');
-    const iv = Buffer.from(ivHex, 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', this.getEncryptionKey(), iv);
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
-  }
 
   // ==================== Local Authentication ====================
 
@@ -188,7 +166,7 @@ export class AuthService {
     user.archidektUsername = result.username || archidektUsername;
     user.archidektEmail = archidektUsername; // Store the email/username used for login
     user.archidektToken = result.token;
-    user.archidektPassword = archidektPassword; // TODO: encrypt this
+    user.archidektPassword = this.encryptionService.encrypt(archidektPassword);
     user.archidektConnectedAt = new Date();
 
     await this.userRepository.save(user);
@@ -233,9 +211,10 @@ export class AuthService {
     try {
       console.log('[Archidekt] Auto-refreshing token for:', user.archidektEmail);
 
+      const decryptedPassword = this.encryptionService.decrypt(user.archidektPassword);
       const result = await this.authenticateWithArchidekt(
         user.archidektEmail,
-        user.archidektPassword,
+        decryptedPassword,
       );
 
       if (!result.success || !result.token) {

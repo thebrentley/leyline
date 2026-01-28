@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "decktutor",
-    "slug": "decktutor",
+    "name": "Leyline",
+    "slug": "leyline",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "decktutor",
+    "scheme": "leyline",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#030712"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -23,7 +23,7 @@
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#030712"
       }
     },
     "web": {

@@ -85,7 +85,7 @@ export interface ColorTag {
   color: string;
 }
 
-export type DeckSyncStatus = 'pending' | 'syncing' | 'synced' | 'error';
+export type DeckSyncStatus = 'waiting' | 'syncing' | 'synced' | 'error';
 
 export interface DeckSummary {
   id: string;
@@ -94,7 +94,8 @@ export interface DeckSummary {
   format: string | null;
   cardCount: number;
   commanders: string[];
-  commanderImage: string | null;
+  commanderImageCrop: string | null; // Art only (cropped)
+  commanderImageFull: string | null; // Full card with border
   colors: string[];
   lastSyncedAt: string | null;
   syncStatus: DeckSyncStatus;

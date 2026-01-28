@@ -145,7 +145,7 @@ export function ScanResultModal({
                   <View className="flex-row items-center gap-2">
                     <ConfidenceBadge confidence={item.confidence} />
                     {item.priceUsd && (
-                      <Text className="text-xs text-emerald-500 font-medium">
+                      <Text className="text-xs text-purple-500 font-medium">
                         ${item.priceUsd}
                       </Text>
                     )}

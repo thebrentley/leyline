@@ -9,8 +9,24 @@ module.exports = {
   ],
   presets: [require("nativewind/preset")],
   theme: {
+    screens: {
+      sm: '640px',   // Mobile landscape
+      md: '768px',   // Tablet
+      lg: '1024px',  // Desktop
+      xl: '1440px',  // Wide desktop
+      '2xl': '1920px', // Ultra-wide
+    },
     extend: {
+      maxWidth: {
+        content: '1400px', // Max content width for large screens
+      },
       colors: {
+        purple: {
+          300: '#C4B5FD', // Brand gradient end
+          400: '#A78BFA', // Brand gradient middle
+          500: '#8B5CF6', // Brand gradient start
+          600: '#7C3AED', // Primary accent
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

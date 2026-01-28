@@ -89,7 +89,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitDeckSyncStatus(
     userId: string,
     deckId: string,
-    status: 'pending' | 'syncing' | 'synced' | 'error',
+    status: 'waiting' | 'syncing' | 'synced' | 'error',
     error?: string | null,
     progress?: number, // 0-100
   ) {
@@ -97,7 +97,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       deckId,
       status,
       error,
-      progress: progress ?? (status === 'synced' ? 100 : status === 'pending' ? 0 : undefined),
+      progress: progress ?? (status === 'synced' ? 100 : status === 'waiting' ? 0 : undefined),
       timestamp: new Date().toISOString(),
     });
   }

@@ -156,8 +156,8 @@ export function BatchScanList({
             isAdding || cards.length === 0
               ? "bg-slate-600"
               : isDark
-              ? "bg-emerald-600 active:bg-emerald-700"
-              : "bg-emerald-500 active:bg-emerald-600"
+              ? "bg-purple-600 active:bg-purple-700"
+              : "bg-purple-500 active:bg-purple-600"
           }`}
         >
           {isAdding ? (

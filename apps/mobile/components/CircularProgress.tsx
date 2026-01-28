@@ -21,14 +21,20 @@ export function CircularProgress({
 }: CircularProgressProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  
+
   const rotateAnim = useRef(new Animated.Value(0)).current;
-  const dashAnim = useRef(new Animated.Value(0)).current;
+  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
+    // Stop any existing animation
+    if (animationRef.current) {
+      animationRef.current.stop();
+      animationRef.current = null;
+    }
+
     if (progress === undefined) {
-      // Indeterminate animation
-      const rotateAnimation = Animated.loop(
+      // Start infinite rotation
+      animationRef.current = Animated.loop(
         Animated.timing(rotateAnim, {
           toValue: 1,
           duration: 1000,
@@ -37,44 +43,29 @@ export function CircularProgress({
         })
       );
 
-      const dashAnimation = Animated.loop(
-        Animated.sequence([
-          Animated.timing(dashAnim, {
-            toValue: 1,
-            duration: 1500,
-            easing: Easing.bezier(0.4, 0.0, 0.2, 1),
-            useNativeDriver: false,
-          }),
-          Animated.timing(dashAnim, {
-            toValue: 0,
-            duration: 1500,
-            easing: Easing.bezier(0.4, 0.0, 0.2, 1),
-            useNativeDriver: false,
-          }),
-        ])
-      );
-
-      rotateAnimation.start();
-      dashAnimation.start();
-
-      return () => {
-        rotateAnimation.stop();
-        dashAnimation.stop();
-      };
+      animationRef.current.start();
+    } else {
+      // Reset to 0 for progress mode
+      rotateAnim.setValue(0);
     }
-  }, [progress, rotateAnim, dashAnim]);
+
+    return () => {
+      if (animationRef.current) {
+        animationRef.current.stop();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress]);
 
   const rotation = rotateAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ["0deg", "360deg"],
   });
 
-  const strokeDashoffset = progress !== undefined
-    ? circumference - (progress / 100) * circumference
-    : dashAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [circumference * 0.75, circumference * 0.25],
-      });
+  const strokeDashoffset =
+    progress !== undefined
+      ? circumference - (progress / 100) * circumference
+      : circumference * 0.75; // Fixed arc length for spinner (25% of circle)
 
   return (
     <View style={{ width: size, height: size }}>

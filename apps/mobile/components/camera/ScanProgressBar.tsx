@@ -36,7 +36,7 @@ export function ScanProgressBar({ current, total }: ScanProgressBarProps) {
         }`}
       >
         <View
-          className="h-full bg-emerald-500 rounded-full"
+          className="h-full bg-purple-500 rounded-full"
           style={{ width: `${percentage}%` }}
         />
       </View>

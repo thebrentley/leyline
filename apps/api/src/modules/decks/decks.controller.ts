@@ -55,10 +55,10 @@ export class DecksController {
       user.userId,
     );
     await this.syncQueueService.queueSync(deck.id, deck.archidektId, user.userId);
-    return { 
-      id: deck.id, 
-      name: deck.name, 
-      syncStatus: 'pending',
+    return {
+      id: deck.id,
+      name: deck.name,
+      syncStatus: 'waiting',
       message: 'Deck queued for sync',
     };
   }

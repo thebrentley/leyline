@@ -32,10 +32,10 @@ export class ChatSession {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'user_id' })
   userId: string;
 
-  @Column()
+  @Column({ name: 'deck_id' })
   deckId: string;
 
   @Column()
@@ -44,17 +44,17 @@ export class ChatSession {
   @Column({ type: 'jsonb', default: [] })
   messages: ChatMessage[];
 
-  @Column({ type: 'jsonb', default: [] })
+  @Column({ name: 'pending_changes', type: 'jsonb', default: [] })
   pendingChanges: DeckChange[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
   @ManyToOne(() => User, (user) => user.chatSessions, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn({ name: 'user_id' })
   user: User;
 
   @ManyToOne(() => Deck, (deck) => deck.chatSessions, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'deckId' })
+  @JoinColumn({ name: 'deck_id' })
   deck: Deck;
 }

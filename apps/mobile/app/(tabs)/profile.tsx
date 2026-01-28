@@ -52,7 +52,7 @@ export default function ProfileScreen() {
         {/* Avatar */}
         <View className="mb-8 items-center">
           <View className="relative">
-            <View className="h-24 w-24 items-center justify-center rounded-full bg-emerald-500">
+            <View className="h-24 w-24 items-center justify-center rounded-full bg-purple-600">
               <Text className="text-3xl font-bold text-white">
                 {(displayName || email)?.charAt(0).toUpperCase() || "U"}
               </Text>

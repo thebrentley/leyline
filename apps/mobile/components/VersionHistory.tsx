@@ -143,8 +143,8 @@ export function VersionHistory({
         className={`mx-4 mb-3 rounded-xl ${
           isCurrent
             ? isDark
-              ? "bg-emerald-900/30 border border-emerald-700"
-              : "bg-emerald-50 border border-emerald-200"
+              ? "bg-purple-900/30 border border-purple-700"
+              : "bg-purple-50 border border-purple-200"
             : isDark
               ? "bg-slate-900"
               : "bg-slate-50"
@@ -156,7 +156,7 @@ export function VersionHistory({
               <Text
                 className={`font-bold ${
                   isCurrent
-                    ? "text-emerald-500"
+                    ? "text-purple-500"
                     : isDark
                       ? "text-white"
                       : "text-slate-900"
@@ -165,7 +165,7 @@ export function VersionHistory({
                 Version {item.versionNumber}
               </Text>
               {isCurrent && (
-                <View className="bg-emerald-500 px-2 py-0.5 rounded">
+                <View className="bg-purple-500 px-2 py-0.5 rounded">
                   <Text className="text-white text-xs font-medium">Current</Text>
                 </View>
               )}
@@ -243,7 +243,7 @@ export function VersionHistory({
         {/* Content */}
         {loading ? (
           <View className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color="#10b981" />
+            <ActivityIndicator size="large" color="#7C3AED" />
           </View>
         ) : versions.length === 0 ? (
           <View className="flex-1 items-center justify-center px-6">

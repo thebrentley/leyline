@@ -128,7 +128,7 @@ export function PriceSummary({ deck, visible, onClose, isDark }: PriceSummaryPro
         </Text>
       </View>
       <View className="items-end">
-        <Text className="text-emerald-500 font-bold">
+        <Text className="text-purple-500 font-bold">
           ${item.totalPrice.toFixed(2)}
         </Text>
         <ExternalLink size={14} color={isDark ? "#64748b" : "#94a3b8"} />
@@ -148,7 +148,7 @@ export function PriceSummary({ deck, visible, onClose, isDark }: PriceSummaryPro
         {/* Header */}
         <View className={`flex-row items-center justify-between px-4 py-3 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
           <View className="flex-row items-center gap-2">
-            <DollarSign size={20} color="#10b981" />
+            <DollarSign size={20} color="#7C3AED" />
             <Text className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
               Price Analysis
             </Text>
@@ -163,7 +163,7 @@ export function PriceSummary({ deck, visible, onClose, isDark }: PriceSummaryPro
           <Text className={`text-center text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
             Total Deck Value
           </Text>
-          <Text className="text-center text-4xl font-bold text-emerald-500 mt-1">
+          <Text className="text-center text-4xl font-bold text-purple-500 mt-1">
             ${priceBreakdown.totalValue.toFixed(2)}
           </Text>
           <View className="flex-row justify-center gap-6 mt-4">
@@ -202,14 +202,14 @@ export function PriceSummary({ deck, visible, onClose, isDark }: PriceSummaryPro
             onPress={() => setActiveTab("overview")}
             className={`flex-1 py-3 items-center ${
               activeTab === "overview"
-                ? "border-b-2 border-emerald-500"
+                ? "border-b-2 border-purple-500"
                 : ""
             }`}
           >
             <Text
               className={`font-medium ${
                 activeTab === "overview"
-                  ? "text-emerald-500"
+                  ? "text-purple-500"
                   : isDark
                     ? "text-slate-400"
                     : "text-slate-500"
@@ -222,14 +222,14 @@ export function PriceSummary({ deck, visible, onClose, isDark }: PriceSummaryPro
             onPress={() => setActiveTab("expensive")}
             className={`flex-1 py-3 items-center ${
               activeTab === "expensive"
-                ? "border-b-2 border-emerald-500"
+                ? "border-b-2 border-purple-500"
                 : ""
             }`}
           >
             <Text
               className={`font-medium ${
                 activeTab === "expensive"
-                  ? "text-emerald-500"
+                  ? "text-purple-500"
                   : isDark
                     ? "text-slate-400"
                     : "text-slate-500"
@@ -242,14 +242,14 @@ export function PriceSummary({ deck, visible, onClose, isDark }: PriceSummaryPro
             onPress={() => setActiveTab("cheap")}
             className={`flex-1 py-3 items-center ${
               activeTab === "cheap"
-                ? "border-b-2 border-emerald-500"
+                ? "border-b-2 border-purple-500"
                 : ""
             }`}
           >
             <Text
               className={`font-medium ${
                 activeTab === "cheap"
-                  ? "text-emerald-500"
+                  ? "text-purple-500"
                   : isDark
                     ? "text-slate-400"
                     : "text-slate-500"
@@ -285,7 +285,7 @@ export function PriceSummary({ deck, visible, onClose, isDark }: PriceSummaryPro
                       ({data.count} cards)
                     </Text>
                   </View>
-                  <Text className="text-emerald-500 font-bold">
+                  <Text className="text-purple-500 font-bold">
                     ${data.value.toFixed(2)}
                   </Text>
                 </View>

@@ -42,7 +42,7 @@ const Button = React.forwardRef<React.ElementRef<typeof Pressable>, ButtonProps>
     const isDark = colorScheme === "dark";
 
     const variantStyles = {
-      default: isDark ? "bg-emerald-600 active:bg-emerald-700" : "bg-emerald-500 active:bg-emerald-600",
+      default: isDark ? "bg-purple-600 active:bg-purple-700" : "bg-purple-600 active:bg-purple-700",
       destructive: isDark ? "bg-red-600 active:bg-red-700" : "bg-red-500 active:bg-red-600",
       outline: isDark
         ? "border border-slate-700 bg-slate-800 active:bg-slate-700"
@@ -58,7 +58,7 @@ const Button = React.forwardRef<React.ElementRef<typeof Pressable>, ButtonProps>
       outline: isDark ? "text-white" : "text-slate-900",
       secondary: isDark ? "text-white" : "text-slate-900",
       ghost: isDark ? "text-white" : "text-slate-900",
-      link: isDark ? "text-emerald-400 underline" : "text-emerald-500 underline",
+      link: isDark ? "text-purple-400 underline" : "text-purple-600 underline",
     };
 
     return (

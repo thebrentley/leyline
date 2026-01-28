@@ -15,6 +15,8 @@ decktutor/
 ├── apps/
 │   ├── api/              # NestJS backend (TypeScript)
 │   └── mobile/           # React Native Web frontend (Expo)
+├── docs/                 # Project documentation
+│   └── brand-guidelines.md
 ├── packages/
 │   └── shared/           # Shared TypeScript types
 └── package.json          # Workspace root
@@ -261,6 +263,19 @@ Potential areas for expansion:
 - Deck playtesting simulator
 - Integration with other deck building platforms
 - Mobile native features (camera card recognition)
+
+## Brand Guidelines
+
+Leyline has a defined visual identity documented in:
+
+- **Documentation:** [`docs/brand-guidelines.md`](docs/brand-guidelines.md) - Complete brand standards including colors, typography, logo usage, and UI patterns
+- **Interactive Component:** [`apps/mobile/components/brand/LeylineBrandSystem.tsx`](apps/mobile/components/brand/LeylineBrandSystem.tsx) - Live reference implementation showing all brand elements
+
+### Quick Reference
+
+- **Primary Color:** Purple (`#8B5CF6` to `#C4B5FD` gradient)
+- **Tagline:** "EVERYTHING. CONNECTED."
+- **Voice:** Confident, helpful, direct
 
 ## Resources
 

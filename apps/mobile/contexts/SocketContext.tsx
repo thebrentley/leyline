@@ -13,7 +13,7 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
 
 interface DeckSyncStatusEvent {
   deckId: string;
-  status: "pending" | "syncing" | "synced" | "error";
+  status: "waiting" | "syncing" | "synced" | "error";
   error?: string | null;
   progress?: number; // 0-100
   timestamp: string;

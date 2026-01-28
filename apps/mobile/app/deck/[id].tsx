@@ -50,7 +50,7 @@ import { ChatPanel } from "~/components/ChatPanel";
 import { ScryfallSearch } from "~/components/ScryfallSearch";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { showToast } from "~/lib/toast";
-import { CircularProgress } from "~/components/CircularProgress";
+import { Spinner } from "~/components/Spinner";
 import { ColorTagManager } from "~/components/ColorTagManager";
 import { PriceSummary } from "~/components/PriceSummary";
 import { VersionHistory } from "~/components/VersionHistory";
@@ -62,6 +62,8 @@ import {
   type DeckDetail,
 } from "~/lib/api";
 import { cache, CACHE_KEYS, CACHE_TTL, cachedFetch } from "~/lib/cache";
+import { useResponsive } from "~/hooks/useResponsive";
+import { DesktopSidebar } from "~/components/web/DesktopSidebar";
 
 // Color identity colors
 const MANA_COLORS: Record<string, string> = {
@@ -265,7 +267,7 @@ function CardListItem({
         {/* Collection status icons */}
         {card.isLinkedToCollection ? (
           <View className="flex-row items-center">
-            <Link size={14} color="#10b981" />
+            <Link size={14} color="#7C3AED" />
           </View>
         ) : card.inCollection && card.hasAvailableCollectionCard ? (
           <Library size={14} color={isDark ? "#94a3b8" : "#64748b"} />
@@ -301,8 +303,8 @@ function CardGridItem({
   onPress?: () => void;
   onLongPress?: () => void;
 }) {
-  // Use art crop for grid view
-  const imageUri = card.imageArtCrop;
+  // Use full card image for grid view
+  const imageUri = card.imageUrl || card.imageSmall;
 
   return (
     <Pressable
@@ -310,18 +312,18 @@ function CardGridItem({
       onLongPress={onLongPress}
       delayLongPress={400}
       className="p-1"
-      style={{ width: "33.33%" }}
+      style={{ width: "25%" }}
     >
       <View className="relative">
         {imageUri ? (
           <Image
             source={{ uri: imageUri }}
-            className="aspect-[626/457] w-full rounded-lg"
-            resizeMode="cover"
+            className="aspect-[488/680] w-full rounded-lg"
+            resizeMode="contain"
           />
         ) : (
           <View
-            className={`aspect-[626/457] w-full items-center justify-center rounded-lg ${
+            className={`aspect-[488/680] w-full items-center justify-center rounded-lg ${
               isDark ? "bg-slate-800" : "bg-slate-200"
             }`}
           >
@@ -348,7 +350,7 @@ function CardGridItem({
           (card.inCollectionDifferentPrint && card.hasAvailableCollectionCard)) && (
           <View className="absolute bottom-1 left-1 bg-black/70 rounded-full p-1">
             {card.isLinkedToCollection ? (
-              <Link size={16} color="#10b981" />
+              <Link size={16} color="#7C3AED" />
             ) : card.inCollection ? (
               <Library size={16} color="#94a3b8" />
             ) : (
@@ -371,6 +373,7 @@ export default function DeckDetailScreen() {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const insets = useSafeAreaInsets();
+  const { isDesktop } = useResponsive();
 
   const [deck, setDeck] = useState<DeckDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1182,8 +1185,9 @@ export default function DeckDetailScreen() {
     [deck, id, loadDeck],
   );
 
-  return (
-    <SafeAreaView className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+  // Define page content once to avoid duplication
+  const pageContent = (
+    <>
       {/* Header */}
       <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
         <View className="flex-row items-center gap-3 flex-1">
@@ -1234,7 +1238,7 @@ export default function DeckDetailScreen() {
               isDark ? "active:bg-slate-800" : "active:bg-slate-100"
             }`}
           >
-            <Plus size={20} color="#10b981" />
+            <Plus size={20} color="#7C3AED" />
           </Pressable>
           {/* Color Tag Manager */}
           <Pressable
@@ -1255,10 +1259,10 @@ export default function DeckDetailScreen() {
               }`}
             >
               {syncing ? (
-                <CircularProgress
+                <Spinner
                   size={20}
                   strokeWidth={2}
-                  color="#10b981"
+                  color="#7C3AED"
                   backgroundColor={
                     isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"
                   }
@@ -1307,7 +1311,7 @@ export default function DeckDetailScreen() {
             }}
             className={`p-2 rounded-lg ${
               searchVisible
-                ? "bg-emerald-500/20"
+                ? "bg-purple-500/20"
                 : isDark
                   ? "bg-slate-800"
                   : "bg-white border border-slate-200"
@@ -1315,7 +1319,7 @@ export default function DeckDetailScreen() {
           >
             <Search
               size={14}
-              color={searchVisible ? "#10b981" : isDark ? "#94a3b8" : "#64748b"}
+              color={searchVisible ? "#7C3AED" : isDark ? "#94a3b8" : "#64748b"}
             />
           </Pressable>
 
@@ -1339,10 +1343,10 @@ export default function DeckDetailScreen() {
           {/* Price Button */}
           <Pressable
             onPress={() => setPriceSummaryVisible(true)}
-            className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10"
+            className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10"
           >
-            <DollarSign size={14} color="#10b981" />
-            <Text className="text-xs font-medium text-emerald-500">Price</Text>
+            <DollarSign size={14} color="#7C3AED" />
+            <Text className="text-xs font-medium text-purple-500">Price</Text>
           </Pressable>
 
           {/* View Mode Toggle */}
@@ -1405,7 +1409,7 @@ export default function DeckDetailScreen() {
       {/* Content */}
       {loading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#10b981" />
+          <ActivityIndicator size="large" color="#7C3AED" />
         </View>
       ) : error ? (
         <View className="flex-1 items-center justify-center px-6">
@@ -1418,7 +1422,7 @@ export default function DeckDetailScreen() {
           </Text>
           <Pressable
             onPress={() => loadDeck(true)}
-            className="rounded-lg bg-emerald-500 px-4 py-2"
+            className="rounded-lg bg-purple-500 px-4 py-2"
           >
             <Text className="font-medium text-white">Retry</Text>
           </Pressable>
@@ -1442,7 +1446,7 @@ export default function DeckDetailScreen() {
           <Pressable
             onPress={performSync}
             disabled={syncing}
-            className="flex-row items-center gap-2 rounded-lg bg-emerald-500 px-6 py-3"
+            className="flex-row items-center gap-2 rounded-lg bg-purple-500 px-6 py-3"
           >
             <CloudDownload size={18} color="white" />
             <Text className="font-medium text-white">
@@ -1485,7 +1489,7 @@ export default function DeckDetailScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor="#10b981"
+              tintColor="#7C3AED"
             />
           }
           ListHeaderComponent={
@@ -1825,7 +1829,7 @@ export default function DeckDetailScreen() {
                     {option.label}
                   </Text>
                   {groupBy === option.value && (
-                    <Check size={18} color="#10b981" />
+                    <Check size={18} color="#7C3AED" />
                   )}
                 </Pressable>
               ))}
@@ -1837,368 +1841,732 @@ export default function DeckDetailScreen() {
       {/* Card Detail Modal */}
       <Modal
         visible={cardModalVisible}
-        transparent={false}
-        animationType="slide"
+        transparent={isDesktop}
+        animationType={isDesktop ? "fade" : "slide"}
         onRequestClose={closeCardModal}
       >
-        <View
-          className="flex-1 bg-slate-950"
-          style={{ paddingTop: insets.top }}
-        >
-          {/* Header */}
-          <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-800">
-            <View className="flex-row items-center gap-2 flex-1">
-              {selectedCard?.isCommander && <Crown size={20} color="#eab308" />}
-              <Text
-                className="text-white text-lg font-bold flex-1"
-                numberOfLines={1}
-              >
-                {selectedCard?.name}
-              </Text>
-              {selectedCard && selectedCard.quantity > 1 && (
-                <View className="bg-white/20 rounded-full px-2 py-0.5">
-                  <Text className="text-white text-xs font-medium">
-                    {selectedCard.quantity}x
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {/* Navigation */}
-            <View className="flex-row items-center gap-2">
-              <Pressable
-                onPress={handlePrevCard}
-                disabled={selectedCardIndex <= 0}
-                className={`rounded-full p-2 ${selectedCardIndex <= 0 ? "opacity-30" : ""}`}
-              >
-                <ChevronLeft size={24} color="white" />
-              </Pressable>
-              <Text className="text-white/70 text-sm min-w-[50px] text-center">
-                {selectedCardIndex + 1} / {allCards.length}
-              </Text>
-              <Pressable
-                onPress={handleNextCard}
-                disabled={selectedCardIndex >= allCards.length - 1}
-                className={`rounded-full p-2 ${selectedCardIndex >= allCards.length - 1 ? "opacity-30" : ""}`}
-              >
-                <ChevronRight size={24} color="white" />
-              </Pressable>
-              <Pressable
-                onPress={closeCardModal}
-                className="rounded-full p-2 ml-2"
-              >
-                <X size={24} color="white" />
-              </Pressable>
-            </View>
-          </View>
-
-          {/* Card Content */}
-          <ScrollView
-            className="flex-1"
-            contentContainerStyle={{
-              paddingHorizontal: 16,
-              paddingBottom: Math.max(24, insets.bottom + 16),
-            }}
+        {isDesktop ? (
+          // Desktop: Dialog with backdrop
+          <Pressable
+            className="flex-1 bg-black/70 items-center justify-center p-6"
+            onPress={closeCardModal}
           >
-            {selectedCard && (
-              <>
-                {/* Card Image */}
-                <View className="items-center mb-6">
-                  {selectedCard.imageUrl || selectedCard.imageSmall ? (
-                    <Image
-                      source={{
-                        uri: selectedCard.imageUrl || selectedCard.imageSmall,
-                      }}
-                      style={{
-                        width: Dimensions.get("window").width - 64,
-                        height:
-                          (Dimensions.get("window").width - 64) * (680 / 488),
-                        borderRadius: 12,
-                      }}
-                      resizeMode="contain"
-                    />
-                  ) : (
-                    <View
-                      className="bg-slate-800 rounded-xl items-center justify-center"
-                      style={{
-                        width: Dimensions.get("window").width - 64,
-                        height:
-                          (Dimensions.get("window").width - 64) * (680 / 488),
-                      }}
-                    >
-                      <Text className="text-slate-500 text-lg">
-                        {selectedCard.name}
+            <Pressable
+              className={`max-w-5xl w-full max-h-[90vh] rounded-2xl ${isDark ? "bg-slate-900" : "bg-white"} shadow-2xl`}
+              onPress={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <View className={`flex-row items-center justify-between px-6 py-4 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
+                <View className="flex-row items-center gap-2 flex-1">
+                  {selectedCard?.isCommander && <Crown size={20} color="#eab308" />}
+                  <Text
+                    className={`text-lg font-bold flex-1 ${isDark ? "text-white" : "text-slate-900"}`}
+                    numberOfLines={1}
+                  >
+                    {selectedCard?.name}
+                  </Text>
+                  {selectedCard && selectedCard.quantity > 1 && (
+                    <View className="bg-purple-500/20 rounded-full px-2 py-0.5">
+                      <Text className="text-purple-500 text-xs font-medium">
+                        {selectedCard.quantity}x
                       </Text>
                     </View>
                   )}
                 </View>
 
-                {/* Collection Status */}
-                {(selectedCard.isLinkedToCollection ||
-                  selectedCard.inCollection ||
-                  selectedCard.inCollectionDifferentPrint) && (
-                  <View className="bg-slate-900 rounded-xl p-4 mb-4">
-                    <View className="flex-row items-center gap-2">
-                      {selectedCard.isLinkedToCollection ? (
-                        <>
-                          <Link size={18} color="#10b981" />
-                          <View className="flex-1">
-                            <Text className="text-emerald-500 font-medium">
-                              Linked to Collection
-                            </Text>
-                            <Text className="text-slate-400 text-xs mt-1">
-                              This card is linked and tracked in your collection
-                            </Text>
-                          </View>
-                        </>
-                      ) : selectedCard.inCollection ? (
-                        <>
-                          <CheckCircle size={18} color="#10b981" />
-                          <View className="flex-1">
-                            <Text className="text-emerald-500 font-medium">
-                              In Your Collection
-                            </Text>
-                            <Text className="text-slate-400 text-xs mt-1">
-                              You own this exact printing
-                            </Text>
-                          </View>
-                        </>
+                {/* Navigation */}
+                <View className="flex-row items-center gap-2">
+                  <Pressable
+                    onPress={handlePrevCard}
+                    disabled={selectedCardIndex <= 0}
+                    className={`rounded-full p-2 ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-100"} ${selectedCardIndex <= 0 ? "opacity-30" : ""}`}
+                  >
+                    <ChevronLeft size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+                  </Pressable>
+                  <Text className={`text-sm min-w-[50px] text-center ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                    {selectedCardIndex + 1} / {allCards.length}
+                  </Text>
+                  <Pressable
+                    onPress={handleNextCard}
+                    disabled={selectedCardIndex >= allCards.length - 1}
+                    className={`rounded-full p-2 ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-100"} ${selectedCardIndex >= allCards.length - 1 ? "opacity-30" : ""}`}
+                  >
+                    <ChevronRight size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+                  </Pressable>
+                  <Pressable
+                    onPress={closeCardModal}
+                    className={`rounded-full p-2 ml-2 ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-100"}`}
+                  >
+                    <X size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+                  </Pressable>
+                </View>
+              </View>
+
+              {/* Card Content - Side by Side */}
+              <ScrollView className="flex-1">
+                {selectedCard && (
+                  <View className="flex-row p-6 gap-6">
+                    {/* Left: Card Image */}
+                    <View className="w-80 flex-shrink-0">
+                      {selectedCard.imageUrl || selectedCard.imageSmall ? (
+                        <Image
+                          source={{
+                            uri: selectedCard.imageUrl || selectedCard.imageSmall,
+                          }}
+                          style={{
+                            width: 320,
+                            height: 445,
+                            borderRadius: 12,
+                          }}
+                          resizeMode="contain"
+                        />
                       ) : (
-                        <>
-                          <AlertCircle size={18} color="#f59e0b" />
-                          <View className="flex-1">
-                            <Text className="text-amber-500 font-medium">
-                              Different Printing in Collection
+                        <View
+                          className={`rounded-xl items-center justify-center ${isDark ? "bg-slate-800" : "bg-slate-100"}`}
+                          style={{
+                            width: 320,
+                            height: 445,
+                          }}
+                        >
+                          <Text className={`text-lg ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                            {selectedCard.name}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Right: Card Details and Actions */}
+                    <View className="flex-1 gap-4">
+
+                      {/* Collection Status */}
+                      {(selectedCard.isLinkedToCollection ||
+                        selectedCard.inCollection ||
+                        selectedCard.inCollectionDifferentPrint) && (
+                        <View className={`rounded-xl p-4 ${isDark ? "bg-slate-800" : "bg-slate-50"}`}>
+                          <View className="flex-row items-center gap-2">
+                            {selectedCard.isLinkedToCollection ? (
+                              <>
+                                <Link size={18} color="#7C3AED" />
+                                <View className="flex-1">
+                                  <Text className="text-purple-500 font-medium">
+                                    Linked to Collection
+                                  </Text>
+                                  <Text className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                                    This card is linked and tracked in your collection
+                                  </Text>
+                                </View>
+                              </>
+                            ) : selectedCard.inCollection ? (
+                              <>
+                                <CheckCircle size={18} color="#7C3AED" />
+                                <View className="flex-1">
+                                  <Text className="text-purple-500 font-medium">
+                                    In Your Collection
+                                  </Text>
+                                  <Text className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                                    You own this exact printing
+                                  </Text>
+                                </View>
+                              </>
+                            ) : (
+                              <>
+                                <AlertCircle size={18} color="#f59e0b" />
+                                <View className="flex-1">
+                                  <Text className="text-amber-500 font-medium">
+                                    Different Printing in Collection
+                                  </Text>
+                                  <Text className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                                    You own this card but a different set/printing
+                                  </Text>
+                                </View>
+                              </>
+                            )}
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Card Details */}
+                      <View className={`rounded-xl p-4 gap-3 ${isDark ? "bg-slate-800" : "bg-slate-50"}`}>
+                        {/* Type Line */}
+                        {selectedCard.typeLine && (
+                          <View>
+                            <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                              Type
                             </Text>
-                            <Text className="text-slate-400 text-xs mt-1">
-                              You own this card but a different set/printing
+                            <Text className={isDark ? "text-white" : "text-slate-900"}>
+                              {selectedCard.typeLine}
                             </Text>
                           </View>
-                        </>
-                      )}
+                        )}
+
+                        {/* Mana Cost */}
+                        {selectedCard.manaCost && (
+                          <View>
+                            <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                              Mana Cost
+                            </Text>
+                            <Text className={`font-mono ${isDark ? "text-white" : "text-slate-900"}`}>
+                              {selectedCard.manaCost}
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Set Info */}
+                        {selectedCard.setCode && (
+                          <View>
+                            <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                              Set
+                            </Text>
+                            <Text className={isDark ? "text-white" : "text-slate-900"}>
+                              {selectedCard.setCode.toUpperCase()}
+                              {selectedCard.collectorNumber &&
+                                ` #${selectedCard.collectorNumber}`}
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Rarity */}
+                        {selectedCard.rarity && (
+                          <View>
+                            <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                              Rarity
+                            </Text>
+                            <Text className={`capitalize ${isDark ? "text-white" : "text-slate-900"}`}>
+                              {selectedCard.rarity}
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Price */}
+                        {selectedCard.priceUsd != null && (
+                          <View>
+                            <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                              Price (USD)
+                            </Text>
+                            <Text className="text-purple-500 font-semibold">
+                              ${Number(selectedCard.priceUsd).toFixed(2)}
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Color Identity */}
+                        {selectedCard.colorIdentity &&
+                          selectedCard.colorIdentity.length > 0 && (
+                            <View>
+                              <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                                Color Identity
+                              </Text>
+                              <View className="flex-row gap-1">
+                                {selectedCard.colorIdentity.map((color) => (
+                                  <View
+                                    key={color}
+                                    className="h-5 w-5 rounded-full border border-slate-300"
+                                    style={{
+                                      backgroundColor: MANA_COLORS[color] || "#888",
+                                    }}
+                                  />
+                                ))}
+                              </View>
+                            </View>
+                          )}
+                      </View>
+
+                      {/* Action Buttons */}
+                      <View className="gap-2">
+                        {/* Set as Commander */}
+                        <Pressable
+                          onPress={() => {
+                            setCardModalVisible(false);
+                            setActionSheetCard(selectedCard);
+                            setTimeout(() => handleSetCommander(), 100);
+                          }}
+                          className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
+                        >
+                          <Crown
+                            size={18}
+                            color={
+                              selectedCard?.isCommander
+                                ? "#eab308"
+                                : "#94a3b8"
+                            }
+                          />
+                          <Text className={`flex-1 ${isDark ? "text-white" : "text-slate-900"}`}>
+                            {selectedCard?.isCommander
+                              ? "Remove as Commander"
+                              : "Set as Commander"}
+                          </Text>
+                        </Pressable>
+
+                        {/* Set Color Tag */}
+                        <Pressable
+                          onPress={() => {
+                            setCardModalVisible(false);
+                            setActionSheetCard(selectedCard);
+                            setTimeout(() => setColorTagPickerVisible(true), 100);
+                            setTimeout(() => setActionSheetVisible(true), 100);
+                          }}
+                          className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
+                        >
+                          <Palette size={18} color="#94a3b8" />
+                          <Text className={`flex-1 ${isDark ? "text-white" : "text-slate-900"}`}>Set Color Tag</Text>
+                          {selectedCard?.colorTag && (
+                            <View
+                              className="h-4 w-4 rounded-full"
+                              style={{ backgroundColor: selectedCard.colorTag }}
+                            />
+                          )}
+                        </Pressable>
+
+                        {/* Change Edition */}
+                        <Pressable
+                          onPress={() => {
+                            setCardModalVisible(false);
+                            setActionSheetCard(selectedCard);
+                            setTimeout(() => handleShowEditions(), 100);
+                            setTimeout(() => setActionSheetVisible(true), 100);
+                          }}
+                          className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
+                        >
+                          <RefreshCcw size={18} color="#94a3b8" />
+                          <Text className={isDark ? "text-white" : "text-slate-900"}>Change Edition</Text>
+                        </Pressable>
+
+                        {/* Move to Sideboard/Mainboard */}
+                        <Pressable
+                          onPress={() => {
+                            setCardModalVisible(false);
+                            setActionSheetCard(selectedCard);
+                            setTimeout(() => handleMoveToSideboard(), 100);
+                          }}
+                          className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
+                        >
+                          <Sidebar size={18} color="#94a3b8" />
+                          <Text className={isDark ? "text-white" : "text-slate-900"}>
+                            {selectedCard?.categories?.includes("Sideboard")
+                              ? "Move to Mainboard"
+                              : "Move to Sideboard"}
+                          </Text>
+                        </Pressable>
+
+                        {/* Link/Unlink Collection */}
+                        {selectedCard?.isLinkedToCollection ? (
+                          <Pressable
+                            onPress={() => {
+                              setCardModalVisible(false);
+                              setActionSheetCard(selectedCard);
+                              setTimeout(() => handleUnlinkFromCollection(), 100);
+                            }}
+                            className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
+                          >
+                            <Unlink size={18} color="#94a3b8" />
+                            <Text className={isDark ? "text-white" : "text-slate-900"}>Unlink from Collection</Text>
+                          </Pressable>
+                        ) : (selectedCard?.inCollection || selectedCard?.inCollectionDifferentPrint) && selectedCard?.hasAvailableCollectionCard ? (
+                          <Pressable
+                            onPress={() => {
+                              setCardModalVisible(false);
+                              setActionSheetCard(selectedCard);
+                              setTimeout(() => handleLinkToCollection(), 100);
+                            }}
+                            className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
+                          >
+                            <Link size={18} color="#7C3AED" />
+                            <View className="flex-1">
+                              <Text className="text-purple-500 font-medium">
+                                Link to Collection
+                              </Text>
+                              {selectedCard?.inCollectionDifferentPrint &&
+                                !selectedCard?.inCollection && (
+                                  <Text className={`text-xs mt-0.5 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                                    Will change to your collection edition
+                                  </Text>
+                                )}
+                            </View>
+                          </Pressable>
+                        ) : null}
+
+                        {/* Remove from Deck */}
+                        <Pressable
+                          onPress={() => {
+                            setCardModalVisible(false);
+                            setActionSheetCard(selectedCard);
+                            setTimeout(() => handleRemoveCard(), 100);
+                          }}
+                          className="bg-red-500/10 hover:bg-red-500/20 rounded-xl p-3 flex-row items-center gap-3"
+                        >
+                          <X size={18} color="#ef4444" />
+                          <Text className="text-red-500 font-medium">
+                            Remove from Deck
+                          </Text>
+                        </Pressable>
+                      </View>
                     </View>
                   </View>
                 )}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        ) : (
+          // Mobile: Full screen modal
+          <View
+            className="flex-1 bg-slate-950"
+            style={{ paddingTop: insets.top }}
+          >
+            {/* Header */}
+            <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-800">
+              <View className="flex-row items-center gap-2 flex-1">
+                {selectedCard?.isCommander && <Crown size={20} color="#eab308" />}
+                <Text
+                  className="text-white text-lg font-bold flex-1"
+                  numberOfLines={1}
+                >
+                  {selectedCard?.name}
+                </Text>
+                {selectedCard && selectedCard.quantity > 1 && (
+                  <View className="bg-white/20 rounded-full px-2 py-0.5">
+                    <Text className="text-white text-xs font-medium">
+                      {selectedCard.quantity}x
+                    </Text>
+                  </View>
+                )}
+              </View>
 
-                {/* Card Details */}
-                <View className="bg-slate-900 rounded-xl p-4 gap-3">
-                  {/* Type Line */}
-                  {selectedCard.typeLine && (
-                    <View>
-                      <Text className="text-slate-500 text-xs uppercase tracking-wide mb-1">
-                        Type
-                      </Text>
-                      <Text className="text-white">
-                        {selectedCard.typeLine}
-                      </Text>
+              {/* Navigation */}
+              <View className="flex-row items-center gap-2">
+                <Pressable
+                  onPress={handlePrevCard}
+                  disabled={selectedCardIndex <= 0}
+                  className={`rounded-full p-2 ${selectedCardIndex <= 0 ? "opacity-30" : ""}`}
+                >
+                  <ChevronLeft size={24} color="white" />
+                </Pressable>
+                <Text className="text-white/70 text-sm min-w-[50px] text-center">
+                  {selectedCardIndex + 1} / {allCards.length}
+                </Text>
+                <Pressable
+                  onPress={handleNextCard}
+                  disabled={selectedCardIndex >= allCards.length - 1}
+                  className={`rounded-full p-2 ${selectedCardIndex >= allCards.length - 1 ? "opacity-30" : ""}`}
+                >
+                  <ChevronRight size={24} color="white" />
+                </Pressable>
+                <Pressable
+                  onPress={closeCardModal}
+                  className="rounded-full p-2 ml-2"
+                >
+                  <X size={24} color="white" />
+                </Pressable>
+              </View>
+            </View>
+
+            {/* Card Content */}
+            <ScrollView
+              className="flex-1"
+              contentContainerStyle={{
+                paddingHorizontal: 16,
+                paddingBottom: Math.max(24, insets.bottom + 16),
+              }}
+            >
+              {selectedCard && (
+                <>
+                  {/* Card Image */}
+                  <View className="items-center mb-6">
+                    {selectedCard.imageUrl || selectedCard.imageSmall ? (
+                      <Image
+                        source={{
+                          uri: selectedCard.imageUrl || selectedCard.imageSmall,
+                        }}
+                        style={{
+                          width: Dimensions.get("window").width - 64,
+                          height:
+                            (Dimensions.get("window").width - 64) * (680 / 488),
+                          borderRadius: 12,
+                        }}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View
+                        className="bg-slate-800 rounded-xl items-center justify-center"
+                        style={{
+                          width: Dimensions.get("window").width - 64,
+                          height:
+                            (Dimensions.get("window").width - 64) * (680 / 488),
+                        }}
+                      >
+                        <Text className="text-slate-500 text-lg">
+                          {selectedCard.name}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Collection Status */}
+                  {(selectedCard.isLinkedToCollection ||
+                    selectedCard.inCollection ||
+                    selectedCard.inCollectionDifferentPrint) && (
+                    <View className="bg-slate-900 rounded-xl p-4 mb-4">
+                      <View className="flex-row items-center gap-2">
+                        {selectedCard.isLinkedToCollection ? (
+                          <>
+                            <Link size={18} color="#7C3AED" />
+                            <View className="flex-1">
+                              <Text className="text-purple-500 font-medium">
+                                Linked to Collection
+                              </Text>
+                              <Text className="text-slate-400 text-xs mt-1">
+                                This card is linked and tracked in your collection
+                              </Text>
+                            </View>
+                          </>
+                        ) : selectedCard.inCollection ? (
+                          <>
+                            <CheckCircle size={18} color="#7C3AED" />
+                            <View className="flex-1">
+                              <Text className="text-purple-500 font-medium">
+                                In Your Collection
+                              </Text>
+                              <Text className="text-slate-400 text-xs mt-1">
+                                You own this exact printing
+                              </Text>
+                            </View>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle size={18} color="#f59e0b" />
+                            <View className="flex-1">
+                              <Text className="text-amber-500 font-medium">
+                                Different Printing in Collection
+                              </Text>
+                              <Text className="text-slate-400 text-xs mt-1">
+                                You own this card but a different set/printing
+                              </Text>
+                            </View>
+                          </>
+                        )}
+                      </View>
                     </View>
                   )}
 
-                  {/* Mana Cost */}
-                  {selectedCard.manaCost && (
-                    <View>
-                      <Text className="text-slate-500 text-xs uppercase tracking-wide mb-1">
-                        Mana Cost
-                      </Text>
-                      <Text className="text-white font-mono">
-                        {selectedCard.manaCost}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Set Info */}
-                  {selectedCard.setCode && (
-                    <View>
-                      <Text className="text-slate-500 text-xs uppercase tracking-wide mb-1">
-                        Set
-                      </Text>
-                      <Text className="text-white">
-                        {selectedCard.setCode.toUpperCase()}
-                        {selectedCard.collectorNumber &&
-                          ` #${selectedCard.collectorNumber}`}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Rarity */}
-                  {selectedCard.rarity && (
-                    <View>
-                      <Text className="text-slate-500 text-xs uppercase tracking-wide mb-1">
-                        Rarity
-                      </Text>
-                      <Text className="text-white capitalize">
-                        {selectedCard.rarity}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Price */}
-                  {selectedCard.priceUsd != null && (
-                    <View>
-                      <Text className="text-slate-500 text-xs uppercase tracking-wide mb-1">
-                        Price (USD)
-                      </Text>
-                      <Text className="text-emerald-400 font-semibold">
-                        ${Number(selectedCard.priceUsd).toFixed(2)}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Color Identity */}
-                  {selectedCard.colorIdentity &&
-                    selectedCard.colorIdentity.length > 0 && (
+                  {/* Card Details */}
+                  <View className="bg-slate-900 rounded-xl p-4 gap-3">
+                    {/* Type Line */}
+                    {selectedCard.typeLine && (
                       <View>
                         <Text className="text-slate-500 text-xs uppercase tracking-wide mb-1">
-                          Color Identity
+                          Type
                         </Text>
-                        <View className="flex-row gap-1">
-                          {selectedCard.colorIdentity.map((color) => (
-                            <View
-                              key={color}
-                              className="h-5 w-5 rounded-full border border-white/20"
-                              style={{
-                                backgroundColor: MANA_COLORS[color] || "#888",
-                              }}
-                            />
-                          ))}
+                        <Text className="text-white">
+                          {selectedCard.typeLine}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Mana Cost */}
+                    {selectedCard.manaCost && (
+                      <View>
+                        <Text className="text-slate-500 text-xs uppercase tracking-wide mb-1">
+                          Mana Cost
+                        </Text>
+                        <Text className="text-white font-mono">
+                          {selectedCard.manaCost}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Set Info */}
+                    {selectedCard.setCode && (
+                      <View>
+                        <Text className="text-slate-500 text-xs uppercase tracking-wide mb-1">
+                          Set
+                        </Text>
+                        <Text className="text-white">
+                          {selectedCard.setCode.toUpperCase()}
+                          {selectedCard.collectorNumber &&
+                            ` #${selectedCard.collectorNumber}`}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Rarity */}
+                    {selectedCard.rarity && (
+                      <View>
+                        <Text className="text-slate-500 text-xs uppercase tracking-wide mb-1">
+                          Rarity
+                        </Text>
+                        <Text className="text-white capitalize">
+                          {selectedCard.rarity}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Price */}
+                    {selectedCard.priceUsd != null && (
+                      <View>
+                        <Text className="text-slate-500 text-xs uppercase tracking-wide mb-1">
+                          Price (USD)
+                        </Text>
+                        <Text className="text-purple-400 font-semibold">
+                          ${Number(selectedCard.priceUsd).toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Color Identity */}
+                    {selectedCard.colorIdentity &&
+                      selectedCard.colorIdentity.length > 0 && (
+                        <View>
+                          <Text className="text-slate-500 text-xs uppercase tracking-wide mb-1">
+                            Color Identity
+                          </Text>
+                          <View className="flex-row gap-1">
+                            {selectedCard.colorIdentity.map((color) => (
+                              <View
+                                key={color}
+                                className="h-5 w-5 rounded-full border border-white/20"
+                                style={{
+                                  backgroundColor: MANA_COLORS[color] || "#888",
+                                }}
+                              />
+                            ))}
+                          </View>
                         </View>
-                      </View>
-                    )}
-                </View>
+                      )}
+                  </View>
 
-                {/* Action Buttons */}
-                <View className="mt-6 gap-2">
-                  {/* Set as Commander */}
-                  <Pressable
-                    onPress={() => {
-                      setCardModalVisible(false);
-                      setActionSheetCard(selectedCard);
-                      setTimeout(() => handleSetCommander(), 100);
-                    }}
-                    className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
-                  >
-                    <Crown
-                      size={20}
-                      color={
-                        selectedCard?.isCommander
-                          ? "#eab308"
-                          : "#94a3b8"
-                      }
-                    />
-                    <Text className="text-white flex-1">
-                      {selectedCard?.isCommander
-                        ? "Remove as Commander"
-                        : "Set as Commander"}
-                    </Text>
-                  </Pressable>
-
-                  {/* Set Color Tag */}
-                  <Pressable
-                    onPress={() => {
-                      setCardModalVisible(false);
-                      setActionSheetCard(selectedCard);
-                      setTimeout(() => setColorTagPickerVisible(true), 100);
-                      setTimeout(() => setActionSheetVisible(true), 100);
-                    }}
-                    className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
-                  >
-                    <Palette size={20} color="#94a3b8" />
-                    <Text className="text-white flex-1">Set Color Tag</Text>
-                    {selectedCard?.colorTag && (
-                      <View
-                        className="h-4 w-4 rounded-full"
-                        style={{ backgroundColor: selectedCard.colorTag }}
+                  {/* Action Buttons */}
+                  <View className="mt-6 gap-2">
+                    {/* Set as Commander */}
+                    <Pressable
+                      onPress={() => {
+                        setCardModalVisible(false);
+                        setActionSheetCard(selectedCard);
+                        setTimeout(() => handleSetCommander(), 100);
+                      }}
+                      className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
+                    >
+                      <Crown
+                        size={20}
+                        color={
+                          selectedCard?.isCommander
+                            ? "#eab308"
+                            : "#94a3b8"
+                        }
                       />
-                    )}
-                  </Pressable>
+                      <Text className="text-white flex-1">
+                        {selectedCard?.isCommander
+                          ? "Remove as Commander"
+                          : "Set as Commander"}
+                      </Text>
+                    </Pressable>
 
-                  {/* Change Edition */}
-                  <Pressable
-                    onPress={() => {
-                      setCardModalVisible(false);
-                      setActionSheetCard(selectedCard);
-                      setTimeout(() => handleShowEditions(), 100);
-                      setTimeout(() => setActionSheetVisible(true), 100);
-                    }}
-                    className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
-                  >
-                    <RefreshCcw size={20} color="#94a3b8" />
-                    <Text className="text-white">Change Edition</Text>
-                  </Pressable>
-
-                  {/* Move to Sideboard/Mainboard */}
-                  <Pressable
-                    onPress={() => {
-                      setCardModalVisible(false);
-                      setActionSheetCard(selectedCard);
-                      setTimeout(() => handleMoveToSideboard(), 100);
-                    }}
-                    className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
-                  >
-                    <Sidebar size={20} color="#94a3b8" />
-                    <Text className="text-white">
-                      {selectedCard?.categories?.includes("Sideboard")
-                        ? "Move to Mainboard"
-                        : "Move to Sideboard"}
-                    </Text>
-                  </Pressable>
-
-                  {/* Link/Unlink Collection */}
-                  {selectedCard?.isLinkedToCollection ? (
+                    {/* Set Color Tag */}
                     <Pressable
                       onPress={() => {
                         setCardModalVisible(false);
                         setActionSheetCard(selectedCard);
-                        setTimeout(() => handleUnlinkFromCollection(), 100);
+                        setTimeout(() => setColorTagPickerVisible(true), 100);
+                        setTimeout(() => setActionSheetVisible(true), 100);
                       }}
                       className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
                     >
-                      <Unlink size={20} color="#94a3b8" />
-                      <Text className="text-white">Unlink from Collection</Text>
+                      <Palette size={20} color="#94a3b8" />
+                      <Text className="text-white flex-1">Set Color Tag</Text>
+                      {selectedCard?.colorTag && (
+                        <View
+                          className="h-4 w-4 rounded-full"
+                          style={{ backgroundColor: selectedCard.colorTag }}
+                        />
+                      )}
                     </Pressable>
-                  ) : (selectedCard?.inCollection || selectedCard?.inCollectionDifferentPrint) && selectedCard?.hasAvailableCollectionCard ? (
+
+                    {/* Change Edition */}
                     <Pressable
                       onPress={() => {
                         setCardModalVisible(false);
                         setActionSheetCard(selectedCard);
-                        setTimeout(() => handleLinkToCollection(), 100);
+                        setTimeout(() => handleShowEditions(), 100);
+                        setTimeout(() => setActionSheetVisible(true), 100);
                       }}
                       className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
                     >
-                      <Link size={20} color="#10b981" />
-                      <View className="flex-1">
-                        <Text className="text-emerald-500 font-medium">
-                          Link to Collection
-                        </Text>
-                        {selectedCard?.inCollectionDifferentPrint &&
-                          !selectedCard?.inCollection && (
-                            <Text className="text-slate-400 text-xs mt-0.5">
-                              Will change to your collection edition
-                            </Text>
-                          )}
-                      </View>
+                      <RefreshCcw size={20} color="#94a3b8" />
+                      <Text className="text-white">Change Edition</Text>
                     </Pressable>
-                  ) : null}
 
-                  {/* Remove from Deck */}
-                  <Pressable
-                    onPress={() => {
-                      setCardModalVisible(false);
-                      setActionSheetCard(selectedCard);
-                      setTimeout(() => handleRemoveCard(), 100);
-                    }}
-                    className="bg-red-900/30 rounded-xl p-4 flex-row items-center gap-3 active:bg-red-900/40"
-                  >
-                    <X size={20} color="#ef4444" />
-                    <Text className="text-red-500 font-medium">
-                      Remove from Deck
-                    </Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
-          </ScrollView>
-        </View>
+                    {/* Move to Sideboard/Mainboard */}
+                    <Pressable
+                      onPress={() => {
+                        setCardModalVisible(false);
+                        setActionSheetCard(selectedCard);
+                        setTimeout(() => handleMoveToSideboard(), 100);
+                      }}
+                      className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
+                    >
+                      <Sidebar size={20} color="#94a3b8" />
+                      <Text className="text-white">
+                        {selectedCard?.categories?.includes("Sideboard")
+                          ? "Move to Mainboard"
+                          : "Move to Sideboard"}
+                      </Text>
+                    </Pressable>
+
+                    {/* Link/Unlink Collection */}
+                    {selectedCard?.isLinkedToCollection ? (
+                      <Pressable
+                        onPress={() => {
+                          setCardModalVisible(false);
+                          setActionSheetCard(selectedCard);
+                          setTimeout(() => handleUnlinkFromCollection(), 100);
+                        }}
+                        className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
+                      >
+                        <Unlink size={20} color="#94a3b8" />
+                        <Text className="text-white">Unlink from Collection</Text>
+                      </Pressable>
+                    ) : (selectedCard?.inCollection || selectedCard?.inCollectionDifferentPrint) && selectedCard?.hasAvailableCollectionCard ? (
+                      <Pressable
+                        onPress={() => {
+                          setCardModalVisible(false);
+                          setActionSheetCard(selectedCard);
+                          setTimeout(() => handleLinkToCollection(), 100);
+                        }}
+                        className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
+                      >
+                        <Link size={20} color="#7C3AED" />
+                        <View className="flex-1">
+                          <Text className="text-purple-500 font-medium">
+                            Link to Collection
+                          </Text>
+                          {selectedCard?.inCollectionDifferentPrint &&
+                            !selectedCard?.inCollection && (
+                              <Text className="text-slate-400 text-xs mt-0.5">
+                                Will change to your collection edition
+                              </Text>
+                            )}
+                        </View>
+                      </Pressable>
+                    ) : null}
+
+                    {/* Remove from Deck */}
+                    <Pressable
+                      onPress={() => {
+                        setCardModalVisible(false);
+                        setActionSheetCard(selectedCard);
+                        setTimeout(() => handleRemoveCard(), 100);
+                      }}
+                      className="bg-red-900/30 rounded-xl p-4 flex-row items-center gap-3 active:bg-red-900/40"
+                    >
+                      <X size={20} color="#ef4444" />
+                      <Text className="text-red-500 font-medium">
+                        Remove from Deck
+                      </Text>
+                    </Pressable>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        )}
       </Modal>
 
       {/* Card Action Sheet */}
@@ -2272,7 +2640,7 @@ export default function DeckDetailScreen() {
                 </View>
                 {loadingEditions ? (
                   <View className="p-8 items-center">
-                    <ActivityIndicator size="large" color="#10b981" />
+                    <ActivityIndicator size="large" color="#7C3AED" />
                   </View>
                 ) : editions.length === 0 ? (
                   <View className="p-8 items-center">
@@ -2315,7 +2683,7 @@ export default function DeckDetailScreen() {
                             <Text
                               className={`font-medium ${
                                 isCurrent
-                                  ? "text-emerald-500"
+                                  ? "text-purple-500"
                                   : isDark
                                   ? "text-white"
                                   : "text-slate-900"
@@ -2334,11 +2702,11 @@ export default function DeckDetailScreen() {
                             </Text>
                           </View>
                           {edition.priceUsd && (
-                            <Text className="text-emerald-500 text-sm">
+                            <Text className="text-purple-500 text-sm">
                               ${edition.priceUsd}
                             </Text>
                           )}
-                          {isCurrent && <Check size={18} color="#10b981" />}
+                          {isCurrent && <Check size={18} color="#7C3AED" />}
                         </Pressable>
                       );
                     })}
@@ -2380,7 +2748,7 @@ export default function DeckDetailScreen() {
                     No Tag
                   </Text>
                   {!actionSheetCard?.colorTag && (
-                    <Check size={18} color="#10b981" />
+                    <Check size={18} color="#7C3AED" />
                   )}
                 </Pressable>
                 {deck?.colorTags?.map((tag) => (
@@ -2404,7 +2772,7 @@ export default function DeckDetailScreen() {
                       {tag.name}
                     </Text>
                     {actionSheetCard?.colorTag === tag.color && (
-                      <Check size={18} color="#10b981" />
+                      <Check size={18} color="#7C3AED" />
                     )}
                   </Pressable>
                 ))}
@@ -2515,9 +2883,9 @@ export default function DeckDetailScreen() {
                               : "active:bg-slate-50"
                           }`}
                         >
-                          <Link size={20} color="#10b981" />
+                          <Link size={20} color="#7C3AED" />
                           <View className="flex-1">
-                            <Text className="text-emerald-500 font-medium">
+                            <Text className="text-purple-500 font-medium">
                               Link to Collection
                             </Text>
                             {actionSheetCard?.inCollectionDifferentPrint &&
@@ -2576,7 +2944,7 @@ export default function DeckDetailScreen() {
 
             {actionLoading && (
               <View className="absolute inset-0 bg-black/20 items-center justify-center">
-                <ActivityIndicator size="large" color="#10b981" />
+                <ActivityIndicator size="large" color="#7C3AED" />
               </View>
             )}
           </View>
@@ -2584,19 +2952,21 @@ export default function DeckDetailScreen() {
       </Modal>
 
       {/* Floating Chat Button (FAB) */}
-      <Pressable
-        onPress={() => setChatPanelVisible(true)}
-        className="absolute bottom-6 right-6 h-14 w-14 rounded-full bg-emerald-500 items-center justify-center shadow-lg"
-        style={{
-          shadowColor: "#10b981",
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 8,
-        }}
-      >
-        <MessageSquare size={24} color="white" />
-      </Pressable>
+      {!isDesktop && (
+        <Pressable
+          onPress={() => setChatPanelVisible(true)}
+          className="absolute bottom-6 right-6 h-14 w-14 rounded-full bg-purple-500 items-center justify-center shadow-lg"
+          style={{
+            shadowColor: "#7C3AED",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            elevation: 8,
+          }}
+        >
+          <MessageSquare size={24} color="white" />
+        </Pressable>
+      )}
 
       {/* Color Tag Manager */}
       {deck && (
@@ -2818,6 +3188,25 @@ export default function DeckDetailScreen() {
         title="Add Card to Deck"
         placeholder="Search for a card..."
       />
+    </>
+  );
+
+  // Render with appropriate wrapper based on screen size
+  if (isDesktop) {
+    return (
+      <View className="flex-1 flex-row">
+        <DesktopSidebar />
+        <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+          {pageContent}
+        </View>
+      </View>
+    );
+  }
+
+  // Mobile Layout
+  return (
+    <SafeAreaView className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+      {pageContent}
     </SafeAreaView>
   );
 }

@@ -286,7 +286,7 @@ export function ScryfallSearch({
 
             {loadingEditions ? (
               <View className="flex-1 items-center justify-center">
-                <ActivityIndicator size="large" color="#10b981" />
+                <ActivityIndicator size="large" color="#7C3AED" />
                 <Text
                   className={`mt-4 ${
                     isDark ? "text-slate-400" : "text-slate-500"
@@ -321,7 +321,7 @@ export function ScryfallSearch({
                       isDark
                         ? "border-slate-800 active:bg-slate-900"
                         : "border-slate-100 active:bg-slate-50"
-                    } ${isSelected ? (isDark ? "bg-emerald-950/30 border-l-4 border-l-emerald-500" : "bg-emerald-50 border-l-4 border-l-emerald-500") : ""}`}
+                    } ${isSelected ? (isDark ? "bg-purple-950/30 border-l-4 border-l-purple-500" : "bg-purple-50 border-l-4 border-l-purple-500") : ""}`}
                   >
                     {item.imageSmall ? (
                       <Image
@@ -377,7 +377,7 @@ export function ScryfallSearch({
                     </View>
                     <View className="items-end">
                       {item.priceUsd && (
-                        <Text className="text-emerald-500 font-medium">
+                        <Text className="text-purple-500 font-medium">
                           ${item.priceUsd}
                         </Text>
                       )}
@@ -388,7 +388,7 @@ export function ScryfallSearch({
                       )}
                     </View>
                     {isSelected && (
-                      <CheckCircle size={24} color="#10b981" />
+                      <CheckCircle size={24} color="#7C3AED" />
                     )}
                   </Pressable>
                   );
@@ -407,7 +407,7 @@ export function ScryfallSearch({
                   disabled={!selectedEdition}
                   className={`py-3 px-6 rounded-lg ${
                     selectedEdition
-                      ? "bg-emerald-500 active:bg-emerald-600"
+                      ? "bg-purple-500 active:bg-purple-600"
                       : "bg-slate-700"
                   }`}
                 >
@@ -423,7 +423,7 @@ export function ScryfallSearch({
         /* Search Results */
         loading && results.length === 0 ? (
           <View className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color="#10b981" />
+            <ActivityIndicator size="large" color="#7C3AED" />
             <Text
               className={`mt-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}
             >
@@ -535,7 +535,7 @@ export function ScryfallSearch({
                   )}
                 </View>
                 {item.priceUsd && (
-                  <Text className="text-emerald-500 font-medium">
+                  <Text className="text-purple-500 font-medium">
                     ${item.priceUsd}
                   </Text>
                 )}
@@ -546,7 +546,7 @@ export function ScryfallSearch({
             ListFooterComponent={
               loading && results.length > 0 ? (
                 <View className="py-4">
-                  <ActivityIndicator size="small" color="#10b981" />
+                  <ActivityIndicator size="small" color="#7C3AED" />
                 </View>
               ) : null
             }

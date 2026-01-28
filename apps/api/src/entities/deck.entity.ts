@@ -17,17 +17,17 @@ export interface ColorTag {
   color: string;
 }
 
-export type DeckSyncStatus = 'pending' | 'syncing' | 'synced' | 'error';
+export type DeckSyncStatus = 'waiting' | 'syncing' | 'synced' | 'error';
 
 @Entity('decks')
 export class Deck {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'user_id' })
   userId: string;
 
-  @Column({ type: 'int' })
+  @Column({ name: 'archidekt_id', type: 'int' })
   archidektId: number;
 
   @Column()
@@ -39,26 +39,26 @@ export class Deck {
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ name: 'last_synced_at', type: 'timestamp', nullable: true })
   lastSyncedAt: Date | null;
 
-  @Column({ type: 'varchar', default: 'pending' })
+  @Column({ name: 'sync_status', type: 'varchar', default: 'waiting' })
   syncStatus: DeckSyncStatus;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'sync_error', type: 'text', nullable: true })
   syncError: string | null;
 
-  @Column({ type: 'jsonb', default: [] })
+  @Column({ name: 'color_tags', type: 'jsonb', default: [] })
   colorTags: ColorTag[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
   @ManyToOne(() => User, (user) => user.decks, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn({ name: 'user_id' })
   user: User;
 
   @OneToMany(() => DeckCard, (card) => card.deck, { cascade: true })

@@ -22,31 +22,31 @@ export class DeckVersion {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'deck_id' })
   deckId: string;
 
-  @Column({ type: 'int' })
+  @Column({ name: 'version_number', type: 'int' })
   versionNumber: number;
 
   @Column({ type: 'varchar', nullable: true })
   description: string | null;
 
-  @Column({ type: 'varchar' })
+  @Column({ name: 'change_type', type: 'varchar' })
   changeType: 'sync' | 'manual' | 'advisor' | 'revert';
 
   @Column({ type: 'jsonb' })
   cards: VersionCard[];
 
-  @Column({ type: 'jsonb', default: [] })
+  @Column({ name: 'color_tags', type: 'jsonb', default: [] })
   colorTags: Array<{ name: string; color: string }>;
 
-  @Column({ type: 'int' })
+  @Column({ name: 'card_count', type: 'int' })
   cardCount: number;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
   @ManyToOne(() => Deck, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'deckId' })
+  @JoinColumn({ name: 'deck_id' })
   deck: Deck;
 }

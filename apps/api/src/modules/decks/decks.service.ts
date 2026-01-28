@@ -116,7 +116,8 @@ export class DecksService {
           syncError: deck.syncError,
           cardCount,
           commanders: commanders.map((c) => c.card?.name).filter(Boolean),
-          commanderImage: primaryCommander?.imageArtCrop || primaryCommander?.imageNormal || null,
+          commanderImageCrop: primaryCommander?.imageArtCrop || null,
+          commanderImageFull: primaryCommander?.imageNormal || null,
           colors: this.extractColors(commanders),
         };
       }),
@@ -136,7 +137,7 @@ export class DecksService {
         archidektId,
         userId,
         name: `Deck ${archidektId}`, // Will be updated during sync
-        syncStatus: 'pending',
+        syncStatus: 'waiting',
         lastSyncedAt: null,
       });
       await this.deckRepository.save(deck);

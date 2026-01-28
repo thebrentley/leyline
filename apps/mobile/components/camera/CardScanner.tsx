@@ -298,7 +298,7 @@ export function CardScanner({ visible, onClose, onComplete }: CardScannerProps) 
             >
               <Text
                 className={`font-mono text-sm ${
-                  isDark ? "text-emerald-400" : "text-emerald-600"
+                  isDark ? "text-purple-400" : "text-purple-600"
                 }`}
               >
                 npx expo run:ios --device
@@ -358,7 +358,7 @@ export function CardScanner({ visible, onClose, onComplete }: CardScannerProps) 
             <CameraPermissionRequest />
           ) : hasPermission === null ? (
             <View className="flex-1 items-center justify-center">
-              <ActivityIndicator size="large" color="#10b981" />
+              <ActivityIndicator size="large" color="#7C3AED" />
               <Text
                 className={`mt-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}
               >
@@ -394,8 +394,8 @@ export function CardScanner({ visible, onClose, onComplete }: CardScannerProps) 
                   isProcessing
                     ? "bg-slate-600"
                     : isDark
-                    ? "bg-emerald-600 active:bg-emerald-700"
-                    : "bg-emerald-500 active:bg-emerald-600"
+                    ? "bg-purple-600 active:bg-purple-700"
+                    : "bg-purple-500 active:bg-purple-600"
                 }`}
               >
                 {isProcessing ? (

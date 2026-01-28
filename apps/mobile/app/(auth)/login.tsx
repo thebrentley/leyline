@@ -8,7 +8,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { CircularProgress } from "~/components/CircularProgress";
+import { LeylineLogo } from "~/components/brand";
+import { Spinner } from "~/components/Spinner";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { useAuth } from "~/contexts/AuthContext";
@@ -44,27 +45,22 @@ export default function LoginScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1"
       >
-        <View className="flex-1 justify-center px-6">
-          {/* Logo / Header */}
-          <View className="mb-10 items-center">
-            <Text
-              className={`text-4xl font-bold ${
-                isDark ? "text-emerald-400" : "text-emerald-600"
-              }`}
-            >
-              Deck Tutor
-            </Text>
-            <Text
-              className={`mt-2 text-base ${
-                isDark ? "text-slate-400" : "text-slate-500"
-              }`}
-            >
-              Sign in to your account
-            </Text>
-          </View>
+        <View className="flex-1 justify-center px-6 lg:px-8">
+          <View className="w-full max-w-md mx-auto">
+            {/* Logo / Header */}
+            <View className="mb-10 items-center">
+              <LeylineLogo size="medium" />
+              <Text
+                className={`mt-4 text-base ${
+                  isDark ? "text-slate-400" : "text-slate-500"
+                }`}
+              >
+                Sign in to your account
+              </Text>
+            </View>
 
-          {/* Form */}
-          <View className="gap-4">
+            {/* Form */}
+            <View className="gap-4">
             <View>
               <Text
                 className={`mb-2 text-sm font-medium ${
@@ -96,6 +92,8 @@ export default function LoginScreen() {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
+                returnKeyType="go"
+                onSubmitEditing={handleLogin}
               />
             </View>
 
@@ -103,33 +101,34 @@ export default function LoginScreen() {
               <Text className="text-center text-red-500">{error}</Text>
             ) : null}
 
-            <Button
-              onPress={handleLogin}
-              disabled={isLoading}
-              className="mt-2"
-            >
-              {isLoading ? (
-                <CircularProgress size={20} strokeWidth={2} color="white" backgroundColor="rgba(255,255,255,0.2)" />
-              ) : (
-                "Sign In"
-              )}
-            </Button>
-          </View>
-
-          {/* Sign Up Link */}
-          <View className="mt-8 flex-row items-center justify-center gap-1">
-            <Text className={isDark ? "text-slate-400" : "text-slate-500"}>
-              Don't have an account?
-            </Text>
-            <Link href="/(auth)/signup" asChild>
-              <Text
-                className={`font-semibold ${
-                  isDark ? "text-emerald-400" : "text-emerald-600"
-                }`}
+              <Button
+                onPress={handleLogin}
+                disabled={isLoading}
+                className="mt-2"
               >
-                Sign Up
+                {isLoading ? (
+                  <Spinner size={20} strokeWidth={2} color="white" backgroundColor="rgba(255,255,255,0.2)" />
+                ) : (
+                  "Sign In"
+                )}
+              </Button>
+            </View>
+
+            {/* Sign Up Link */}
+            <View className="mt-8 flex-row items-center justify-center gap-1">
+              <Text className={isDark ? "text-slate-400" : "text-slate-500"}>
+                Don't have an account?
               </Text>
-            </Link>
+              <Link href="/(auth)/signup" asChild>
+                <Text
+                  className={`font-semibold ${
+                    isDark ? "text-purple-400" : "text-purple-600"
+                  }`}
+                >
+                  Sign Up
+                </Text>
+              </Link>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>

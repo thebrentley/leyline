@@ -1,0 +1,29 @@
+# Allow everything in mobile app for Docker build
+# This overrides the root .dockerignore
+
+# But still exclude node_modules and build artifacts
+node_modules
+dist
+.expo
+.expo-shared
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# OS
+.DS_Store
+
+# Test files
+*.test.*
+*.spec.*
+__tests__

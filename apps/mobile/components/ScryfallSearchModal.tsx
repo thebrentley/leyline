@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { CircularProgress } from "~/components/CircularProgress";
+import { Spinner } from "~/components/Spinner";
 import { cardsApi, collectionApi, type CardSearchResult } from "~/lib/api";
 
 interface ScryfallSearchModalProps {
@@ -77,9 +77,9 @@ function SearchResultItem({
         </View>
       </View>
       {adding ? (
-        <CircularProgress size={18} strokeWidth={2} color="#10b981" backgroundColor="rgba(16,185,129,0.2)" />
+        <Spinner size={18} strokeWidth={2} color="#7C3AED" backgroundColor="rgba(16,185,129,0.2)" />
       ) : (
-        <View className="bg-emerald-500 rounded-lg px-3 py-1.5">
+        <View className="bg-purple-500 rounded-lg px-3 py-1.5">
           <Text className="text-xs font-medium text-white">Add</Text>
         </View>
       )}
@@ -231,7 +231,7 @@ export function ScryfallSearchModal({
         {/* Results */}
         {loading ? (
           <View className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color="#10b981" />
+            <ActivityIndicator size="large" color="#7C3AED" />
           </View>
         ) : results.length === 0 && searchQuery.length >= 2 ? (
           <View className="flex-1 items-center justify-center px-6">

@@ -3,7 +3,7 @@ import {
   DrawerContentScrollView,
 } from "@react-navigation/drawer";
 import Constants from "expo-constants";
-import { router } from "expo-router";
+import { router, Slot } from "expo-router";
 import { Drawer } from "expo-router/drawer";
 import {
   ChevronRight,
@@ -19,10 +19,13 @@ import {
 } from "lucide-react-native";
 import { colorScheme, useColorScheme } from "nativewind";
 import { useState } from "react";
-import { Pressable, Switch, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { StyledSwitch } from "~/components/ui/StyledSwitch";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { useAuth } from "~/contexts/AuthContext";
+import { useResponsive } from "~/hooks/useResponsive";
+import { DesktopSidebar } from "~/components/web/DesktopSidebar";
 
 interface DrawerItemProps {
   icon: React.ReactNode;
@@ -52,7 +55,7 @@ function DrawerItem({ icon, label, onPress, rightText, isDark, isActive }: Drawe
         <Text
           className={`text-base ${
             isActive
-              ? "font-semibold text-emerald-500"
+              ? "font-semibold text-purple-500"
               : isDark
                 ? "text-white"
                 : "text-slate-900"
@@ -112,7 +115,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           }`}
         >
           {/* Avatar */}
-          <View className="h-14 w-14 items-center justify-center rounded-full bg-emerald-500">
+          <View className="h-14 w-14 items-center justify-center rounded-full bg-purple-600">
             <Text className="text-xl font-bold text-white">
               {(user?.displayName || user?.email)?.charAt(0).toUpperCase() || "U"}
             </Text>
@@ -139,7 +142,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
 
         {/* Navigation Items */}
         <DrawerItem
-          icon={<Home size={24} color={currentRoute === "index" ? "#10b981" : iconColor} />}
+          icon={<Home size={24} color={currentRoute === "index" ? "#7C3AED" : iconColor} />}
           label="Home"
           onPress={() => props.navigation.navigate("index")}
           isDark={isDark}
@@ -148,7 +151,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         <Divider isDark={isDark} />
 
         <DrawerItem
-          icon={<Layers size={24} color={currentRoute === "decks" ? "#10b981" : iconColor} />}
+          icon={<Layers size={24} color={currentRoute === "decks" ? "#7C3AED" : iconColor} />}
           label="Decks"
           onPress={() => props.navigation.navigate("decks")}
           isDark={isDark}
@@ -157,7 +160,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         <Divider isDark={isDark} />
 
         <DrawerItem
-          icon={<Library size={24} color={currentRoute === "collection" ? "#10b981" : iconColor} />}
+          icon={<Library size={24} color={currentRoute === "collection" ? "#7C3AED" : iconColor} />}
           label="Collection"
           onPress={() => props.navigation.navigate("collection")}
           isDark={isDark}
@@ -204,11 +207,10 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
               Dark mode
             </Text>
           </View>
-          <Switch
+          <StyledSwitch
             value={isDark}
             onValueChange={toggleTheme}
-            trackColor={{ false: "#cbd5e1", true: "#10b981" }}
-            thumbColor="#ffffff"
+            isDark={isDark}
           />
         </View>
         <Divider isDark={isDark} />
@@ -277,7 +279,24 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
 export default function DrawerLayout() {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
+  const { isDesktop } = useResponsive();
 
+  // Desktop Layout: No drawer, use persistent sidebar
+  if (isDesktop) {
+    return (
+      <View className="flex-1 flex-row">
+        {/* Left Sidebar */}
+        <DesktopSidebar />
+
+        {/* Main Content Area */}
+        <View className={`flex-1 pt-6 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+          <Slot />
+        </View>
+      </View>
+    );
+  }
+
+  // Mobile Layout: Standard drawer navigation
   return (
     <Drawer
       drawerContent={(props) => <CustomDrawerContent {...props} />}

@@ -18,7 +18,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { CircularProgress } from "~/components/CircularProgress";
+import { Spinner } from "~/components/Spinner";
 import { Button } from "~/components/ui/button";
 import { authApi, decksApi, type ArchidektDeck, type ArchidektStatus } from "~/lib/api";
 import { cache, CACHE_KEYS, cachedFetch } from "~/lib/cache";
@@ -187,7 +187,7 @@ export default function ArchidektScreen() {
 
       {loading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#10b981" />
+          <ActivityIndicator size="large" color="#7C3AED" />
         </View>
       ) : (
         <View className="flex-1 px-6 py-4">
@@ -208,21 +208,21 @@ export default function ArchidektScreen() {
               <View
                 className={`flex-row items-center gap-1.5 px-2 py-1 rounded-full ${
                   status?.connected && status?.tokenValid
-                    ? "bg-emerald-500/10"
+                    ? "bg-purple-500/10"
                     : status?.connected
                       ? "bg-amber-500/10"
                       : "bg-slate-500/10"
                 }`}
               >
                 {status?.connected && status?.tokenValid ? (
-                  <Check size={14} color="#10b981" />
+                  <Check size={14} color="#7C3AED" />
                 ) : status?.connected ? (
                   <AlertCircle size={14} color="#f59e0b" />
                 ) : null}
                 <Text
                   className={`text-xs font-medium ${
                     status?.connected && status?.tokenValid
-                      ? "text-emerald-500"
+                      ? "text-purple-500"
                       : status?.connected
                         ? "text-amber-500"
                         : isDark
@@ -364,7 +364,7 @@ export default function ArchidektScreen() {
                     className="flex-1"
                   >
                     {connecting ? (
-                      <CircularProgress size={18} strokeWidth={2} color="white" backgroundColor="rgba(255,255,255,0.2)" />
+                      <Spinner size={18} strokeWidth={2} color="white" backgroundColor="rgba(255,255,255,0.2)" />
                     ) : (
                       <Text className="font-medium text-white">Connect</Text>
                     )}
@@ -392,7 +392,7 @@ export default function ArchidektScreen() {
                 >
                   <View className="flex-row items-center gap-1.5">
                     {syncing ? (
-                      <CircularProgress size={14} strokeWidth={2} color="white" backgroundColor="rgba(255,255,255,0.2)" />
+                      <Spinner size={14} strokeWidth={2} color="white" backgroundColor="rgba(255,255,255,0.2)" />
                     ) : (
                       <RefreshCw size={14} color="white" />
                     )}
@@ -405,7 +405,7 @@ export default function ArchidektScreen() {
 
               {loadingDecks ? (
                 <View className="py-8 items-center">
-                  <CircularProgress size={24} strokeWidth={2} color="#10b981" backgroundColor="rgba(16,185,129,0.2)" />
+                  <Spinner size={24} strokeWidth={2} color="#7C3AED" backgroundColor="rgba(16,185,129,0.2)" />
                 </View>
               ) : archidektDecks.length === 0 ? (
                 <Text className={isDark ? "text-slate-400" : "text-slate-500"}>
@@ -442,7 +442,7 @@ export default function ArchidektScreen() {
                           </Text>
                         )}
                       </View>
-                      <RefreshCw size={16} color="#10b981" />
+                      <RefreshCw size={16} color="#7C3AED" />
                     </Pressable>
                   ))}
                   {archidektDecks.length > 10 && (

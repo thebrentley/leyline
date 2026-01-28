@@ -34,12 +34,12 @@ import {
 import { Swipeable } from "react-native-gesture-handler";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { CardScanner } from "~/components/camera/CardScanner";
-import { CircularProgress } from "~/components/CircularProgress";
 import { ScryfallSearch } from "~/components/ScryfallSearch";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { cardsApi, collectionApi, type CardSearchResult, type CollectionCard, type CollectionStats } from "~/lib/api";
 import { cache, CACHE_KEYS, CACHE_TTL, cachedFetch } from "~/lib/cache";
 import { showToast } from "~/lib/toast";
+import { useResponsive } from "~/hooks/useResponsive";
 
 // Fixed item heights for virtual scrolling
 const LIST_ITEM_HEIGHT = 73; // py-3 (24px) + image h-12 (48px) + border (1px)
@@ -143,8 +143,8 @@ function CollectionListItem({
             </Text>
             {card.linkedDeckCard && (
               <View className="flex-row items-center gap-1">
-                <View className="h-2 w-2 rounded-full bg-emerald-500" />
-                <Text className="text-xs text-emerald-500">
+                <View className="h-2 w-2 rounded-full bg-purple-500" />
+                <Text className="text-xs text-purple-500">
                   {card.linkedDeckCard.deckName}
                 </Text>
               </View>
@@ -160,12 +160,12 @@ function CollectionListItem({
             {totalQty}x
           </Text>
           {currentValue > 0 && (
-            <Text className="text-emerald-500 text-xs font-medium">
+            <Text className="text-purple-500 text-xs font-medium">
               ${currentValue.toFixed(2)}
             </Text>
           )}
           {hasGainLoss && gainLoss !== 0 && (
-            <Text className={`text-xs ${gainLoss >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            <Text className={`text-xs ${gainLoss >= 0 ? "text-purple-400" : "text-red-400"}`}>
               {gainLoss >= 0 ? "+" : ""}{gainLoss.toFixed(2)}
             </Text>
           )}
@@ -189,7 +189,7 @@ function CollectionGridItem({
   return (
     <Pressable
       onPress={onPress}
-      className="flex-1 p-1"
+      className="flex-1 p-1 transition-transform lg:hover:scale-105 lg:hover:z-10"
       style={{ maxWidth: "33.33%" }}
     >
       <View className="relative">
@@ -219,7 +219,7 @@ function CollectionGridItem({
           <Text className="text-xs font-bold text-white">{totalQty}x</Text>
         </View>
         {card.linkedDeckCard && (
-          <View className="absolute bottom-1 left-1 h-3 w-3 rounded-full bg-emerald-500 border border-white" />
+          <View className="absolute bottom-1 left-1 h-3 w-3 rounded-full bg-purple-500 border border-white" />
         )}
       </View>
     </Pressable>
@@ -240,7 +240,7 @@ function StatsHeader({
   const originalValue = stats.originalValue ?? 0;
   const gainLoss = stats.gainLoss ?? 0;
   
-  const gainLossColor = gainLoss >= 0 ? "text-emerald-500" : "text-red-500";
+  const gainLossColor = gainLoss >= 0 ? "text-purple-500" : "text-red-500";
   const gainLossSign = gainLoss >= 0 ? "+" : "";
 
   return (
@@ -521,7 +521,7 @@ function CardDetailModal({
               <View className={`border-t mt-3 pt-3 ${isDark ? "border-slate-800" : "border-slate-200"}`}>
                 <View className="flex-row justify-between mb-2">
                   <Text className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>Current Value</Text>
-                  <Text className="text-emerald-500 font-bold">${currentValue.toFixed(2)}</Text>
+                  <Text className="text-purple-500 font-bold">${currentValue.toFixed(2)}</Text>
                 </View>
                 {hasGainLoss && (
                   <>
@@ -533,7 +533,7 @@ function CardDetailModal({
                       <Text className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>
                         {gainLoss >= 0 ? "Gain" : "Loss"}
                       </Text>
-                      <Text className={`font-bold ${gainLoss >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                      <Text className={`font-bold ${gainLoss >= 0 ? "text-purple-500" : "text-red-500"}`}>
                         {gainLoss >= 0 ? "+" : ""}{gainLoss.toFixed(2)}
                       </Text>
                     </View>
@@ -550,7 +550,7 @@ function CardDetailModal({
                 Linked to Deck
               </Text>
               <View className="flex-row items-center gap-2">
-                <View className="h-3 w-3 rounded-full bg-emerald-500" />
+                <View className="h-3 w-3 rounded-full bg-purple-500" />
                 <Text className={isDark ? "text-white" : "text-slate-900"}>{card.linkedDeckCard.deckName}</Text>
               </View>
             </View>
@@ -567,7 +567,7 @@ function CardDetailModal({
               <Pressable
                 onPress={handleSave}
                 disabled={saving}
-                className="bg-emerald-500 rounded-xl py-3 items-center"
+                className="bg-purple-500 rounded-xl py-3 items-center"
               >
                 {saving ? (
                   <ActivityIndicator color="white" />
@@ -783,7 +783,7 @@ function AddCardModal({
                   {selectedCard.setName}
                 </Text>
                 {selectedCard.priceUsd && (
-                  <Text className="text-emerald-500 text-sm mt-1">${selectedCard.priceUsd}</Text>
+                  <Text className="text-purple-500 text-sm mt-1">${selectedCard.priceUsd}</Text>
                 )}
               </View>
             </View>
@@ -841,7 +841,7 @@ function AddCardModal({
                 onPress={handleAdd}
                 disabled={adding || (quantity === 0 && foilQuantity === 0)}
                 className={`rounded-lg px-4 py-2 ${
-                  quantity === 0 && foilQuantity === 0 ? "bg-slate-600" : "bg-emerald-500"
+                  quantity === 0 && foilQuantity === 0 ? "bg-slate-600" : "bg-purple-500"
                 }`}
               >
                 {adding ? (
@@ -875,7 +875,7 @@ function AddCardModal({
 
             {loadingPrints ? (
               <View className="flex-1 items-center justify-center">
-                <ActivityIndicator size="large" color="#10b981" />
+                <ActivityIndicator size="large" color="#7C3AED" />
                 <Text className={`mt-3 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                   Loading printings...
                 </Text>
@@ -892,8 +892,8 @@ function AddCardModal({
                     className={`flex-row items-center gap-3 py-3 px-4 border-b ${
                       selectedCard?.scryfallId === item.scryfallId
                         ? isDark
-                          ? "bg-emerald-900/30 border-emerald-700"
-                          : "bg-emerald-50 border-emerald-200"
+                          ? "bg-purple-900/30 border-purple-700"
+                          : "bg-purple-50 border-purple-200"
                         : isDark
                           ? "border-slate-800 active:bg-slate-800/50"
                           : "border-slate-100 active:bg-slate-50"
@@ -931,14 +931,14 @@ function AddCardModal({
                     </View>
                     <View className="items-end">
                       {item.priceUsd && (
-                        <Text className="text-emerald-500 text-sm font-medium">${item.priceUsd}</Text>
+                        <Text className="text-purple-500 text-sm font-medium">${item.priceUsd}</Text>
                       )}
                       {item.priceUsdFoil && (
                         <Text className="text-purple-400 text-xs">Foil: ${item.priceUsdFoil}</Text>
                       )}
                     </View>
                     {selectedCard?.scryfallId === item.scryfallId && (
-                      <CheckCircle size={20} color="#10b981" />
+                      <CheckCircle size={20} color="#7C3AED" />
                     )}
                   </Pressable>
                 )}
@@ -947,7 +947,7 @@ function AddCardModal({
           </>
         ) : loading ? (
           <View className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color="#10b981" />
+            <ActivityIndicator size="large" color="#7C3AED" />
           </View>
         ) : searchQuery.length < 2 ? (
           <View className="flex-1 items-center justify-center px-6">
@@ -1108,7 +1108,7 @@ function BulkImportModal({
               One card per line in the format:
             </Text>
             <View className={`rounded-lg p-3 ${isDark ? "bg-slate-800" : "bg-slate-200"}`}>
-              <Text className={`font-mono text-xs ${isDark ? "text-emerald-400" : "text-emerald-600"}`}>
+              <Text className={`font-mono text-xs ${isDark ? "text-purple-400" : "text-purple-600"}`}>
                 {"<count> <name> (<set>) <number>"}
               </Text>
             </View>
@@ -1137,7 +1137,7 @@ function BulkImportModal({
             className={`flex-row items-center justify-between rounded-xl p-4 mb-4 ${isDark ? "bg-slate-900" : "bg-slate-50"}`}
           >
             <Text className={isDark ? "text-white" : "text-slate-900"}>Auto-link to decks</Text>
-            <View className={`h-6 w-11 rounded-full ${autoLink ? "bg-emerald-500" : isDark ? "bg-slate-700" : "bg-slate-300"}`}>
+            <View className={`h-6 w-11 rounded-full ${autoLink ? "bg-purple-500" : isDark ? "bg-slate-700" : "bg-slate-300"}`}>
               <View
                 className={`h-5 w-5 mt-0.5 rounded-full bg-white shadow ${autoLink ? "ml-5" : "ml-0.5"}`}
               />
@@ -1146,14 +1146,14 @@ function BulkImportModal({
 
           {/* Result */}
           {result && (
-            <View className={`rounded-xl p-4 mb-4 ${result.errors.length === 0 ? "bg-emerald-900/30" : "bg-amber-900/30"}`}>
+            <View className={`rounded-xl p-4 mb-4 ${result.errors.length === 0 ? "bg-purple-900/30" : "bg-amber-900/30"}`}>
               <View className="flex-row items-center gap-2 mb-2">
                 {result.errors.length === 0 ? (
-                  <CheckCircle size={20} color="#10b981" />
+                  <CheckCircle size={20} color="#7C3AED" />
                 ) : (
                   <XCircle size={20} color="#f59e0b" />
                 )}
-                <Text className={`font-medium ${result.errors.length === 0 ? "text-emerald-400" : "text-amber-400"}`}>
+                <Text className={`font-medium ${result.errors.length === 0 ? "text-purple-400" : "text-amber-400"}`}>
                   {result.errors.length === 0
                     ? `Successfully imported ${result.imported} card${result.imported !== 1 ? "s" : ""}${result.linked > 0 ? ` and linked ${result.linked}` : ""}`
                     : `Imported ${result.imported} card${result.imported !== 1 ? "s" : ""} with ${result.errors.length} error${result.errors.length !== 1 ? "s" : ""}`}
@@ -1180,7 +1180,7 @@ function BulkImportModal({
           <Pressable
             onPress={handleImport}
             disabled={importing || lineCount === 0}
-            className={`rounded-xl py-4 items-center ${lineCount === 0 ? "bg-slate-600" : "bg-emerald-500"}`}
+            className={`rounded-xl py-4 items-center ${lineCount === 0 ? "bg-slate-600" : "bg-purple-500"}`}
           >
             {importing ? (
               <View className="flex-row items-center gap-2">
@@ -1203,6 +1203,7 @@ export default function CollectionScreen() {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const navigation = useNavigation();
+  const { isDesktop } = useResponsive();
 
   const [cards, setCards] = useState<(CollectionCard | null)[]>([]);
   const [stats, setStats] = useState<CollectionStats | null>(null);
@@ -1563,16 +1564,18 @@ export default function CollectionScreen() {
   return (
     <SafeAreaView className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3">
+      <View className={`flex-row items-center justify-between px-4 lg:px-6 py-3 ${!isDesktop ? 'border-b border-slate-800' : ''}`}>
         <View className="flex-row items-center gap-3">
-          <Pressable
-            onPress={openDrawer}
-            className={`rounded-full p-2 ${
-              isDark ? "active:bg-slate-800" : "active:bg-slate-100"
-            }`}
-          >
-            <Menu size={24} color={isDark ? "#94a3b8" : "#64748b"} />
-          </Pressable>
+          {!isDesktop && (
+            <Pressable
+              onPress={openDrawer}
+              className={`rounded-full p-2 ${
+                isDark ? "active:bg-slate-800" : "active:bg-slate-100"
+              }`}
+            >
+              <Menu size={24} color={isDark ? "#94a3b8" : "#64748b"} />
+            </Pressable>
+          )}
           <Text
             className={`text-2xl font-bold ${
               isDark ? "text-white" : "text-slate-900"
@@ -1618,7 +1621,7 @@ export default function CollectionScreen() {
         <View
           className={`flex-row items-center rounded-lg border px-3 ${
             searchFocused
-              ? "border-emerald-500"
+              ? "border-purple-500"
               : isDark
                 ? "border-slate-700"
                 : "border-slate-200"
@@ -1650,7 +1653,7 @@ export default function CollectionScreen() {
       {/* Content */}
       {loading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#10b981" />
+          <ActivityIndicator size="large" color="#7C3AED" />
         </View>
       ) : error ? (
         <View className="flex-1 items-center justify-center px-6">
@@ -1663,7 +1666,7 @@ export default function CollectionScreen() {
           </Text>
           <Pressable
             onPress={handleRefresh}
-            className="rounded-lg bg-emerald-500 px-4 py-2"
+            className="rounded-lg bg-purple-500 px-4 py-2"
           >
             <Text className="font-medium text-white">Retry</Text>
           </Pressable>
@@ -1679,7 +1682,7 @@ export default function CollectionScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor="#10b981"
+              tintColor="#7C3AED"
             />
           }
           renderItem={renderListItem}
@@ -1694,60 +1697,69 @@ export default function CollectionScreen() {
           removeClippedSubviews={true}
         />
       ) : (
-        <FlatList
-          key="grid"
-          data={cards}
-          keyExtractor={(item, index) => item?.id || `placeholder-${index}`}
-          numColumns={3}
-          contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24 }}
+        <ScrollView
+          className="flex-1"
+          contentContainerClassName="w-full max-w-content mx-auto px-3 lg:px-6 pb-24"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor="#10b981"
+              tintColor="#7C3AED"
             />
           }
-          renderItem={renderGridItem}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
-          // Virtual scrolling optimizations
-          windowSize={10}
-          maxToRenderPerBatch={15}
-          updateCellsBatchingPeriod={50}
-          initialNumToRender={21}
-          removeClippedSubviews={true}
-        />
+        >
+          <View className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+            {cards.map((card, index) =>
+              card ? (
+                <CollectionGridItem
+                  key={card.id}
+                  card={card}
+                  isDark={isDark}
+                  onPress={() => handleCardPress(card)}
+                />
+              ) : (
+                <View key={`placeholder-${index}`} className="flex-1 p-1" style={{ maxWidth: "33.33%" }}>
+                  <View className={`aspect-[488/680] w-full rounded-lg ${isDark ? "bg-slate-800" : "bg-slate-200"}`} />
+                </View>
+              )
+            )}
+          </View>
+        </ScrollView>
       )}
 
       {/* FAB - Camera Scanner Button */}
-      <Pressable
-        onPress={() => setScannerVisible(true)}
-        className="absolute bottom-24 right-6 h-14 w-14 rounded-full bg-blue-500 items-center justify-center shadow-lg"
-        style={{
-          shadowColor: "#3b82f6",
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 8,
-        }}
-      >
-        <Camera size={28} color="white" />
-      </Pressable>
+      {!isDesktop && (
+        <Pressable
+          onPress={() => setScannerVisible(true)}
+          className="absolute bottom-24 right-6 h-14 w-14 rounded-full bg-purple-600 items-center justify-center shadow-lg"
+          style={{
+            shadowColor: "#7C3AED",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            elevation: 8,
+          }}
+        >
+          <Camera size={28} color="white" />
+        </Pressable>
+      )}
 
       {/* FAB - Add Card Button */}
-      <Pressable
-        onPress={() => setAddModalVisible(true)}
-        className="absolute bottom-6 right-6 h-14 w-14 rounded-full bg-emerald-500 items-center justify-center shadow-lg"
-        style={{
-          shadowColor: "#10b981",
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 8,
-        }}
-      >
-        <Plus size={28} color="white" />
-      </Pressable>
+      {!isDesktop && (
+        <Pressable
+          onPress={() => setAddModalVisible(true)}
+          className="absolute bottom-6 right-6 h-14 w-14 rounded-full bg-purple-500 items-center justify-center shadow-lg"
+          style={{
+            shadowColor: "#7C3AED",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            elevation: 8,
+          }}
+        >
+          <Plus size={28} color="white" />
+        </Pressable>
+      )}
 
       {/* Card Detail Modal */}
       <CardDetailModal

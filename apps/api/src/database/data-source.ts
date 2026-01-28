@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import { config } from 'dotenv';
+import { SnakeNamingStrategy } from './snake-naming.strategy';
 
 config();
 
@@ -10,4 +11,6 @@ export const AppDataSource = new DataSource({
   migrations: ['src/database/migrations/*.ts'],
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',
+  // IMPORTANT: Only enable this AFTER running the CamelToSnakeCase migration!
+  // namingStrategy: new SnakeNamingStrategy(),
 });

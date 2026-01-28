@@ -13,37 +13,37 @@ import { CollectionCard } from './collection-card.entity';
 @Index(['name'])
 @Index(['setCode', 'collectorNumber'], { unique: true })
 export class Card {
-  @PrimaryColumn()
+  @PrimaryColumn({ name: 'scryfall_id' })
   scryfallId: string;
 
   @Column()
   name: string;
 
-  @Column()
+  @Column({ name: 'set_code' })
   setCode: string;
 
-  @Column()
+  @Column({ name: 'collector_number' })
   collectorNumber: string;
 
-  @Column()
+  @Column({ name: 'set_name' })
   setName: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'mana_cost', type: 'varchar', nullable: true })
   manaCost: string | null;
 
   @Column({ type: 'decimal', precision: 4, scale: 1, nullable: true })
   cmc: number | null;
 
-  @Column()
+  @Column({ name: 'type_line' })
   typeLine: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'oracle_text', type: 'text', nullable: true })
   oracleText: string | null;
 
   @Column({ type: 'text', array: true, default: [] })
   colors: string[]; // W, U, B, R, G
 
-  @Column({ type: 'text', array: true, default: [] })
+  @Column({ name: 'color_identity', type: 'text', array: true, default: [] })
   colorIdentity: string[];
 
   @Column({ type: 'varchar', nullable: true })
@@ -59,37 +59,37 @@ export class Card {
   rarity: string; // common, uncommon, rare, mythic
 
   // Image URLs from Scryfall
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'image_normal', type: 'text', nullable: true })
   imageNormal: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'image_small', type: 'text', nullable: true })
   imageSmall: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'image_art_crop', type: 'text', nullable: true })
   imageArtCrop: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'image_png', type: 'text', nullable: true })
   imagePng: string | null;
 
   // Prices (updated periodically)
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ name: 'price_usd', type: 'decimal', precision: 10, scale: 2, nullable: true })
   priceUsd: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ name: 'price_usd_foil', type: 'decimal', precision: 10, scale: 2, nullable: true })
   priceUsdFoil: number | null;
 
   // For double-faced cards
   @Column({ type: 'varchar', nullable: true })
   layout: string | null; // normal, transform, modal_dfc, etc.
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ name: 'card_faces', type: 'jsonb', nullable: true })
   cardFaces: object | null; // Store both faces for DFCs
 
   // Cache metadata
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'fetched_at' })
   fetchedAt: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ name: 'prices_updated_at', type: 'timestamp', nullable: true })
   pricesUpdatedAt: Date | null;
 
   // Relations

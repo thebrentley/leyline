@@ -78,9 +78,9 @@ export class SyncQueueService implements OnModuleDestroy {
       throw new Error('Archidekt not connected');
     }
 
-    // Update deck status to pending
+    // Update deck status to waiting
     await this.deckRepository.update(deckId, {
-      syncStatus: 'pending',
+      syncStatus: 'waiting',
       syncError: null,
     });
 
@@ -124,13 +124,13 @@ export class SyncQueueService implements OnModuleDestroy {
       });
 
       if (!deck) {
-        // New deck - create with pending status (cards not yet synced)
+        // New deck - create with waiting status (cards not yet synced)
         deck = this.deckRepository.create({
           archidektId: archDeck.id,
           userId,
           name: archDeck.name,
           format: archDeck.format || null,
-          syncStatus: 'pending', // Not synced yet - no cards
+          syncStatus: 'waiting', // Not synced yet - no cards
           lastSyncedAt: null,
         });
         await this.deckRepository.save(deck);

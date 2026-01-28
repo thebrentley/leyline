@@ -576,8 +576,8 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
         className={`p-4 rounded-xl mb-3 ${
           isUser
             ? isDark
-              ? "bg-emerald-900/30"
-              : "bg-emerald-50"
+              ? "bg-purple-900/30"
+              : "bg-purple-50"
             : isDark
               ? "bg-slate-800"
               : "bg-slate-100"
@@ -586,7 +586,7 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
         <View className="flex-row items-center gap-2 mb-2">
           <View
             className={`h-6 w-6 rounded-full items-center justify-center ${
-              isUser ? "bg-emerald-500" : isDark ? "bg-slate-700" : "bg-slate-300"
+              isUser ? "bg-purple-500" : isDark ? "bg-slate-700" : "bg-slate-300"
             }`}
           >
             {isUser ? (
@@ -621,7 +621,7 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
               >
                 <Text className={`text-xs font-mono ${
                   change.action === "add"
-                    ? "text-emerald-500"
+                    ? "text-purple-500"
                     : change.action === "remove"
                       ? "text-red-500"
                       : "text-amber-500"
@@ -660,7 +660,7 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
                   <View className="flex-row gap-1">
                     <Pressable
                       onPress={() => handleChangeStatus(change.id, "accepted")}
-                      className="px-2 py-1 rounded bg-emerald-500"
+                      className="px-2 py-1 rounded bg-purple-500"
                     >
                       <Text className="text-white text-xs">Apply</Text>
                     </Pressable>
@@ -673,7 +673,7 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
                   </View>
                 )}
                 {change.status !== "pending" && (
-                  <Text className={`text-xs ${change.status === "accepted" ? "text-emerald-500" : "text-red-500"}`}>
+                  <Text className={`text-xs ${change.status === "accepted" ? "text-purple-500" : "text-red-500"}`}>
                     {change.status}
                   </Text>
                 )}
@@ -685,7 +685,7 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
               <View className="flex-row gap-2 mt-3 pt-2 border-t border-slate-700/50">
                 <Pressable
                   onPress={() => handleApplyAllChanges(msg.suggestedChanges || [])}
-                  className="flex-1 px-3 py-2 rounded-lg bg-emerald-500 items-center"
+                  className="flex-1 px-3 py-2 rounded-lg bg-purple-500 items-center"
                 >
                   <Text className="text-white text-xs font-medium">Apply All</Text>
                 </Pressable>
@@ -743,7 +743,7 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
         >
           {loading ? (
             <View className="flex-1 items-center justify-center">
-              <ActivityIndicator size="large" color="#10b981" />
+              <ActivityIndicator size="large" color="#7C3AED" />
             </View>
           ) : (
             <>
@@ -776,15 +776,15 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
                       className={`flex-row items-center justify-between px-4 py-3 ${
                         activeSession?.id === session.id
                           ? isDark
-                            ? "bg-emerald-900/30"
-                            : "bg-emerald-50"
+                            ? "bg-purple-900/30"
+                            : "bg-purple-50"
                           : ""
                       }`}
                     >
                       <Text
                         className={`flex-1 ${
                           activeSession?.id === session.id
-                            ? "text-emerald-500 font-medium"
+                            ? "text-purple-500 font-medium"
                             : isDark
                               ? "text-white"
                               : "text-slate-900"
@@ -837,13 +837,13 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
                             </View>
                             <Text className={`text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}>
                               {streamingContent}
-                              <Text className="text-emerald-500">▊</Text>
+                              <Text className="text-purple-500">▊</Text>
                             </Text>
                           </View>
                         )}
                         {sending && !streamingContent && (
                           <View className="flex-row items-center gap-2 p-4">
-                            <Loader2 size={16} color="#10b981" className="animate-spin" />
+                            <Loader2 size={16} color="#7C3AED" className="animate-spin" />
                             <Text className={isDark ? "text-slate-400" : "text-slate-500"}>Thinking...</Text>
                           </View>
                         )}
@@ -876,7 +876,7 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
                           ? isDark
                             ? "bg-slate-800"
                             : "bg-slate-200"
-                          : "bg-emerald-500"
+                          : "bg-purple-500"
                       }`}
                     >
                       {sending ? (
@@ -898,7 +898,7 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
                   </Text>
                   <Pressable
                     onPress={handleCreateSession}
-                    className="mt-4 bg-emerald-500 px-6 py-3 rounded-xl flex-row items-center gap-2"
+                    className="mt-4 bg-purple-500 px-6 py-3 rounded-xl flex-row items-center gap-2"
                   >
                     <Plus size={18} color="white" />
                     <Text className="text-white font-medium">Start New Chat</Text>

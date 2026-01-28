@@ -7,6 +7,8 @@ import { CardsModule } from './modules/cards/cards.module';
 import { CollectionModule } from './modules/collection/collection.module';
 import { AdvisorModule } from './modules/advisor/advisor.module';
 import { EventsModule } from './modules/events/events.module';
+import { CommonModule } from './common/common.module';
+import { SnakeNamingStrategy } from './database/snake-naming.strategy';
 
 @Module({
   imports: [
@@ -25,9 +27,14 @@ import { EventsModule } from './modules/events/events.module';
         autoLoadEntities: true,
         synchronize: configService.get('NODE_ENV') !== 'production',
         logging: false,
+        // IMPORTANT: Only enable this AFTER running the CamelToSnakeCase migration!
+        // namingStrategy: new SnakeNamingStrategy(),
       }),
       inject: [ConfigService],
     }),
+
+    // Common services
+    CommonModule,
 
     // Feature modules
     EventsModule,

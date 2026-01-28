@@ -15,29 +15,29 @@ export class DeckCard {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'deck_id' })
   deckId: string;
 
-  @Column()
+  @Column({ name: 'scryfall_id' })
   scryfallId: string;
 
   @Column({ type: 'int' })
   quantity: number;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'color_tag', type: 'varchar', nullable: true })
   colorTag: string | null;
 
   @Column({ type: 'text', array: true, default: [] })
   categories: string[]; // mainboard, sideboard, commander
 
-  @Column({ type: 'boolean', default: false })
+  @Column({ name: 'is_commander', type: 'boolean', default: false })
   isCommander: boolean;
 
   @ManyToOne(() => Deck, (deck) => deck.cards, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'deckId' })
+  @JoinColumn({ name: 'deck_id' })
   deck: Deck;
 
   @ManyToOne(() => Card, (card) => card.deckCards, { eager: true })
-  @JoinColumn({ name: 'scryfallId', referencedColumnName: 'scryfallId' })
+  @JoinColumn({ name: 'scryfall_id', referencedColumnName: 'scryfallId' })
   card: Card;
 }

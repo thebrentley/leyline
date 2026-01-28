@@ -22,39 +22,39 @@ export class CollectionCard {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'user_id' })
   userId: string;
 
-  @Column()
+  @Column({ name: 'scryfall_id' })
   scryfallId: string;
 
   @Column({ type: 'int' })
   quantity: number;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ name: 'foil_quantity', type: 'int', default: 0 })
   foilQuantity: number;
 
   // Original prices when card was first added to collection (never changes)
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ name: 'original_price_usd', type: 'decimal', precision: 10, scale: 2, nullable: true })
   originalPriceUsd: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ name: 'original_price_usd_foil', type: 'decimal', precision: 10, scale: 2, nullable: true })
   originalPriceUsdFoil: number | null;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ name: 'linked_deck_card', type: 'jsonb', nullable: true })
   linkedDeckCard: LinkedDeckCard | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'added_at' })
   addedAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
   @ManyToOne(() => User, (user) => user.collection, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn({ name: 'user_id' })
   user: User;
 
   @ManyToOne(() => Card, (card) => card.collectionCards, { eager: true })
-  @JoinColumn({ name: 'scryfallId', referencedColumnName: 'scryfallId' })
+  @JoinColumn({ name: 'scryfall_id', referencedColumnName: 'scryfallId' })
   card: Card;
 }

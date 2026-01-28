@@ -5,15 +5,33 @@
   "description": "DeckTutor - MTG Deck Management App",
   "workspaces": [
     "apps/api",
+    "apps/landing",
+    "apps/mobile",
     "packages/*"
   ],
   "scripts": {
     "dev:api": "npm run dev -w @decktutor/api",
+    "dev:landing": "npm run dev -w @leyline/landing",
+    "dev:mobile": "npm run start -w mobile",
     "build:api": "npm run build -w @decktutor/api",
+    "build:landing": "npm run build -w @leyline/landing",
+    "docker:push": "./scripts/push-api-ecr.sh",
+    "docker:push:api": "./scripts/push-api-ecr.sh",
+    "docker:push:landing": "./scripts/push-landing-ecr.sh",
+    "k8s:setup": "./scripts/k8s-setup.sh",
+    "k8s:deploy:api": "./scripts/deploy-k8s.sh api",
+    "k8s:deploy:landing": "./scripts/deploy-k8s.sh landing",
+    "k8s:deploy:all": "./scripts/deploy-k8s.sh all",
+    "k8s:rollback:api": "./scripts/deploy-k8s.sh api latest --rollback",
+    "k8s:rollback:landing": "./scripts/deploy-k8s.sh landing latest --rollback",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   }
 }

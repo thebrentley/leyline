@@ -220,7 +220,7 @@ export function ColorTagManager({
               key={tag.name}
               className={`rounded-xl mb-3 ${
                 editingTag === tag.name
-                  ? "border-2 border-emerald-500"
+                  ? "border-2 border-purple-500"
                   : isDark
                     ? "bg-slate-900"
                     : "bg-slate-50"
@@ -273,7 +273,7 @@ export function ColorTagManager({
                     <Pressable
                       onPress={() => handleUpdateTag(tag.name)}
                       disabled={saving || !editName.trim()}
-                      className="px-4 py-2 rounded-lg bg-emerald-500 flex-row items-center gap-2"
+                      className="px-4 py-2 rounded-lg bg-purple-500 flex-row items-center gap-2"
                     >
                       {saving ? (
                         <ActivityIndicator color="white" size="small" />
@@ -322,7 +322,7 @@ export function ColorTagManager({
 
           {/* Add new tag form */}
           {isAdding ? (
-            <View className={`rounded-xl p-4 border-2 border-emerald-500 ${isDark ? "bg-slate-900" : "bg-slate-50"}`}>
+            <View className={`rounded-xl p-4 border-2 border-purple-500 ${isDark ? "bg-slate-900" : "bg-slate-50"}`}>
               <View className="flex-row gap-3 mb-4">
                 <TextInput
                   className={`flex-1 rounded-lg px-3 py-2 ${
@@ -367,7 +367,7 @@ export function ColorTagManager({
                 <Pressable
                   onPress={handleAddTag}
                   disabled={saving || !newName.trim()}
-                  className="px-4 py-2 rounded-lg bg-emerald-500 flex-row items-center gap-2"
+                  className="px-4 py-2 rounded-lg bg-purple-500 flex-row items-center gap-2"
                 >
                   {saving ? (
                     <ActivityIndicator color="white" size="small" />
