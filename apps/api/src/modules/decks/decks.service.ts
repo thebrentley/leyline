@@ -587,11 +587,12 @@ export class DecksService {
       throw new NotFoundException(`Card "${cardName}" not found in deck`);
     }
 
-    // Ensure the new card exists in our database
-    await this.cardsService.getOrFetch(newScryfallId);
+    // Ensure the new card exists in our database and get it
+    const newCard = await this.cardsService.getOrFetch(newScryfallId);
 
-    // Update the scryfall ID
+    // Update both the scryfall ID and the card relation
     deckCard.scryfallId = newScryfallId;
+    deckCard.card = newCard;
     await this.deckCardRepository.save(deckCard);
 
     return { success: true };
@@ -1031,6 +1032,25 @@ export class DecksService {
     }
 
     // Find or create deck
+    // Extract color tags from card labels
+    // Archidekt stores color tags in the 'label' field as ',#hexcolor'
+    const colorTagSet = new Set<string>();
+    for (const card of archidektDeck.cards || []) {
+      const label = (card as any).label;
+      if (label && typeof label === 'string') {
+        const match = label.match(/#[0-9A-Fa-f]{6}/);
+        if (match) {
+          colorTagSet.add(match[0].toUpperCase());
+        }
+      }
+    }
+
+    // Build colorTags array from unique colors found
+    const colorTags = Array.from(colorTagSet).map(color => ({
+      name: color,
+      color: color,
+    }));
+
     let deck = await this.deckRepository.findOne({
       where: { archidektId, userId },
     });
@@ -1042,14 +1062,14 @@ export class DecksService {
         name: archidektDeck.name,
         format: archidektDeck.format?.name || null,
         description: archidektDeck.description || null,
-        colorTags: archidektDeck.colorTags || [],
+        colorTags,
         lastSyncedAt: new Date(),
       });
     } else {
       deck.name = archidektDeck.name;
       deck.format = archidektDeck.format?.name || null;
       deck.description = archidektDeck.description || null;
-      deck.colorTags = archidektDeck.colorTags || [];
+      deck.colorTags = colorTags;
       deck.lastSyncedAt = new Date();
     }
 
@@ -1088,12 +1108,22 @@ export class DecksService {
           (cat) => cat.toLowerCase() === 'commander',
         );
 
+        // Extract color tag from label field (format: ',#656565')
+        let cardColorTag: string | null = null;
+        const label = (archCard as any).label;
+        if (label && typeof label === 'string') {
+          const match = label.match(/#[0-9A-Fa-f]{6}/);
+          if (match) {
+            cardColorTag = match[0].toUpperCase();
+          }
+        }
+
         deckCards.push(
           this.deckCardRepository.create({
             deckId: deck!.id,
             scryfallId,
             quantity: archCard.quantity,
-            colorTag: archCard.colorTag?.color || null,
+            colorTag: cardColorTag,
             categories: archCard.categories,
             isCommander,
           }),

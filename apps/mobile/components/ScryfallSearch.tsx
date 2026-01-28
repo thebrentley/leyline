@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cardsApi, type CardSearchResult } from "~/lib/api";
 import { showToast } from "~/lib/toast";
+import { useResponsive } from "~/hooks/useResponsive";
 
 interface ScryfallSearchProps {
   visible: boolean;
@@ -34,6 +35,7 @@ export function ScryfallSearch({
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const insets = useSafeAreaInsets();
+  const { isDesktop } = useResponsive();
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CardSearchResult[]>([]);
@@ -187,18 +189,12 @@ export function ScryfallSearch({
     onClose();
   }, [onClose]);
 
-  return (
-    <Modal
-      visible={visible}
-      transparent={false}
-      animationType="slide"
-      onRequestClose={handleClose}
-      statusBarTranslucent
+  // Content view (shared between modal and panel)
+  const content = (
+    <View
+      className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}
+      style={isDesktop ? {} : { paddingTop: insets.top }}
     >
-      <View
-        className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}
-        style={{ paddingTop: insets.top }}
-      >
         {/* Header */}
         <View
           className={`flex-row items-center gap-3 px-4 py-3 border-b ${
@@ -553,6 +549,43 @@ export function ScryfallSearch({
           />
         )}
       </View>
+  );
+
+  // On desktop, render as a fixed right panel
+  if (isDesktop) {
+    if (!visible) return null;
+
+    return (
+      <>
+        {/* Backdrop */}
+        <Pressable
+          onPress={handleClose}
+          className="absolute inset-0 bg-black/50 z-40"
+          style={{ position: 'fixed' as any }}
+        />
+        {/* Right Panel */}
+        <View
+          className={`absolute top-0 right-0 bottom-0 w-[480px] z-50 shadow-2xl ${
+            isDark ? "bg-slate-950" : "bg-white"
+          }`}
+          style={{ position: 'fixed' as any }}
+        >
+          {content}
+        </View>
+      </>
+    );
+  }
+
+  // On mobile, render as a modal
+  return (
+    <Modal
+      visible={visible}
+      transparent={false}
+      animationType="slide"
+      onRequestClose={handleClose}
+      statusBarTranslucent
+    >
+      {content}
     </Modal>
   );
 }

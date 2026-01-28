@@ -16,7 +16,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { decksApi, type ColorTag, type DeckDetail } from "~/lib/api";
 import { showToast } from "~/lib/toast";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
@@ -194,26 +193,34 @@ export function ColorTagManager({
   return (
     <Modal
       visible={visible}
-      transparent={false}
-      animationType="slide"
+      transparent
+      animationType="fade"
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <SafeAreaView className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
-        {/* Header */}
-        <View className={`flex-row items-center justify-between px-4 py-3 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
-          <View className="flex-row items-center gap-2">
-            <Palette size={20} color={isDark ? "#94a3b8" : "#64748b"} />
-            <Text className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
-              Manage Color Tags
-            </Text>
+      <Pressable
+        className="flex-1 bg-black/50 items-center justify-center p-4"
+        onPress={onClose}
+      >
+        <Pressable
+          className={`w-full max-w-md rounded-2xl ${isDark ? "bg-slate-800" : "bg-white"}`}
+          style={{ maxHeight: "80%" }}
+          onPress={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <View className={`flex-row items-center justify-between px-4 py-3 border-b ${isDark ? "border-slate-700" : "border-slate-200"}`}>
+            <View className="flex-row items-center gap-2">
+              <Palette size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+              <Text className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                Manage Color Tags
+              </Text>
+            </View>
+            <Pressable onPress={onClose} className="rounded-full p-2">
+              <X size={24} color={isDark ? "white" : "#1e293b"} />
+            </Pressable>
           </View>
-          <Pressable onPress={onClose} className="rounded-full p-2">
-            <X size={24} color={isDark ? "white" : "#1e293b"} />
-          </Pressable>
-        </View>
 
-        <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
+          <ScrollView style={{ maxHeight: 400 }} contentContainerStyle={{ padding: 16 }}>
           {/* Existing Tags */}
           {tags.map((tag) => (
             <View
@@ -405,16 +412,17 @@ export function ColorTagManager({
           )}
         </ScrollView>
 
-        {/* Done button */}
-        <View className={`px-4 pb-4 pt-2 border-t ${isDark ? "border-slate-800" : "border-slate-200"}`}>
-          <Pressable
-            onPress={onClose}
-            className={`py-3 rounded-xl items-center ${isDark ? "bg-slate-800" : "bg-slate-100"}`}
-          >
-            <Text className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>Done</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
+          {/* Done button */}
+          <View className={`px-4 pb-4 pt-2 border-t ${isDark ? "border-slate-700" : "border-slate-200"}`}>
+            <Pressable
+              onPress={onClose}
+              className={`py-3 rounded-xl items-center ${isDark ? "bg-slate-700" : "bg-slate-100"}`}
+            >
+              <Text className={`font-medium ${isDark ? "text-white" : "text-slate-900"}`}>Done</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog

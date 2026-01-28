@@ -230,6 +230,28 @@ export class SyncQueueService implements OnModuleDestroy {
       // Fetch deck from Archidekt (throws on error, auto-refreshes token on 401)
       const archidektDeck = await this.fetchArchidektDeck(job.archidektId, job.token, job.userId);
 
+      // Extract color tags from card labels
+      // Archidekt stores color tags in the 'label' field as ',#hexcolor'
+      const colorTagSet = new Set<string>();
+      for (const card of archidektDeck.cards || []) {
+        const label = (card as any).label;
+        if (label && typeof label === 'string') {
+          // Extract hex color from label (format: ',#656565')
+          const match = label.match(/#[0-9A-Fa-f]{6}/);
+          if (match) {
+            colorTagSet.add(match[0].toUpperCase());
+          }
+        }
+      }
+
+      // Build colorTags array from unique colors found
+      const colorTags = Array.from(colorTagSet).map(color => ({
+        name: color,
+        color: color,
+      }));
+
+      console.log('[SyncQueue] Extracted color tags:', colorTags);
+
       // 10% - Fetched deck info
       this.eventsGateway.emitDeckSyncStatus(job.userId, job.deckId, 'syncing', null, 10);
 
@@ -238,7 +260,7 @@ export class SyncQueueService implements OnModuleDestroy {
         name: archidektDeck.name,
         format: archidektDeck.format?.name || null,
         description: archidektDeck.description || null,
-        colorTags: archidektDeck.colorTags || [],
+        colorTags,
       });
 
       // Delete existing cards
@@ -283,12 +305,22 @@ export class SyncQueueService implements OnModuleDestroy {
             (cat) => cat.toLowerCase() === 'commander',
           );
 
+          // Extract color tag from label field (format: ',#656565')
+          let cardColorTag: string | null = null;
+          const label = (archCard as any).label;
+          if (label && typeof label === 'string') {
+            const match = label.match(/#[0-9A-Fa-f]{6}/);
+            if (match) {
+              cardColorTag = match[0].toUpperCase();
+            }
+          }
+
           deckCards.push(
             this.deckCardRepository.create({
               deckId: job.deckId,
               scryfallId,
               quantity: archCard.quantity,
-              colorTag: archCard.colorTag?.color || null,
+              colorTag: cardColorTag,
               categories: archCard.categories,
               isCommander,
             }),

@@ -52,8 +52,7 @@ import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { showToast } from "~/lib/toast";
 import { Spinner } from "~/components/Spinner";
 import { ColorTagManager } from "~/components/ColorTagManager";
-import { PriceSummary } from "~/components/PriceSummary";
-import { VersionHistory } from "~/components/VersionHistory";
+import { EditionPickerModal } from "~/components/EditionPickerModal";
 import {
   cardsApi,
   decksApi,
@@ -154,17 +153,72 @@ const BASIC_LAND_INFO: Record<
   string,
   { color: string; textColor: string; symbol: string; displayColor: string }
 > = {
-  Plains: { color: "#F9FAF4", textColor: "#000", symbol: "W", displayColor: "#FFF8DC" },
-  Island: { color: "#0E68AB", textColor: "#fff", symbol: "U", displayColor: "#4A9FDF" },
-  Swamp: { color: "#150B00", textColor: "#fff", symbol: "B", displayColor: "#8A7C64" },
-  Mountain: { color: "#D3202A", textColor: "#fff", symbol: "R", displayColor: "#F87171" },
-  Forest: { color: "#00733E", textColor: "#fff", symbol: "G", displayColor: "#4ADE80" },
-  Wastes: { color: "#BFA98A", textColor: "#000", symbol: "C", displayColor: "#BFA98A" },
-  "Snow-Covered Plains": { color: "#F9FAF4", textColor: "#000", symbol: "W", displayColor: "#FFF8DC" },
-  "Snow-Covered Island": { color: "#0E68AB", textColor: "#fff", symbol: "U", displayColor: "#4A9FDF" },
-  "Snow-Covered Swamp": { color: "#150B00", textColor: "#fff", symbol: "B", displayColor: "#8A7C64" },
-  "Snow-Covered Mountain": { color: "#D3202A", textColor: "#fff", symbol: "R", displayColor: "#F87171" },
-  "Snow-Covered Forest": { color: "#00733E", textColor: "#fff", symbol: "G", displayColor: "#4ADE80" },
+  Plains: {
+    color: "#F9FAF4",
+    textColor: "#000",
+    symbol: "W",
+    displayColor: "#FFF8DC",
+  },
+  Island: {
+    color: "#0E68AB",
+    textColor: "#fff",
+    symbol: "U",
+    displayColor: "#4A9FDF",
+  },
+  Swamp: {
+    color: "#150B00",
+    textColor: "#fff",
+    symbol: "B",
+    displayColor: "#8A7C64",
+  },
+  Mountain: {
+    color: "#D3202A",
+    textColor: "#fff",
+    symbol: "R",
+    displayColor: "#F87171",
+  },
+  Forest: {
+    color: "#00733E",
+    textColor: "#fff",
+    symbol: "G",
+    displayColor: "#4ADE80",
+  },
+  Wastes: {
+    color: "#BFA98A",
+    textColor: "#000",
+    symbol: "C",
+    displayColor: "#BFA98A",
+  },
+  "Snow-Covered Plains": {
+    color: "#F9FAF4",
+    textColor: "#000",
+    symbol: "W",
+    displayColor: "#FFF8DC",
+  },
+  "Snow-Covered Island": {
+    color: "#0E68AB",
+    textColor: "#fff",
+    symbol: "U",
+    displayColor: "#4A9FDF",
+  },
+  "Snow-Covered Swamp": {
+    color: "#150B00",
+    textColor: "#fff",
+    symbol: "B",
+    displayColor: "#8A7C64",
+  },
+  "Snow-Covered Mountain": {
+    color: "#D3202A",
+    textColor: "#fff",
+    symbol: "R",
+    displayColor: "#F87171",
+  },
+  "Snow-Covered Forest": {
+    color: "#00733E",
+    textColor: "#fff",
+    symbol: "G",
+    displayColor: "#4ADE80",
+  },
 };
 
 // Standard land order for display
@@ -208,34 +262,65 @@ function ColorIdentityPills({
 function CardListItem({
   card,
   isDark,
+  isDesktop,
   onPress,
   onLongPress,
+  onRightClick,
 }: {
   card: DeckCard;
   isDark: boolean;
+  isDesktop?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
+  onRightClick?: (position: { x: number; y: number }) => void;
 }) {
+  const handleContextMenu = (e: any) => {
+    if (isDesktop && onRightClick) {
+      e.preventDefault();
+      onRightClick({ x: e.clientX, y: e.clientY });
+    }
+  };
+
   return (
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={400}
-      className={`flex-row items-center gap-3 py-2 px-4 ${
-        isDark ? "active:bg-slate-800/50" : "active:bg-slate-50"
+      // @ts-ignore - onContextMenu is valid on web
+      onContextMenu={handleContextMenu}
+      className={`relative flex-row items-center gap-3 pr-4 lg:pr-6 overflow-hidden ${
+        isDark
+          ? "active:bg-slate-800/50 lg:hover:bg-slate-800/50"
+          : "active:bg-slate-50 lg:hover:bg-slate-50"
       }`}
     >
-      {card.imageArtCrop ? (
-        <Image
-          source={{ uri: card.imageArtCrop }}
-          className="h-10 w-7 rounded"
-          resizeMode="cover"
-        />
-      ) : (
-        <View
-          className={`h-10 w-7 rounded ${isDark ? "bg-slate-700" : "bg-slate-200"}`}
-        />
-      )}
+      <View className="relative h-12 w-12">
+        {card.imageArtCrop ? (
+          <Image
+            source={{ uri: card.imageArtCrop }}
+            className="h-12 w-12"
+            resizeMode="cover"
+          />
+        ) : (
+          <View
+            className={`h-10 w-10 rounded ${isDark ? "bg-slate-700" : "bg-slate-200"}`}
+          />
+        )}
+        {/* Color tag indicator - diagonal corner */}
+        {card.colorTag && (
+          <View
+            className="absolute top-0 left-0"
+            style={{
+              width: 0,
+              height: 0,
+              borderTopWidth: 16,
+              borderRightWidth: 16,
+              borderTopColor: card.colorTag,
+              borderRightColor: "transparent",
+            }}
+          />
+        )}
+      </View>
       <View className="flex-1">
         <Text
           className={`text-sm font-medium ${
@@ -271,15 +356,10 @@ function CardListItem({
           </View>
         ) : card.inCollection && card.hasAvailableCollectionCard ? (
           <Library size={14} color={isDark ? "#94a3b8" : "#64748b"} />
-        ) : card.inCollectionDifferentPrint && card.hasAvailableCollectionCard ? (
+        ) : card.inCollectionDifferentPrint &&
+          card.hasAvailableCollectionCard ? (
           <AlertCircle size={14} color="#f59e0b" />
         ) : null}
-        {card.colorTag && (
-          <View
-            className="h-3 w-3 rounded-full"
-            style={{ backgroundColor: card.colorTag }}
-          />
-        )}
         <Text
           className={`text-sm font-medium ${
             isDark ? "text-slate-400" : "text-slate-500"
@@ -295,22 +375,35 @@ function CardListItem({
 function CardGridItem({
   card,
   isDark,
+  isDesktop,
   onPress,
   onLongPress,
+  onRightClick,
 }: {
   card: DeckCard;
   isDark: boolean;
+  isDesktop?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
+  onRightClick?: (position: { x: number; y: number }) => void;
 }) {
   // Use full card image for grid view
   const imageUri = card.imageUrl || card.imageSmall;
+
+  const handleContextMenu = (e: any) => {
+    if (isDesktop && onRightClick) {
+      e.preventDefault();
+      onRightClick({ x: e.clientX, y: e.clientY });
+    }
+  };
 
   return (
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={400}
+      // @ts-ignore - onContextMenu is valid on web
+      onContextMenu={handleContextMenu}
       className="p-1"
       style={{ width: "25%" }}
     >
@@ -344,10 +437,25 @@ function CardGridItem({
             </Text>
           </View>
         )}
+        {/* Color tag indicator - diagonal corner using border trick */}
+        {card.colorTag && (
+          <View
+            className="absolute top-0 left-0"
+            style={{
+              width: 0,
+              height: 0,
+              borderTopWidth: 28,
+              borderRightWidth: 28,
+              borderTopColor: card.colorTag,
+              borderRightColor: "transparent",
+            }}
+          />
+        )}
         {/* Collection status icon */}
         {(card.isLinkedToCollection ||
           (card.inCollection && card.hasAvailableCollectionCard) ||
-          (card.inCollectionDifferentPrint && card.hasAvailableCollectionCard)) && (
+          (card.inCollectionDifferentPrint &&
+            card.hasAvailableCollectionCard)) && (
           <View className="absolute bottom-1 left-1 bg-black/70 rounded-full p-1">
             {card.isLinkedToCollection ? (
               <Link size={16} color="#7C3AED" />
@@ -397,14 +505,20 @@ export default function DeckDetailScreen() {
   const [scryfallSearchVisible, setScryfallSearchVisible] = useState(false);
   const [colorTagManagerVisible, setColorTagManagerVisible] = useState(false);
   const [chatPanelVisible, setChatPanelVisible] = useState(false);
-  const [priceSummaryVisible, setPriceSummaryVisible] = useState(false);
-  const [versionHistoryVisible, setVersionHistoryVisible] = useState(false);
 
   // Card action sheet state
   const [actionSheetCard, setActionSheetCard] = useState<DeckCard | null>(null);
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [colorTagPickerVisible, setColorTagPickerVisible] = useState(false);
+  const [colorTagSubmenuOpen, setColorTagSubmenuOpen] = useState(false);
+  const [headerColorTagDropdownOpen, setHeaderColorTagDropdownOpen] = useState(false);
   const [editionPickerVisible, setEditionPickerVisible] = useState(false);
+  const [editionPickerModalVisible, setEditionPickerModalVisible] =
+    useState(false);
   const [editions, setEditions] = useState<CardSearchResult[]>([]);
   const [loadingEditions, setLoadingEditions] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -873,88 +987,151 @@ export default function DeckDetailScreen() {
     setActionSheetVisible(true);
   }, []);
 
+  // Right-click to open context menu (desktop)
+  const handleCardRightClick = useCallback(
+    (card: DeckCard, position: { x: number; y: number }) => {
+      setActionSheetCard(card);
+      setContextMenuPosition(position);
+    },
+    [],
+  );
+
   const closeActionSheet = useCallback(() => {
     setActionSheetVisible(false);
+    setContextMenuPosition(null);
     setActionSheetCard(null);
     setColorTagPickerVisible(false);
+    setColorTagSubmenuOpen(false);
     setEditionPickerVisible(false);
     setEditions([]);
   }, []);
 
   // Action sheet handlers
-  const handleSetCommander = useCallback(async () => {
-    if (!actionSheetCard || !deck) return;
-    setActionLoading(true);
-    try {
-      const result = await decksApi.setCardCommander(
-        deck.id,
-        actionSheetCard.name,
-        !actionSheetCard.isCommander,
-      );
-      if (result.error) {
-        showToast.error(result.error);
-      } else {
-        await cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
-        loadDeck(true);
-        closeActionSheet();
-      }
-    } catch (err) {
-      showToast.error("Failed to update commander status");
-    } finally {
-      setActionLoading(false);
-    }
-  }, [actionSheetCard, deck, id, loadDeck, closeActionSheet]);
-
-  const handleMoveToSideboard = useCallback(async () => {
-    if (!actionSheetCard || !deck) return;
-    const isSideboard = actionSheetCard.categories?.includes("Sideboard");
-    const newCategory = isSideboard ? "mainboard" : "sideboard";
-
-    setActionLoading(true);
-    try {
-      const result = await decksApi.setCardCategory(
-        deck.id,
-        actionSheetCard.name,
-        newCategory,
-      );
-      if (result.error) {
-        showToast.error(result.error);
-      } else {
-        await cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
-        loadDeck(true);
-        closeActionSheet();
-      }
-    } catch (err) {
-      showToast.error("Failed to move card");
-    } finally {
-      setActionLoading(false);
-    }
-  }, [actionSheetCard, deck, id, loadDeck, closeActionSheet]);
-
-  const handleSetColorTag = useCallback(
-    async (tag: string | null) => {
-      if (!actionSheetCard || !deck) return;
+  const handleSetCommander = useCallback(
+    async (cardOverride?: DeckCard) => {
+      const card = cardOverride ?? actionSheetCard;
+      if (!card || !deck) return;
       setActionLoading(true);
       try {
-        const result = await decksApi.updateCardTag(
+        const result = await decksApi.setCardCommander(
           deck.id,
-          actionSheetCard.name,
-          tag,
+          card.name,
+          !card.isCommander,
         );
         if (result.error) {
           showToast.error(result.error);
         } else {
           await cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
           loadDeck(true);
-          setColorTagPickerVisible(false);
+          closeActionSheet();
+        }
+      } catch (err) {
+        showToast.error("Failed to update commander status");
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [actionSheetCard, deck, id, loadDeck, closeActionSheet],
+  );
+
+  const handleMoveToSideboard = useCallback(
+    async (cardOverride?: DeckCard) => {
+      const card = cardOverride ?? actionSheetCard;
+      if (!card || !deck) return;
+      const isSideboard = card.categories?.includes("Sideboard");
+      const newCategory = isSideboard ? "mainboard" : "sideboard";
+
+      setActionLoading(true);
+      try {
+        const result = await decksApi.setCardCategory(
+          deck.id,
+          card.name,
+          newCategory,
+        );
+        if (result.error) {
+          showToast.error(result.error);
+        } else {
+          await cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
+          loadDeck(true);
+          closeActionSheet();
+        }
+      } catch (err) {
+        showToast.error("Failed to move card");
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [actionSheetCard, deck, id, loadDeck, closeActionSheet],
+  );
+
+  const handleSetColorTag = useCallback(
+    async (tag: string | null) => {
+      if (!actionSheetCard || !deck) return;
+      const cardName = actionSheetCard.name;
+      const deckId = deck.id;
+
+      // Close menus immediately for better UX
+      setColorTagPickerVisible(false);
+      setColorTagSubmenuOpen(false);
+      setContextMenuPosition(null);
+      setActionSheetVisible(false);
+
+      setActionLoading(true);
+      try {
+        const result = await decksApi.updateCardTag(deckId, cardName, tag);
+        if (result.error) {
+          showToast.error(result.error);
+        } else {
+          await cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
+          loadDeck(true);
         }
       } catch (err) {
         showToast.error("Failed to update color tag");
       } finally {
         setActionLoading(false);
+        setActionSheetCard(null);
       }
     },
     [actionSheetCard, deck, id, loadDeck],
+  );
+
+  const handleHeaderSetColorTag = useCallback(
+    async (tag: string | null) => {
+      if (!selectedCard || !deck) return;
+      const cardName = selectedCard.name;
+      const deckId = deck.id;
+
+      setHeaderColorTagDropdownOpen(false);
+
+      // Optimistically update the selected card immediately
+      setSelectedCard((prev) =>
+        prev ? { ...prev, colorTag: tag ?? undefined } : null
+      );
+
+      setActionLoading(true);
+      try {
+        const result = await decksApi.updateCardTag(deckId, cardName, tag);
+        if (result.error) {
+          showToast.error(result.error);
+          // Revert on error
+          setSelectedCard((prev) =>
+            prev ? { ...prev, colorTag: selectedCard.colorTag } : null
+          );
+        } else {
+          await cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
+          loadDeck(true);
+        }
+      } catch (err) {
+        showToast.error("Failed to update color tag");
+        // Revert on error
+        setSelectedCard((prev) =>
+          prev ? { ...prev, colorTag: selectedCard.colorTag } : null
+        );
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [selectedCard, deck, id, loadDeck],
   );
 
   const handleShowEditions = useCallback(async () => {
@@ -1082,7 +1259,11 @@ export default function DeckDetailScreen() {
       setScryfallSearchVisible(false);
 
       try {
-        const result = await decksApi.addCardToDeck(deck.id, card.scryfallId, 1);
+        const result = await decksApi.addCardToDeck(
+          deck.id,
+          card.scryfallId,
+          1,
+        );
         if (result.error) {
           showToast.error(result.error);
         } else if (result.data) {
@@ -1140,7 +1321,10 @@ export default function DeckDetailScreen() {
 
         const performRemove = async () => {
           try {
-            const result = await decksApi.removeCardFromDeck(deckId, cardToRemove);
+            const result = await decksApi.removeCardFromDeck(
+              deckId,
+              cardToRemove,
+            );
             if (result.error) {
               showToast.error(result.error);
             } else {
@@ -1189,19 +1373,48 @@ export default function DeckDetailScreen() {
   const pageContent = (
     <>
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+      <View className="flex-row items-center justify-between px-4 lg:px-6 py-3 lg:py-4">
         <View className="flex-row items-center gap-3 flex-1">
-          <Pressable
-            onPress={() => router.push("/(tabs)/decks")}
-            className={`rounded-full p-2 ${
-              isDark ? "active:bg-slate-800" : "active:bg-slate-100"
-            }`}
-          >
-            <ArrowLeft size={24} color={isDark ? "#94a3b8" : "#64748b"} />
-          </Pressable>
+          {/* Mobile: Back arrow */}
+          {!isDesktop && (
+            <Pressable
+              onPress={() => router.push("/(tabs)/decks")}
+              className={`rounded-full p-2 ${
+                isDark ? "active:bg-slate-800" : "active:bg-slate-100"
+              }`}
+            >
+              <ArrowLeft size={24} color={isDark ? "#94a3b8" : "#64748b"} />
+            </Pressable>
+          )}
           <View className="flex-1">
+            {/* Desktop: Breadcrumb */}
+            {isDesktop && (
+              <View className="flex-row items-center gap-2 mb-1">
+                <Pressable
+                  onPress={() => router.push("/(tabs)/decks")}
+                  className="hover:underline"
+                >
+                  <Text
+                    className={`text-sm ${isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"}`}
+                  >
+                    My Decks
+                  </Text>
+                </Pressable>
+                <Text
+                  className={`text-sm ${isDark ? "text-slate-600" : "text-slate-300"}`}
+                >
+                  /
+                </Text>
+                <Text
+                  className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                  numberOfLines={1}
+                >
+                  {deck?.name || "Loading..."}
+                </Text>
+              </View>
+            )}
             <Text
-              className={`text-lg font-bold ${
+              className={`text-lg lg:text-2xl font-bold ${
                 isDark ? "text-white" : "text-slate-900"
               }`}
               numberOfLines={1}
@@ -1209,20 +1422,20 @@ export default function DeckDetailScreen() {
               {deck?.name || "Loading..."}
             </Text>
             {deck && (
-              <View className="flex-row items-center gap-2">
+              <View className="flex-row items-center gap-2 lg:gap-3 mt-0.5 lg:mt-1">
                 <ColorIdentityPills
                   colors={deck.colorIdentity}
                   isDark={isDark}
                 />
                 {deck.format && (
                   <Text
-                    className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}
+                    className={`text-xs lg:text-sm ${isDark ? "text-slate-500" : "text-slate-400"}`}
                   >
                     {deck.format}
                   </Text>
                 )}
                 <Text
-                  className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}
+                  className={`text-xs lg:text-sm ${isDark ? "text-slate-500" : "text-slate-400"}`}
                 >
                   {deck.cardCount} cards
                 </Text>
@@ -1230,32 +1443,50 @@ export default function DeckDetailScreen() {
             )}
           </View>
         </View>
-        <View className="flex-row items-center gap-1">
+        <View className="flex-row items-center gap-1 lg:gap-2">
           {/* Add Card from Scryfall */}
           <Pressable
             onPress={() => setScryfallSearchVisible(true)}
-            className={`rounded-full p-2 ${
-              isDark ? "active:bg-slate-800" : "active:bg-slate-100"
-            }`}
+            className={`flex-row items-center gap-1.5 rounded-full p-2 lg:px-3 lg:py-2 lg:rounded-lg ${
+              isDark
+                ? "active:bg-slate-800 lg:hover:bg-slate-800"
+                : "active:bg-slate-100 lg:hover:bg-slate-100"
+            } lg:bg-purple-500/10`}
           >
             <Plus size={20} color="#7C3AED" />
+            {isDesktop && (
+              <Text className="text-sm font-medium text-purple-500">
+                Add Card
+              </Text>
+            )}
           </Pressable>
           {/* Color Tag Manager */}
           <Pressable
             onPress={() => setColorTagManagerVisible(true)}
-            className={`rounded-full p-2 ${
-              isDark ? "active:bg-slate-800" : "active:bg-slate-100"
+            className={`flex-row items-center gap-1.5 rounded-full p-2 lg:px-3 lg:py-2 lg:rounded-lg ${
+              isDark
+                ? "active:bg-slate-800 lg:hover:bg-slate-800 lg:bg-slate-800"
+                : "active:bg-slate-100 lg:hover:bg-slate-100 lg:bg-slate-100"
             }`}
           >
             <Palette size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+            {isDesktop && (
+              <Text
+                className={`text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}
+              >
+                Tags
+              </Text>
+            )}
           </Pressable>
           {/* Menu */}
           <View ref={menuButtonRef} collapsable={false}>
             <Pressable
               onPress={openMenu}
               disabled={syncing}
-              className={`rounded-full p-2 ${
-                isDark ? "active:bg-slate-800" : "active:bg-slate-100"
+              className={`flex-row items-center gap-1.5 rounded-full p-2 lg:px-3 lg:py-2 lg:rounded-lg ${
+                isDark
+                  ? "active:bg-slate-800 lg:hover:bg-slate-800 lg:bg-slate-800"
+                  : "active:bg-slate-100 lg:hover:bg-slate-100 lg:bg-slate-100"
               }`}
             >
               {syncing ? (
@@ -1268,10 +1499,19 @@ export default function DeckDetailScreen() {
                   }
                 />
               ) : (
-                <MoreVertical
-                  size={20}
-                  color={isDark ? "#94a3b8" : "#64748b"}
-                />
+                <>
+                  <MoreVertical
+                    size={20}
+                    color={isDark ? "#94a3b8" : "#64748b"}
+                  />
+                  {isDesktop && (
+                    <Text
+                      className={`text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}
+                    >
+                      More
+                    </Text>
+                  )}
+                </>
               )}
             </Pressable>
           </View>
@@ -1280,28 +1520,94 @@ export default function DeckDetailScreen() {
 
       {/* Sticky Toolbar */}
       <View
-        className={`flex-row items-center justify-between px-3 py-2 border-b ${
+        className={`flex-row items-center justify-between px-3 lg:px-6 py-2 lg:py-3 border-b ${
           isDark
             ? "bg-slate-900 border-slate-800"
             : "bg-slate-50 border-slate-200"
         }`}
       >
-        <View className="flex-row items-center gap-2">
-          {/* Group By Button */}
-          <Pressable
-            onPress={() => setGroupByMenuVisible(true)}
-            className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg ${
-              isDark ? "bg-slate-800" : "bg-white border border-slate-200"
-            }`}
-          >
-            <Layers size={14} color={isDark ? "#94a3b8" : "#64748b"} />
-            <Text
-              className={`text-xs font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
+        <View className="flex-row items-center gap-2 lg:gap-3">
+          {/* Group By Button with Desktop Dropdown */}
+          <View className="relative">
+            <Pressable
+              onPress={() => setGroupByMenuVisible(true)}
+              className={`flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg ${
+                isDark
+                  ? "bg-slate-800 lg:hover:bg-slate-700"
+                  : "bg-white border border-slate-200 lg:hover:bg-slate-50"
+              }`}
             >
-              {GROUP_BY_OPTIONS.find((o) => o.value === groupBy)?.label ||
-                "Group"}
-            </Text>
-          </Pressable>
+              <Layers size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+              <Text
+                className={`text-xs lg:text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
+              >
+                {GROUP_BY_OPTIONS.find((o) => o.value === groupBy)?.label ||
+                  "Group"}
+              </Text>
+            </Pressable>
+
+            {/* Desktop Dropdown */}
+            {isDesktop && groupByMenuVisible && (
+              <>
+                {/* Backdrop to close on outside click */}
+                <Pressable
+                  className="fixed inset-0 z-40"
+                  onPress={() => setGroupByMenuVisible(false)}
+                />
+                <View
+                  className={`absolute left-0 top-full mt-1 w-[200px] rounded-xl border shadow-xl z-50 ${
+                    isDark
+                      ? "border-slate-700 bg-slate-800"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <Text
+                    className={`px-4 py-3 text-sm font-semibold border-b ${
+                      isDark
+                        ? "text-slate-300 border-slate-700"
+                        : "text-slate-700 border-slate-200"
+                    }`}
+                  >
+                    Group Cards By
+                  </Text>
+                  {GROUP_BY_OPTIONS.map((option) => (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => {
+                        setGroupBy(option.value);
+                        setGroupByMenuVisible(false);
+                        if (deck) {
+                          const allTitles = new Set<string>();
+                          if (option.value === "category") {
+                            allTitles.add("Commander");
+                            allTitles.add("Mainboard");
+                            allTitles.add("Sideboard");
+                          } else {
+                            Object.keys(
+                              GROUP_COLORS[option.value] || {},
+                            ).forEach((k) => allTitles.add(k));
+                          }
+                          setExpandedSections(allTitles);
+                        }
+                      }}
+                      className={`flex-row items-center justify-between px-4 py-3 ${
+                        isDark ? "hover:bg-slate-700" : "hover:bg-slate-100"
+                      }`}
+                    >
+                      <Text
+                        className={isDark ? "text-white" : "text-slate-900"}
+                      >
+                        {option.label}
+                      </Text>
+                      {groupBy === option.value && (
+                        <Check size={18} color="#7C3AED" />
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            )}
+          </View>
 
           {/* Search Toggle */}
           <Pressable
@@ -1309,57 +1615,96 @@ export default function DeckDetailScreen() {
               setSearchVisible(!searchVisible);
               if (searchVisible) setSearchQuery("");
             }}
-            className={`p-2 rounded-lg ${
+            className={`flex-row items-center gap-1.5 p-2 lg:px-4 lg:py-2 rounded-lg ${
               searchVisible
                 ? "bg-purple-500/20"
                 : isDark
-                  ? "bg-slate-800"
-                  : "bg-white border border-slate-200"
+                  ? "bg-slate-800 lg:hover:bg-slate-700"
+                  : "bg-white border border-slate-200 lg:hover:bg-slate-50"
             }`}
           >
             <Search
               size={14}
               color={searchVisible ? "#7C3AED" : isDark ? "#94a3b8" : "#64748b"}
             />
+            {isDesktop && (
+              <Text
+                className={`text-sm font-medium ${searchVisible ? "text-purple-500" : isDark ? "text-slate-300" : "text-slate-700"}`}
+              >
+                Search
+              </Text>
+            )}
           </Pressable>
 
           {/* Version Dropdown */}
           <Pressable
-            onPress={() => setVersionHistoryVisible(true)}
-            className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg ${
-              isDark ? "bg-slate-800" : "bg-white border border-slate-200"
+            onPress={() =>
+              router.push(
+                `/deck/${id}/versions?name=${encodeURIComponent(deck?.name || "")}`,
+              )
+            }
+            className={`flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg ${
+              isDark
+                ? "bg-slate-800 lg:hover:bg-slate-700"
+                : "bg-white border border-slate-200 lg:hover:bg-slate-50"
             }`}
           >
             <History size={14} color={isDark ? "#94a3b8" : "#64748b"} />
             <Text
-              className={`text-xs font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
+              className={`text-xs lg:text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
             >
               Versions
             </Text>
           </Pressable>
         </View>
 
-        <View className="flex-row items-center gap-2">
+        <View className="flex-row items-center gap-2 lg:gap-3">
           {/* Price Button */}
           <Pressable
-            onPress={() => setPriceSummaryVisible(true)}
-            className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10"
+            onPress={() =>
+              router.push(
+                `/deck/${id}/price?name=${encodeURIComponent(deck?.name || "")}`,
+              )
+            }
+            className="flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg bg-purple-500/10 lg:hover:bg-purple-500/20"
           >
             <DollarSign size={14} color="#7C3AED" />
-            <Text className="text-xs font-medium text-purple-500">Price</Text>
+            <Text className="text-xs lg:text-sm font-medium text-purple-500">
+              Price
+            </Text>
           </Pressable>
 
           {/* View Mode Toggle */}
           <Pressable
             onPress={toggleViewMode}
-            className={`p-2 rounded-lg ${
-              isDark ? "bg-slate-800" : "bg-white border border-slate-200"
+            className={`flex-row items-center gap-1.5 p-2 lg:px-4 lg:py-2 rounded-lg ${
+              isDark
+                ? "bg-slate-800 lg:hover:bg-slate-700"
+                : "bg-white border border-slate-200 lg:hover:bg-slate-50"
             }`}
           >
             {viewMode === "list" ? (
-              <Grid3X3 size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+              <>
+                <Grid3X3 size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+                {isDesktop && (
+                  <Text
+                    className={`text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
+                  >
+                    Grid
+                  </Text>
+                )}
+              </>
             ) : (
-              <List size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+              <>
+                <List size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+                {isDesktop && (
+                  <Text
+                    className={`text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
+                  >
+                    List
+                  </Text>
+                )}
+              </>
             )}
           </Pressable>
         </View>
@@ -1383,7 +1728,7 @@ export default function DeckDetailScreen() {
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search cards..."
+              placeholder="search your collection"
               placeholderTextColor={isDark ? "#64748b" : "#94a3b8"}
               className={`flex-1 ml-2 text-sm ${isDark ? "text-white" : "text-slate-900"}`}
               autoFocus
@@ -1531,7 +1876,9 @@ export default function DeckDetailScreen() {
                       };
                       // Filter out nulls to get actual items for spacing
                       const nonZeroItems = array.filter(([_, c]) => c > 0);
-                      const currentIndex = nonZeroItems.findIndex(([n]) => n === landName);
+                      const currentIndex = nonZeroItems.findIndex(
+                        ([n]) => n === landName,
+                      );
                       const isLast = currentIndex === nonZeroItems.length - 1;
 
                       return (
@@ -1541,7 +1888,9 @@ export default function DeckDetailScreen() {
                             isDark ? "text-slate-300" : "text-slate-600"
                           }`}
                         >
-                          {count}{info.symbol}{!isLast && " "}
+                          {count}
+                          {info.symbol}
+                          {!isLast && " "}
                         </Text>
                       );
                     })}
@@ -1708,8 +2057,10 @@ export default function DeckDetailScreen() {
               <CardListItem
                 card={item}
                 isDark={isDark}
+                isDesktop={isDesktop}
                 onPress={() => handleCardPress(item)}
                 onLongPress={() => handleCardLongPress(item)}
+                onRightClick={(pos) => handleCardRightClick(item, pos)}
               />
             ) : null;
           }}
@@ -1718,14 +2069,16 @@ export default function DeckDetailScreen() {
               return null;
 
             return (
-              <View className="flex-row flex-wrap px-3 pb-2">
+              <View className="flex-row flex-wrap px-3 lg:px-5 pb-2">
                 {section.data.map((card, index) => (
                   <CardGridItem
                     key={`${card.name}-${index}`}
                     card={card}
                     isDark={isDark}
+                    isDesktop={isDesktop}
                     onPress={() => handleCardPress(card)}
                     onLongPress={() => handleCardLongPress(card)}
+                    onRightClick={(pos) => handleCardRightClick(card, pos)}
                   />
                 ))}
               </View>
@@ -1770,9 +2123,9 @@ export default function DeckDetailScreen() {
         </Pressable>
       </Modal>
 
-      {/* Group By Menu Modal */}
+      {/* Group By Menu Modal - Mobile only */}
       <Modal
-        visible={groupByMenuVisible}
+        visible={!isDesktop && groupByMenuVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setGroupByMenuVisible(false)}
@@ -1783,7 +2136,7 @@ export default function DeckDetailScreen() {
         >
           <View className="flex-1 justify-center items-center px-8">
             <View
-              className={`w-full max-w-[280px] rounded-xl border ${
+              className={`w-full max-w-[280px] rounded-xl border shadow-xl ${
                 isDark
                   ? "border-slate-700 bg-slate-800"
                   : "border-slate-200 bg-white"
@@ -1848,17 +2201,23 @@ export default function DeckDetailScreen() {
         {isDesktop ? (
           // Desktop: Dialog with backdrop
           <Pressable
-            className="flex-1 bg-black/70 items-center justify-center p-6"
+            className="flex-1 bg-black/70 items-center justify-start pt-16 px-6 pb-6"
             onPress={closeCardModal}
           >
             <Pressable
               className={`max-w-5xl w-full max-h-[90vh] rounded-2xl ${isDark ? "bg-slate-900" : "bg-white"} shadow-2xl`}
+              style={{ overflow: "visible" as any }}
               onPress={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <View className={`flex-row items-center justify-between px-6 py-4 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
+              <View
+                className={`flex-row items-center justify-between px-6 py-4 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}
+                style={{ zIndex: 100, overflow: "visible" as any }}
+              >
                 <View className="flex-row items-center gap-2 flex-1">
-                  {selectedCard?.isCommander && <Crown size={20} color="#eab308" />}
+                  {selectedCard?.isCommander && (
+                    <Crown size={20} color="#eab308" />
+                  )}
                   <Text
                     className={`text-lg font-bold flex-1 ${isDark ? "text-white" : "text-slate-900"}`}
                     numberOfLines={1}
@@ -1875,15 +2234,134 @@ export default function DeckDetailScreen() {
                 </View>
 
                 {/* Navigation */}
-                <View className="flex-row items-center gap-2">
+                <View className="flex-row items-center gap-2" style={{ zIndex: 50 }}>
+                  {/* Color Tag Chip with Dropdown */}
+                  <View style={{ position: "relative" as any, zIndex: headerColorTagDropdownOpen ? 1000 : 1 }}>
+                    <Pressable
+                      onPress={() => setHeaderColorTagDropdownOpen(!headerColorTagDropdownOpen)}
+                      className={`flex-row items-center gap-1.5 rounded-full px-3 py-1 mr-2 ${
+                        selectedCard?.colorTag
+                          ? ""
+                          : isDark
+                            ? "bg-slate-700"
+                            : "bg-slate-100"
+                      }`}
+                      style={selectedCard?.colorTag ? { backgroundColor: `${selectedCard.colorTag}20` } : undefined}
+                    >
+                      {selectedCard?.colorTag ? (
+                        <>
+                          <View
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: selectedCard.colorTag }}
+                          />
+                          <Text
+                            className="text-xs font-medium"
+                            style={{ color: selectedCard.colorTag }}
+                          >
+                            {deck?.colorTags?.find(t => t.color === selectedCard.colorTag)?.name || 'Tagged'}
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <Palette size={12} color={isDark ? "#94a3b8" : "#64748b"} />
+                          <Text className={`text-xs font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                            Tag
+                          </Text>
+                        </>
+                      )}
+                      <ChevronDown size={12} color={selectedCard?.colorTag || (isDark ? "#94a3b8" : "#64748b")} />
+                    </Pressable>
+
+                    {/* Dropdown Menu */}
+                    {headerColorTagDropdownOpen && (
+                      <>
+                        {/* Backdrop to close dropdown */}
+                        <Pressable
+                          style={{
+                            position: "fixed" as any,
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            zIndex: 9998,
+                          }}
+                          onPress={() => setHeaderColorTagDropdownOpen(false)}
+                        />
+                        <View
+                          className={`rounded-lg shadow-xl border ${
+                            isDark
+                              ? "bg-slate-800 border-slate-700"
+                              : "bg-white border-slate-200"
+                          }`}
+                          style={{
+                            position: "absolute" as any,
+                            top: "100%",
+                            right: 0,
+                            marginTop: 4,
+                            minWidth: 160,
+                            zIndex: 9999,
+                          }}
+                        >
+                          {/* No Tag option */}
+                          <Pressable
+                            onPress={() => handleHeaderSetColorTag(null)}
+                            disabled={actionLoading}
+                            className={`flex-row items-center gap-2 px-3 py-2 ${
+                              isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+                            }`}
+                          >
+                            <View className="h-4 w-4 rounded-full border border-dashed border-slate-400" />
+                            <Text
+                              className={`text-sm flex-1 ${isDark ? "text-slate-300" : "text-slate-600"}`}
+                            >
+                              No Tag
+                            </Text>
+                            {!selectedCard?.colorTag && (
+                              <Check size={14} color="#7C3AED" />
+                            )}
+                          </Pressable>
+
+                          {/* Color tag options */}
+                          {deck?.colorTags?.map((tag) => (
+                            <Pressable
+                              key={tag.name}
+                              onPress={() => handleHeaderSetColorTag(tag.color)}
+                              disabled={actionLoading}
+                              className={`flex-row items-center gap-2 px-3 py-2 ${
+                                isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+                              }`}
+                            >
+                              <View
+                                className="h-4 w-4 rounded-full"
+                                style={{ backgroundColor: tag.color }}
+                              />
+                              <Text
+                                className={`text-sm flex-1 ${isDark ? "text-slate-300" : "text-slate-600"}`}
+                              >
+                                {tag.name}
+                              </Text>
+                              {selectedCard?.colorTag === tag.color && (
+                                <Check size={14} color="#7C3AED" />
+                              )}
+                            </Pressable>
+                          ))}
+                        </View>
+                      </>
+                    )}
+                  </View>
                   <Pressable
                     onPress={handlePrevCard}
                     disabled={selectedCardIndex <= 0}
                     className={`rounded-full p-2 ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-100"} ${selectedCardIndex <= 0 ? "opacity-30" : ""}`}
                   >
-                    <ChevronLeft size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+                    <ChevronLeft
+                      size={20}
+                      color={isDark ? "#94a3b8" : "#64748b"}
+                    />
                   </Pressable>
-                  <Text className={`text-sm min-w-[50px] text-center ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                  <Text
+                    className={`text-sm min-w-[50px] text-center ${isDark ? "text-slate-400" : "text-slate-600"}`}
+                  >
                     {selectedCardIndex + 1} / {allCards.length}
                   </Text>
                   <Pressable
@@ -1891,7 +2369,10 @@ export default function DeckDetailScreen() {
                     disabled={selectedCardIndex >= allCards.length - 1}
                     className={`rounded-full p-2 ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-100"} ${selectedCardIndex >= allCards.length - 1 ? "opacity-30" : ""}`}
                   >
-                    <ChevronRight size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+                    <ChevronRight
+                      size={20}
+                      color={isDark ? "#94a3b8" : "#64748b"}
+                    />
                   </Pressable>
                   <Pressable
                     onPress={closeCardModal}
@@ -1911,7 +2392,8 @@ export default function DeckDetailScreen() {
                       {selectedCard.imageUrl || selectedCard.imageSmall ? (
                         <Image
                           source={{
-                            uri: selectedCard.imageUrl || selectedCard.imageSmall,
+                            uri:
+                              selectedCard.imageUrl || selectedCard.imageSmall,
                           }}
                           style={{
                             width: 320,
@@ -1928,7 +2410,9 @@ export default function DeckDetailScreen() {
                             height: 445,
                           }}
                         >
-                          <Text className={`text-lg ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                          <Text
+                            className={`text-lg ${isDark ? "text-slate-500" : "text-slate-400"}`}
+                          >
                             {selectedCard.name}
                           </Text>
                         </View>
@@ -1937,12 +2421,13 @@ export default function DeckDetailScreen() {
 
                     {/* Right: Card Details and Actions */}
                     <View className="flex-1 gap-4">
-
                       {/* Collection Status */}
                       {(selectedCard.isLinkedToCollection ||
                         selectedCard.inCollection ||
                         selectedCard.inCollectionDifferentPrint) && (
-                        <View className={`rounded-xl p-4 ${isDark ? "bg-slate-800" : "bg-slate-50"}`}>
+                        <View
+                          className={`rounded-xl p-4 ${isDark ? "bg-slate-800" : "bg-slate-50"}`}
+                        >
                           <View className="flex-row items-center gap-2">
                             {selectedCard.isLinkedToCollection ? (
                               <>
@@ -1951,8 +2436,11 @@ export default function DeckDetailScreen() {
                                   <Text className="text-purple-500 font-medium">
                                     Linked to Collection
                                   </Text>
-                                  <Text className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
-                                    This card is linked and tracked in your collection
+                                  <Text
+                                    className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-600"}`}
+                                  >
+                                    This card is linked and tracked in your
+                                    collection
                                   </Text>
                                 </View>
                               </>
@@ -1963,7 +2451,9 @@ export default function DeckDetailScreen() {
                                   <Text className="text-purple-500 font-medium">
                                     In Your Collection
                                   </Text>
-                                  <Text className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                                  <Text
+                                    className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-600"}`}
+                                  >
                                     You own this exact printing
                                   </Text>
                                 </View>
@@ -1975,8 +2465,11 @@ export default function DeckDetailScreen() {
                                   <Text className="text-amber-500 font-medium">
                                     Different Printing in Collection
                                   </Text>
-                                  <Text className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
-                                    You own this card but a different set/printing
+                                  <Text
+                                    className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-600"}`}
+                                  >
+                                    You own this card but a different
+                                    set/printing
                                   </Text>
                                 </View>
                               </>
@@ -1986,14 +2479,22 @@ export default function DeckDetailScreen() {
                       )}
 
                       {/* Card Details */}
-                      <View className={`rounded-xl p-4 gap-3 ${isDark ? "bg-slate-800" : "bg-slate-50"}`}>
+                      <View
+                        className={`rounded-xl p-4 gap-3 ${isDark ? "bg-slate-800" : "bg-slate-50"}`}
+                      >
                         {/* Type Line */}
                         {selectedCard.typeLine && (
                           <View>
-                            <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                            <Text
+                              className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}
+                            >
                               Type
                             </Text>
-                            <Text className={isDark ? "text-white" : "text-slate-900"}>
+                            <Text
+                              className={
+                                isDark ? "text-white" : "text-slate-900"
+                              }
+                            >
                               {selectedCard.typeLine}
                             </Text>
                           </View>
@@ -2002,10 +2503,14 @@ export default function DeckDetailScreen() {
                         {/* Mana Cost */}
                         {selectedCard.manaCost && (
                           <View>
-                            <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                            <Text
+                              className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}
+                            >
                               Mana Cost
                             </Text>
-                            <Text className={`font-mono ${isDark ? "text-white" : "text-slate-900"}`}>
+                            <Text
+                              className={`font-mono ${isDark ? "text-white" : "text-slate-900"}`}
+                            >
                               {selectedCard.manaCost}
                             </Text>
                           </View>
@@ -2014,10 +2519,16 @@ export default function DeckDetailScreen() {
                         {/* Set Info */}
                         {selectedCard.setCode && (
                           <View>
-                            <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                            <Text
+                              className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}
+                            >
                               Set
                             </Text>
-                            <Text className={isDark ? "text-white" : "text-slate-900"}>
+                            <Text
+                              className={
+                                isDark ? "text-white" : "text-slate-900"
+                              }
+                            >
                               {selectedCard.setCode.toUpperCase()}
                               {selectedCard.collectorNumber &&
                                 ` #${selectedCard.collectorNumber}`}
@@ -2028,10 +2539,14 @@ export default function DeckDetailScreen() {
                         {/* Rarity */}
                         {selectedCard.rarity && (
                           <View>
-                            <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                            <Text
+                              className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}
+                            >
                               Rarity
                             </Text>
-                            <Text className={`capitalize ${isDark ? "text-white" : "text-slate-900"}`}>
+                            <Text
+                              className={`capitalize ${isDark ? "text-white" : "text-slate-900"}`}
+                            >
                               {selectedCard.rarity}
                             </Text>
                           </View>
@@ -2040,7 +2555,9 @@ export default function DeckDetailScreen() {
                         {/* Price */}
                         {selectedCard.priceUsd != null && (
                           <View>
-                            <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                            <Text
+                              className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}
+                            >
                               Price (USD)
                             </Text>
                             <Text className="text-purple-500 font-semibold">
@@ -2053,7 +2570,9 @@ export default function DeckDetailScreen() {
                         {selectedCard.colorIdentity &&
                           selectedCard.colorIdentity.length > 0 && (
                             <View>
-                              <Text className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}>
+                              <Text
+                                className={`text-xs uppercase tracking-wide mb-1 ${isDark ? "text-slate-500" : "text-slate-600"}`}
+                              >
                                 Color Identity
                               </Text>
                               <View className="flex-row gap-1">
@@ -2062,7 +2581,8 @@ export default function DeckDetailScreen() {
                                     key={color}
                                     className="h-5 w-5 rounded-full border border-slate-300"
                                     style={{
-                                      backgroundColor: MANA_COLORS[color] || "#888",
+                                      backgroundColor:
+                                        MANA_COLORS[color] || "#888",
                                     }}
                                   />
                                 ))}
@@ -2077,44 +2597,23 @@ export default function DeckDetailScreen() {
                         <Pressable
                           onPress={() => {
                             setCardModalVisible(false);
-                            setActionSheetCard(selectedCard);
-                            setTimeout(() => handleSetCommander(), 100);
+                            if (selectedCard) handleSetCommander(selectedCard);
                           }}
                           className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
                         >
                           <Crown
                             size={18}
                             color={
-                              selectedCard?.isCommander
-                                ? "#eab308"
-                                : "#94a3b8"
+                              selectedCard?.isCommander ? "#eab308" : "#94a3b8"
                             }
                           />
-                          <Text className={`flex-1 ${isDark ? "text-white" : "text-slate-900"}`}>
+                          <Text
+                            className={`flex-1 ${isDark ? "text-white" : "text-slate-900"}`}
+                          >
                             {selectedCard?.isCommander
                               ? "Remove as Commander"
                               : "Set as Commander"}
                           </Text>
-                        </Pressable>
-
-                        {/* Set Color Tag */}
-                        <Pressable
-                          onPress={() => {
-                            setCardModalVisible(false);
-                            setActionSheetCard(selectedCard);
-                            setTimeout(() => setColorTagPickerVisible(true), 100);
-                            setTimeout(() => setActionSheetVisible(true), 100);
-                          }}
-                          className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
-                        >
-                          <Palette size={18} color="#94a3b8" />
-                          <Text className={`flex-1 ${isDark ? "text-white" : "text-slate-900"}`}>Set Color Tag</Text>
-                          {selectedCard?.colorTag && (
-                            <View
-                              className="h-4 w-4 rounded-full"
-                              style={{ backgroundColor: selectedCard.colorTag }}
-                            />
-                          )}
                         </Pressable>
 
                         {/* Change Edition */}
@@ -2128,20 +2627,26 @@ export default function DeckDetailScreen() {
                           className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
                         >
                           <RefreshCcw size={18} color="#94a3b8" />
-                          <Text className={isDark ? "text-white" : "text-slate-900"}>Change Edition</Text>
+                          <Text
+                            className={isDark ? "text-white" : "text-slate-900"}
+                          >
+                            Change Edition
+                          </Text>
                         </Pressable>
 
                         {/* Move to Sideboard/Mainboard */}
                         <Pressable
                           onPress={() => {
                             setCardModalVisible(false);
-                            setActionSheetCard(selectedCard);
-                            setTimeout(() => handleMoveToSideboard(), 100);
+                            if (selectedCard)
+                              handleMoveToSideboard(selectedCard);
                           }}
                           className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
                         >
                           <Sidebar size={18} color="#94a3b8" />
-                          <Text className={isDark ? "text-white" : "text-slate-900"}>
+                          <Text
+                            className={isDark ? "text-white" : "text-slate-900"}
+                          >
                             {selectedCard?.categories?.includes("Sideboard")
                               ? "Move to Mainboard"
                               : "Move to Sideboard"}
@@ -2154,14 +2659,25 @@ export default function DeckDetailScreen() {
                             onPress={() => {
                               setCardModalVisible(false);
                               setActionSheetCard(selectedCard);
-                              setTimeout(() => handleUnlinkFromCollection(), 100);
+                              setTimeout(
+                                () => handleUnlinkFromCollection(),
+                                100,
+                              );
                             }}
                             className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
                           >
                             <Unlink size={18} color="#94a3b8" />
-                            <Text className={isDark ? "text-white" : "text-slate-900"}>Unlink from Collection</Text>
+                            <Text
+                              className={
+                                isDark ? "text-white" : "text-slate-900"
+                              }
+                            >
+                              Unlink from Collection
+                            </Text>
                           </Pressable>
-                        ) : (selectedCard?.inCollection || selectedCard?.inCollectionDifferentPrint) && selectedCard?.hasAvailableCollectionCard ? (
+                        ) : (selectedCard?.inCollection ||
+                            selectedCard?.inCollectionDifferentPrint) &&
+                          selectedCard?.hasAvailableCollectionCard ? (
                           <Pressable
                             onPress={() => {
                               setCardModalVisible(false);
@@ -2177,7 +2693,9 @@ export default function DeckDetailScreen() {
                               </Text>
                               {selectedCard?.inCollectionDifferentPrint &&
                                 !selectedCard?.inCollection && (
-                                  <Text className={`text-xs mt-0.5 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                                  <Text
+                                    className={`text-xs mt-0.5 ${isDark ? "text-slate-400" : "text-slate-600"}`}
+                                  >
                                     Will change to your collection edition
                                   </Text>
                                 )}
@@ -2215,7 +2733,9 @@ export default function DeckDetailScreen() {
             {/* Header */}
             <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-800">
               <View className="flex-row items-center gap-2 flex-1">
-                {selectedCard?.isCommander && <Crown size={20} color="#eab308" />}
+                {selectedCard?.isCommander && (
+                  <Crown size={20} color="#eab308" />
+                )}
                 <Text
                   className="text-white text-lg font-bold flex-1"
                   numberOfLines={1}
@@ -2314,7 +2834,8 @@ export default function DeckDetailScreen() {
                                 Linked to Collection
                               </Text>
                               <Text className="text-slate-400 text-xs mt-1">
-                                This card is linked and tracked in your collection
+                                This card is linked and tracked in your
+                                collection
                               </Text>
                             </View>
                           </>
@@ -2439,17 +2960,14 @@ export default function DeckDetailScreen() {
                     <Pressable
                       onPress={() => {
                         setCardModalVisible(false);
-                        setActionSheetCard(selectedCard);
-                        setTimeout(() => handleSetCommander(), 100);
+                        if (selectedCard) handleSetCommander(selectedCard);
                       }}
                       className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
                     >
                       <Crown
                         size={20}
                         color={
-                          selectedCard?.isCommander
-                            ? "#eab308"
-                            : "#94a3b8"
+                          selectedCard?.isCommander ? "#eab308" : "#94a3b8"
                         }
                       />
                       <Text className="text-white flex-1">
@@ -2497,8 +3015,7 @@ export default function DeckDetailScreen() {
                     <Pressable
                       onPress={() => {
                         setCardModalVisible(false);
-                        setActionSheetCard(selectedCard);
-                        setTimeout(() => handleMoveToSideboard(), 100);
+                        if (selectedCard) handleMoveToSideboard(selectedCard);
                       }}
                       className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
                     >
@@ -2521,9 +3038,13 @@ export default function DeckDetailScreen() {
                         className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
                       >
                         <Unlink size={20} color="#94a3b8" />
-                        <Text className="text-white">Unlink from Collection</Text>
+                        <Text className="text-white">
+                          Unlink from Collection
+                        </Text>
                       </Pressable>
-                    ) : (selectedCard?.inCollection || selectedCard?.inCollectionDifferentPrint) && selectedCard?.hasAvailableCollectionCard ? (
+                    ) : (selectedCard?.inCollection ||
+                        selectedCard?.inCollectionDifferentPrint) &&
+                      selectedCard?.hasAvailableCollectionCard ? (
                       <Pressable
                         onPress={() => {
                           setCardModalVisible(false);
@@ -2660,7 +3181,9 @@ export default function DeckDetailScreen() {
                       return (
                         <Pressable
                           key={edition.scryfallId}
-                          onPress={() => handleChangeEdition(edition.scryfallId)}
+                          onPress={() =>
+                            handleChangeEdition(edition.scryfallId)
+                          }
                           disabled={actionLoading || isCurrent}
                           className={`flex-row items-center gap-3 p-3 border-b ${
                             isCurrent
@@ -2668,8 +3191,8 @@ export default function DeckDetailScreen() {
                                 ? "bg-slate-800/50 border-slate-700"
                                 : "bg-slate-100 border-slate-200"
                               : isDark
-                              ? "border-slate-800 active:bg-slate-800"
-                              : "border-slate-100 active:bg-slate-50"
+                                ? "border-slate-800 active:bg-slate-800"
+                                : "border-slate-100 active:bg-slate-50"
                           }`}
                         >
                           {edition.imageSmall && (
@@ -2685,8 +3208,8 @@ export default function DeckDetailScreen() {
                                 isCurrent
                                   ? "text-purple-500"
                                   : isDark
-                                  ? "text-white"
-                                  : "text-slate-900"
+                                    ? "text-white"
+                                    : "text-slate-900"
                               }`}
                             >
                               {edition.setName}
@@ -2782,7 +3305,7 @@ export default function DeckDetailScreen() {
               <View className="py-2">
                 {/* Set as Commander */}
                 <Pressable
-                  onPress={handleSetCommander}
+                  onPress={() => handleSetCommander()}
                   disabled={actionLoading}
                   className={`flex-row items-center gap-3 px-4 py-3 ${
                     isDark ? "active:bg-slate-800" : "active:bg-slate-50"
@@ -2844,7 +3367,7 @@ export default function DeckDetailScreen() {
 
                 {/* Move to Sideboard/Mainboard */}
                 <Pressable
-                  onPress={handleMoveToSideboard}
+                  onPress={() => handleMoveToSideboard()}
                   disabled={actionLoading}
                   className={`flex-row items-center gap-3 px-4 py-3 ${
                     isDark ? "active:bg-slate-800" : "active:bg-slate-50"
@@ -2951,6 +3474,263 @@ export default function DeckDetailScreen() {
         </Pressable>
       </Modal>
 
+      {/* Desktop Context Menu */}
+      {isDesktop && contextMenuPosition && actionSheetCard && (
+        <Pressable
+          style={{
+            position: "fixed" as any,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 50,
+          }}
+          onPress={closeActionSheet}
+        >
+          <View
+            className={`rounded-lg shadow-xl border ${
+              isDark
+                ? "bg-slate-800 border-slate-700"
+                : "bg-white border-slate-200"
+            }`}
+            style={{
+              position: "fixed" as any,
+              left: contextMenuPosition.x,
+              top: contextMenuPosition.y,
+              minWidth: 200,
+              maxWidth: 280,
+              zIndex: 51,
+            }}
+            onStartShouldSetResponder={() => true}
+          >
+            {/* Card name header */}
+            <View
+              className={`px-3 py-2 border-b ${isDark ? "border-slate-700" : "border-slate-100"}`}
+            >
+              <Text
+                className={`text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}
+                numberOfLines={1}
+              >
+                {actionSheetCard.name}
+              </Text>
+            </View>
+
+            {/* Set as Commander */}
+            <Pressable
+              onPress={() => handleSetCommander()}
+              disabled={actionLoading}
+              className={`flex-row items-center gap-2 px-3 py-2 ${
+                isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+              }`}
+            >
+              <Crown
+                size={16}
+                color={
+                  actionSheetCard.isCommander
+                    ? "#eab308"
+                    : isDark
+                      ? "#94a3b8"
+                      : "#64748b"
+                }
+              />
+              <Text
+                className={`text-sm ${isDark ? "text-white" : "text-slate-900"}`}
+              >
+                {actionSheetCard.isCommander
+                  ? "Remove as Commander"
+                  : "Set as Commander"}
+              </Text>
+            </Pressable>
+
+            {/* Set Color Tag - with hover submenu */}
+            <View
+              style={{ position: "relative" as any }}
+              // @ts-ignore - web-only hover events
+              onMouseEnter={() => setColorTagSubmenuOpen(true)}
+              onMouseLeave={() => setColorTagSubmenuOpen(false)}
+            >
+              <View
+                className={`flex-row items-center gap-2 px-3 py-2 ${
+                  colorTagSubmenuOpen
+                    ? isDark
+                      ? "bg-slate-700"
+                      : "bg-slate-50"
+                    : ""
+                }`}
+              >
+                <Palette size={16} color={isDark ? "#94a3b8" : "#64748b"} />
+                <Text
+                  className={`text-sm flex-1 ${isDark ? "text-white" : "text-slate-900"}`}
+                >
+                  Set Color Tag
+                </Text>
+                {actionSheetCard.colorTag && (
+                  <View
+                    className="h-3 w-3 rounded-full mr-1"
+                    style={{ backgroundColor: actionSheetCard.colorTag }}
+                  />
+                )}
+                <ChevronRight
+                  size={14}
+                  color={isDark ? "#94a3b8" : "#64748b"}
+                />
+              </View>
+
+              {/* Color Tag Submenu - positioned to the right */}
+              {colorTagSubmenuOpen && (
+                <View
+                  className={`rounded-lg shadow-xl border ${
+                    isDark
+                      ? "bg-slate-800 border-slate-700"
+                      : "bg-white border-slate-200"
+                  }`}
+                  style={{
+                    position: "absolute" as any,
+                    left: "100%",
+                    top: 0,
+                    minWidth: 160,
+                    zIndex: 52,
+                  }}
+                >
+                  {/* No Tag option */}
+                  <Pressable
+                    onPress={() => handleSetColorTag(null)}
+                    disabled={actionLoading}
+                    className={`flex-row items-center gap-2 px-3 py-2 ${
+                      isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+                    }`}
+                  >
+                    <View className="h-4 w-4 rounded-full border border-dashed border-slate-400" />
+                    <Text
+                      className={`text-sm flex-1 ${isDark ? "text-slate-300" : "text-slate-600"}`}
+                    >
+                      No Tag
+                    </Text>
+                    {!actionSheetCard.colorTag && (
+                      <Check size={14} color="#7C3AED" />
+                    )}
+                  </Pressable>
+
+                  {/* Color tag options */}
+                  {deck?.colorTags?.map((tag) => (
+                    <Pressable
+                      key={tag.name}
+                      onPress={() => handleSetColorTag(tag.color)}
+                      disabled={actionLoading}
+                      className={`flex-row items-center gap-2 px-3 py-2 ${
+                        isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <View
+                        className="h-4 w-4 rounded-full"
+                        style={{ backgroundColor: tag.color }}
+                      />
+                      <Text
+                        className={`text-sm flex-1 ${isDark ? "text-slate-300" : "text-slate-600"}`}
+                      >
+                        {tag.name}
+                      </Text>
+                      {actionSheetCard.colorTag === tag.color && (
+                        <Check size={14} color="#7C3AED" />
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* Change Edition */}
+            <Pressable
+              onPress={() => {
+                setContextMenuPosition(null);
+                setEditionPickerModalVisible(true);
+              }}
+              className={`flex-row items-center gap-2 px-3 py-2 ${
+                isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+              }`}
+            >
+              <RefreshCcw size={16} color={isDark ? "#94a3b8" : "#64748b"} />
+              <Text
+                className={`text-sm ${isDark ? "text-white" : "text-slate-900"}`}
+              >
+                Change Edition
+              </Text>
+            </Pressable>
+
+            {/* Move to Sideboard/Mainboard */}
+            <Pressable
+              onPress={() => handleMoveToSideboard()}
+              disabled={actionLoading}
+              className={`flex-row items-center gap-2 px-3 py-2 ${
+                isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+              }`}
+            >
+              <Sidebar size={16} color={isDark ? "#94a3b8" : "#64748b"} />
+              <Text
+                className={`text-sm ${isDark ? "text-white" : "text-slate-900"}`}
+              >
+                {actionSheetCard.categories?.includes("Sideboard")
+                  ? "Move to Mainboard"
+                  : "Move to Sideboard"}
+              </Text>
+            </Pressable>
+
+            {/* Collection linking */}
+            {(actionSheetCard.inCollection ||
+              actionSheetCard.inCollectionDifferentPrint) &&
+              !actionSheetCard.isLinkedToCollection &&
+              actionSheetCard.hasAvailableCollectionCard && (
+                <Pressable
+                  onPress={() => handleLinkToCollection()}
+                  disabled={actionLoading}
+                  className={`flex-row items-center gap-2 px-3 py-2 ${
+                    isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+                  }`}
+                >
+                  <Link size={16} color="#7C3AED" />
+                  <Text className="text-sm text-purple-500 font-medium">
+                    Link to Collection
+                  </Text>
+                </Pressable>
+              )}
+
+            {actionSheetCard.isLinkedToCollection && (
+              <Pressable
+                onPress={handleUnlinkFromCollection}
+                disabled={actionLoading}
+                className={`flex-row items-center gap-2 px-3 py-2 ${
+                  isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+                }`}
+              >
+                <Unlink size={16} color={isDark ? "#94a3b8" : "#64748b"} />
+                <Text
+                  className={`text-sm ${isDark ? "text-white" : "text-slate-900"}`}
+                >
+                  Unlink from Collection
+                </Text>
+              </Pressable>
+            )}
+
+            {/* Separator */}
+            <View
+              className={`my-1 h-px ${isDark ? "bg-slate-700" : "bg-slate-100"}`}
+            />
+
+            {/* Remove Card */}
+            <Pressable
+              onPress={handleRemoveCard}
+              disabled={actionLoading}
+              className={`flex-row items-center gap-2 px-3 py-2 ${
+                isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+              }`}
+            >
+              <X size={16} color="#ef4444" />
+              <Text className="text-sm text-red-500">Remove from Deck</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      )}
+
       {/* Floating Chat Button (FAB) */}
       {!isDesktop && (
         <Pressable
@@ -2967,6 +3747,44 @@ export default function DeckDetailScreen() {
           <MessageSquare size={24} color="white" />
         </Pressable>
       )}
+
+      {/* Edition Picker Modal (Desktop) */}
+      <EditionPickerModal
+        visible={editionPickerModalVisible}
+        onClose={() => {
+          setEditionPickerModalVisible(false);
+          setActionSheetCard(null);
+        }}
+        card={actionSheetCard}
+        onSelectEdition={async (scryfallId) => {
+          if (!actionSheetCard || !deck) return;
+          setActionLoading(true);
+          try {
+            const result = await decksApi.changeCardEdition(
+              deck.id,
+              actionSheetCard.name,
+              scryfallId,
+            );
+            if (result.error) {
+              showToast.error(result.error);
+            } else {
+              // Directly fetch fresh data bypassing cache
+              await cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
+              const freshDeck = await decksApi.get(deck.id);
+              if (freshDeck.data) {
+                setDeck(freshDeck.data);
+              }
+              setEditionPickerModalVisible(false);
+              setActionSheetCard(null);
+            }
+          } catch {
+            showToast.error("Failed to change edition");
+          } finally {
+            setActionLoading(false);
+          }
+        }}
+        loading={actionLoading}
+      />
 
       {/* Color Tag Manager */}
       {deck && (
@@ -2991,31 +3809,6 @@ export default function DeckDetailScreen() {
           onClose={() => setChatPanelVisible(false)}
           onDeckUpdated={() => {
             // Reload deck after AI advisor changes are applied
-            cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
-            loadDeck(true);
-          }}
-          isDark={isDark}
-        />
-      )}
-
-      {/* Price Summary */}
-      {deck && (
-        <PriceSummary
-          deck={deck}
-          visible={priceSummaryVisible}
-          onClose={() => setPriceSummaryVisible(false)}
-          isDark={isDark}
-        />
-      )}
-
-      {/* Version History */}
-      {deck && (
-        <VersionHistory
-          deck={deck}
-          visible={versionHistoryVisible}
-          onClose={() => setVersionHistoryVisible(false)}
-          onRevert={() => {
-            // Reload deck after revert
             cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
             loadDeck(true);
           }}
@@ -3074,7 +3867,7 @@ export default function DeckDetailScreen() {
               of "{printingSelection.cardName}". Select which one to link.
             </Text>
             {printingSelection.printings.some(
-              (p) => p.scryfallId !== printingSelection.currentScryfallId
+              (p) => p.scryfallId !== printingSelection.currentScryfallId,
             ) && (
               <Text
                 className={`text-sm mb-4 ${
@@ -3102,8 +3895,8 @@ export default function DeckDetailScreen() {
                           ? "bg-slate-700 border border-amber-500/50"
                           : "bg-slate-100 border border-amber-500/50"
                         : isDark
-                        ? "bg-slate-700"
-                        : "bg-slate-100"
+                          ? "bg-slate-700"
+                          : "bg-slate-100"
                     }`}
                     onPress={() => {
                       setPrintingSelection((prev) => ({
@@ -3118,7 +3911,8 @@ export default function DeckDetailScreen() {
                         isDark ? "text-white" : "text-slate-900"
                       }`}
                     >
-                      {printing.setCode.toUpperCase()} #{printing.collectorNumber}
+                      {printing.setCode.toUpperCase()} #
+                      {printing.collectorNumber}
                     </Text>
                     <Text
                       className={`text-sm ${
