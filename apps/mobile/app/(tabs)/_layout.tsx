@@ -17,7 +17,7 @@ import {
   Moon,
   Settings,
 } from "lucide-react-native";
-import { colorScheme, useColorScheme } from "nativewind";
+import { useColorScheme } from "nativewind";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { StyledSwitch } from "~/components/ui/StyledSwitch";
@@ -26,6 +26,7 @@ import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { useAuth } from "~/contexts/AuthContext";
 import { useResponsive } from "~/hooks/useResponsive";
 import { DesktopSidebar } from "~/components/web/DesktopSidebar";
+import { usePersistedColorScheme } from "~/hooks/usePersistedColorScheme";
 
 interface DrawerItemProps {
   icon: React.ReactNode;
@@ -81,18 +82,13 @@ function Divider({ isDark }: { isDark: boolean }) {
 }
 
 function CustomDrawerContent(props: DrawerContentComponentProps) {
-  const { colorScheme: currentScheme } = useColorScheme();
-  const isDark = currentScheme === "dark";
+  const { isDark, toggleColorScheme } = usePersistedColorScheme();
   const { user, signOut } = useAuth();
   const insets = useSafeAreaInsets();
   const iconColor = isDark ? "#94a3b8" : "#64748b";
   const appVersion = Constants.expoConfig?.version || "1.0.0";
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-
-  const toggleTheme = () => {
-    colorScheme.set(isDark ? "light" : "dark");
-  };
 
   const handleLogout = () => {
     setShowLogoutConfirm(true);
@@ -209,7 +205,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           </View>
           <StyledSwitch
             value={isDark}
-            onValueChange={toggleTheme}
+            onValueChange={toggleColorScheme}
             isDark={isDark}
           />
         </View>

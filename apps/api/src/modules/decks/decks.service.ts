@@ -72,6 +72,34 @@ export class DecksService {
   }
 
   /**
+   * Create a new deck without Archidekt sync
+   */
+  async createDeck(name: string, userId: string): Promise<Deck> {
+    const deck = this.deckRepository.create({
+      archidektId: null,
+      userId,
+      name,
+      format: null,
+      description: null,
+      colorTags: [],
+      lastSyncedAt: null,
+      syncStatus: 'synced', // No sync needed for manual decks
+    });
+
+    await this.deckRepository.save(deck);
+
+    // Create initial version
+    await this.createVersion(
+      deck.id,
+      userId,
+      'manual',
+      'Deck created'
+    );
+
+    return deck;
+  }
+
+  /**
    * Get all decks for a user
    */
   async getUserDecks(userId: string) {

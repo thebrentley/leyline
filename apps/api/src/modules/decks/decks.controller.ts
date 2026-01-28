@@ -26,6 +26,30 @@ export class DecksController {
     return this.decksService.getUserDecks(user.userId);
   }
 
+  @Post()
+  async createDeck(
+    @Body() body: { name: string },
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    const deck = await this.decksService.createDeck(body.name, user.userId);
+
+    // Return in the same format as getUserDecks
+    return {
+      id: deck.id,
+      archidektId: deck.archidektId,
+      name: deck.name,
+      format: deck.format,
+      lastSyncedAt: deck.lastSyncedAt,
+      syncStatus: deck.syncStatus,
+      syncError: deck.syncError,
+      cardCount: 0,
+      commanders: [],
+      commanderImageCrop: null,
+      commanderImageFull: null,
+      colors: [],
+    };
+  }
+
   @Get('archidekt')
   async listArchidektDecks(@CurrentUser() user: CurrentUserPayload) {
     return this.decksService.listArchidektDecks(user.userId);
@@ -50,11 +74,12 @@ export class DecksController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     // Find or create deck, then queue for sync
+    const parsedArchidektId = parseInt(archidektId, 10);
     const deck = await this.decksService.findOrCreateDeck(
-      parseInt(archidektId, 10),
+      parsedArchidektId,
       user.userId,
     );
-    await this.syncQueueService.queueSync(deck.id, deck.archidektId, user.userId);
+    await this.syncQueueService.queueSync(deck.id, parsedArchidektId, user.userId);
     return {
       id: deck.id,
       name: deck.name,

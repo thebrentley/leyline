@@ -12,12 +12,12 @@ import {
   Moon,
   Settings,
 } from "lucide-react-native";
-import { colorScheme, useColorScheme } from "nativewind";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { StyledSwitch } from "~/components/ui/StyledSwitch";
 import { useAuth } from "~/contexts/AuthContext";
+import { usePersistedColorScheme } from "~/hooks/usePersistedColorScheme";
 
 interface SidebarItemProps {
   icon: React.ReactNode;
@@ -86,18 +86,13 @@ function Divider({ isDark }: { isDark: boolean }) {
 }
 
 export function DesktopSidebar() {
-  const { colorScheme: currentScheme } = useColorScheme();
-  const isDark = currentScheme === "dark";
+  const { isDark, toggleColorScheme } = usePersistedColorScheme();
   const { user, signOut } = useAuth();
   const pathname = usePathname();
   const iconColor = isDark ? "#94a3b8" : "#64748b";
   const appVersion = Constants.expoConfig?.version || "1.0.0";
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-
-  const toggleTheme = () => {
-    colorScheme.set(isDark ? "light" : "dark");
-  };
 
   const handleLogout = () => {
     setShowLogoutConfirm(true);
@@ -243,7 +238,7 @@ export function DesktopSidebar() {
           </View>
           <StyledSwitch
             value={isDark}
-            onValueChange={toggleTheme}
+            onValueChange={toggleColorScheme}
             isDark={isDark}
           />
         </View>

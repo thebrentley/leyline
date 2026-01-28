@@ -24,6 +24,7 @@ import {
   RefreshCcw,
   Search,
   Sidebar,
+  Trash2,
   Unlink,
   X,
 } from "lucide-react-native";
@@ -49,6 +50,7 @@ import {
 import { ChatPanel } from "~/components/ChatPanel";
 import { ScryfallSearch } from "~/components/ScryfallSearch";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
+import { Button } from "~/components/ui/button";
 import { showToast } from "~/lib/toast";
 import { Spinner } from "~/components/Spinner";
 import { ColorTagManager } from "~/components/ColorTagManager";
@@ -529,6 +531,7 @@ export default function DeckDetailScreen() {
     title: string;
     message: string;
     confirmText?: string;
+    destructive?: boolean;
     onConfirm: () => void;
   }>({
     visible: false,
@@ -671,6 +674,32 @@ export default function DeckDetailScreen() {
       performSync();
     }
   }, [deck?.syncStatus, performSync]);
+
+  const handleDeleteDeck = useCallback(() => {
+    setMenuVisible(false);
+
+    setConfirmDialog({
+      visible: true,
+      title: "Delete Deck",
+      message: `Are you sure you want to delete "${deck?.name}"? This will permanently delete the deck and all its cards, versions, and chat history. This cannot be undone.`,
+      destructive: true,
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, visible: false }));
+
+        try {
+          const result = await decksApi.delete(id);
+          if (result.error) {
+            showToast.error(result.error);
+          } else {
+            showToast.success("Deck deleted successfully");
+            router.back();
+          }
+        } catch (err) {
+          showToast.error("Failed to delete deck");
+        }
+      },
+    });
+  }, [deck?.name, id]);
 
   const openMenu = useCallback(() => {
     menuButtonRef.current?.measure((x, y, width, height, pageX, pageY) => {
@@ -1794,30 +1823,58 @@ export default function DeckDetailScreen() {
         </View>
       ) : sections.length === 0 ? (
         <View className="flex-1 items-center justify-center px-6">
-          <Text
-            className={`mb-2 text-lg font-semibold ${
-              isDark ? "text-white" : "text-slate-900"
-            }`}
-          >
-            No cards synced yet
-          </Text>
-          <Text
-            className={`mb-4 text-center ${
-              isDark ? "text-slate-400" : "text-slate-500"
-            }`}
-          >
-            Pull this deck from Archidekt to see the cards
-          </Text>
-          <Pressable
-            onPress={performSync}
-            disabled={syncing}
-            className="flex-row items-center gap-2 rounded-lg bg-purple-500 px-6 py-3"
-          >
-            <CloudDownload size={18} color="white" />
-            <Text className="font-medium text-white">
-              {syncing ? "Pulling..." : "Pull from Archidekt"}
-            </Text>
-          </Pressable>
+          {deck?.archidektId ? (
+            <>
+              <Text
+                className={`mb-2 text-lg font-semibold ${
+                  isDark ? "text-white" : "text-slate-900"
+                }`}
+              >
+                No cards synced yet
+              </Text>
+              <Text
+                className={`mb-4 text-center ${
+                  isDark ? "text-slate-400" : "text-slate-500"
+                }`}
+              >
+                Pull this deck from Archidekt to see the cards
+              </Text>
+              <Pressable
+                onPress={performSync}
+                disabled={syncing}
+                className="flex-row items-center gap-2 rounded-lg bg-purple-500 px-6 py-3"
+              >
+                <CloudDownload size={18} color="white" />
+                <Text className="font-medium text-white">
+                  {syncing ? "Pulling..." : "Pull from Archidekt"}
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text
+                className={`mb-2 text-lg font-semibold ${
+                  isDark ? "text-white" : "text-slate-900"
+                }`}
+              >
+                No cards yet
+              </Text>
+              <Text
+                className={`mb-4 text-center ${
+                  isDark ? "text-slate-400" : "text-slate-500"
+                }`}
+              >
+                Start building your deck by adding cards
+              </Text>
+              <Pressable
+                onPress={() => setScryfallSearchVisible(true)}
+                className="flex-row items-center gap-2 rounded-lg bg-purple-500 px-6 py-3"
+              >
+                <Plus size={18} color="white" />
+                <Text className="font-medium text-white">Add Cards</Text>
+              </Pressable>
+            </>
+          )}
         </View>
       ) : filteredSections.length === 0 && searchQuery.trim() ? (
         <View className="flex-1 items-center justify-center px-6">
@@ -2128,15 +2185,28 @@ export default function DeckDetailScreen() {
                 : "border-slate-200 bg-white"
             }`}
           >
+            {deck?.archidektId && (
+              <Pressable
+                onPress={handlePullFromArchidekt}
+                className={`flex-row items-center gap-3 px-4 py-3 ${
+                  isDark ? "active:bg-slate-700" : "active:bg-slate-100"
+                }`}
+              >
+                <CloudDownload size={18} color={isDark ? "#94a3b8" : "#64748b"} />
+                <Text className={isDark ? "text-white" : "text-slate-900"}>
+                  Pull from Archidekt
+                </Text>
+              </Pressable>
+            )}
             <Pressable
-              onPress={handlePullFromArchidekt}
+              onPress={handleDeleteDeck}
               className={`flex-row items-center gap-3 px-4 py-3 ${
                 isDark ? "active:bg-slate-700" : "active:bg-slate-100"
               }`}
             >
-              <CloudDownload size={18} color={isDark ? "#94a3b8" : "#64748b"} />
-              <Text className={isDark ? "text-white" : "text-slate-900"}>
-                Pull from Archidekt
+              <Trash2 size={18} color="#ef4444" />
+              <Text className="text-red-500">
+                Delete Deck
               </Text>
             </Pressable>
           </View>
@@ -2614,68 +2684,77 @@ export default function DeckDetailScreen() {
                       {/* Action Buttons */}
                       <View className="gap-2">
                         {/* Set as Commander */}
-                        <Pressable
+                        <Button
                           onPress={() => {
                             setCardModalVisible(false);
                             if (selectedCard) handleSetCommander(selectedCard);
                           }}
-                          className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
+                          variant="secondary"
+                          className="p-3"
                         >
-                          <Crown
-                            size={18}
-                            color={
-                              selectedCard?.isCommander ? "#eab308" : "#94a3b8"
-                            }
-                          />
-                          <Text
-                            className={`flex-1 ${isDark ? "text-white" : "text-slate-900"}`}
-                          >
-                            {selectedCard?.isCommander
-                              ? "Remove as Commander"
-                              : "Set as Commander"}
-                          </Text>
-                        </Pressable>
+                          <View className="flex-row items-center gap-3 w-full">
+                            <Crown
+                              size={18}
+                              color={
+                                selectedCard?.isCommander ? "#eab308" : "#94a3b8"
+                              }
+                            />
+                            <Text
+                              className={`flex-1 ${isDark ? "text-white" : "text-slate-900"}`}
+                            >
+                              {selectedCard?.isCommander
+                                ? "Remove as Commander"
+                                : "Set as Commander"}
+                            </Text>
+                          </View>
+                        </Button>
 
                         {/* Change Edition */}
-                        <Pressable
+                        <Button
                           onPress={() => {
                             setCardModalVisible(false);
                             setActionSheetCard(selectedCard);
                             setTimeout(() => handleShowEditions(), 100);
                             setTimeout(() => setActionSheetVisible(true), 100);
                           }}
-                          className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
+                          variant="secondary"
+                          className="p-3"
                         >
-                          <RefreshCcw size={18} color="#94a3b8" />
-                          <Text
-                            className={isDark ? "text-white" : "text-slate-900"}
-                          >
-                            Change Edition
-                          </Text>
-                        </Pressable>
+                          <View className="flex-row items-center gap-3">
+                            <RefreshCcw size={18} color="#94a3b8" />
+                            <Text
+                              className={isDark ? "text-white" : "text-slate-900"}
+                            >
+                              Change Edition
+                            </Text>
+                          </View>
+                        </Button>
 
                         {/* Move to Sideboard/Mainboard */}
-                        <Pressable
+                        <Button
                           onPress={() => {
                             setCardModalVisible(false);
                             if (selectedCard)
                               handleMoveToSideboard(selectedCard);
                           }}
-                          className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
+                          variant="secondary"
+                          className="p-3"
                         >
-                          <Sidebar size={18} color="#94a3b8" />
-                          <Text
-                            className={isDark ? "text-white" : "text-slate-900"}
-                          >
-                            {selectedCard?.categories?.includes("Sideboard")
-                              ? "Move to Mainboard"
-                              : "Move to Sideboard"}
-                          </Text>
-                        </Pressable>
+                          <View className="flex-row items-center gap-3">
+                            <Sidebar size={18} color="#94a3b8" />
+                            <Text
+                              className={isDark ? "text-white" : "text-slate-900"}
+                            >
+                              {selectedCard?.categories?.includes("Sideboard")
+                                ? "Move to Mainboard"
+                                : "Move to Sideboard"}
+                            </Text>
+                          </View>
+                        </Button>
 
                         {/* Link/Unlink Collection */}
                         {selectedCard?.isLinkedToCollection ? (
-                          <Pressable
+                          <Button
                             onPress={() => {
                               setCardModalVisible(false);
                               setActionSheetCard(selectedCard);
@@ -2684,59 +2763,68 @@ export default function DeckDetailScreen() {
                                 100,
                               );
                             }}
-                            className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
+                            variant="secondary"
+                            className="p-3"
                           >
-                            <Unlink size={18} color="#94a3b8" />
-                            <Text
-                              className={
-                                isDark ? "text-white" : "text-slate-900"
-                              }
-                            >
-                              Unlink from Collection
-                            </Text>
-                          </Pressable>
+                            <View className="flex-row items-center gap-3">
+                              <Unlink size={18} color="#94a3b8" />
+                              <Text
+                                className={
+                                  isDark ? "text-white" : "text-slate-900"
+                                }
+                              >
+                                Unlink from Collection
+                              </Text>
+                            </View>
+                          </Button>
                         ) : (selectedCard?.inCollection ||
                             selectedCard?.inCollectionDifferentPrint) &&
                           selectedCard?.hasAvailableCollectionCard ? (
-                          <Pressable
+                          <Button
                             onPress={() => {
                               setCardModalVisible(false);
                               setActionSheetCard(selectedCard);
                               setTimeout(() => handleLinkToCollection(), 100);
                             }}
-                            className={`rounded-xl p-3 flex-row items-center gap-3 ${isDark ? "bg-slate-800 hover:bg-slate-700" : "bg-slate-100 hover:bg-slate-200"}`}
+                            variant="secondary"
+                            className="p-3"
                           >
-                            <Link size={18} color="#7C3AED" />
-                            <View className="flex-1">
-                              <Text className="text-purple-500 font-medium">
-                                Link to Collection
-                              </Text>
-                              {selectedCard?.inCollectionDifferentPrint &&
-                                !selectedCard?.inCollection && (
-                                  <Text
-                                    className={`text-xs mt-0.5 ${isDark ? "text-slate-400" : "text-slate-600"}`}
-                                  >
-                                    Will change to your collection edition
-                                  </Text>
-                                )}
+                            <View className="flex-row items-center gap-3 w-full">
+                              <Link size={18} color="#7C3AED" />
+                              <View className="flex-1">
+                                <Text className="text-purple-500 font-medium">
+                                  Link to Collection
+                                </Text>
+                                {selectedCard?.inCollectionDifferentPrint &&
+                                  !selectedCard?.inCollection && (
+                                    <Text
+                                      className={`text-xs mt-0.5 ${isDark ? "text-slate-400" : "text-slate-600"}`}
+                                    >
+                                      Will change to your collection edition
+                                    </Text>
+                                  )}
+                              </View>
                             </View>
-                          </Pressable>
+                          </Button>
                         ) : null}
 
                         {/* Remove from Deck */}
-                        <Pressable
+                        <Button
                           onPress={() => {
                             setCardModalVisible(false);
                             setActionSheetCard(selectedCard);
                             setTimeout(() => handleRemoveCard(), 100);
                           }}
-                          className="bg-red-500/10 hover:bg-red-500/20 rounded-xl p-3 flex-row items-center gap-3"
+                          variant="destructive"
+                          className="p-3"
                         >
-                          <X size={18} color="#ef4444" />
-                          <Text className="text-red-500 font-medium">
-                            Remove from Deck
-                          </Text>
-                        </Pressable>
+                          <View className="flex-row items-center gap-3">
+                            <X size={18} color="white" />
+                            <Text className="text-white font-medium">
+                              Remove from Deck
+                            </Text>
+                          </View>
+                        </Button>
                       </View>
                     </View>
                   </View>
@@ -2977,131 +3065,152 @@ export default function DeckDetailScreen() {
                   {/* Action Buttons */}
                   <View className="mt-6 gap-2">
                     {/* Set as Commander */}
-                    <Pressable
+                    <Button
                       onPress={() => {
                         setCardModalVisible(false);
                         if (selectedCard) handleSetCommander(selectedCard);
                       }}
-                      className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
+                      variant="secondary"
+                      className="p-4"
                     >
-                      <Crown
-                        size={20}
-                        color={
-                          selectedCard?.isCommander ? "#eab308" : "#94a3b8"
-                        }
-                      />
-                      <Text className="text-white flex-1">
-                        {selectedCard?.isCommander
-                          ? "Remove as Commander"
-                          : "Set as Commander"}
-                      </Text>
-                    </Pressable>
+                      <View className="flex-row items-center gap-3 w-full">
+                        <Crown
+                          size={20}
+                          color={
+                            selectedCard?.isCommander ? "#eab308" : "#94a3b8"
+                          }
+                        />
+                        <Text className="text-white flex-1">
+                          {selectedCard?.isCommander
+                            ? "Remove as Commander"
+                            : "Set as Commander"}
+                        </Text>
+                      </View>
+                    </Button>
 
                     {/* Set Color Tag */}
-                    <Pressable
+                    <Button
                       onPress={() => {
                         setCardModalVisible(false);
                         setActionSheetCard(selectedCard);
                         setTimeout(() => setColorTagPickerVisible(true), 100);
                         setTimeout(() => setActionSheetVisible(true), 100);
                       }}
-                      className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
+                      variant="secondary"
+                      className="p-4"
                     >
-                      <Palette size={20} color="#94a3b8" />
-                      <Text className="text-white flex-1">Set Color Tag</Text>
-                      {selectedCard?.colorTag && (
-                        <View
-                          className="h-4 w-4 rounded-full"
-                          style={{ backgroundColor: selectedCard.colorTag }}
-                        />
-                      )}
-                    </Pressable>
+                      <View className="flex-row items-center gap-3 w-full">
+                        <Palette size={20} color="#94a3b8" />
+                        <Text className="text-white flex-1">Set Color Tag</Text>
+                        {selectedCard?.colorTag && (
+                          <View
+                            className="h-4 w-4 rounded-full"
+                            style={{ backgroundColor: selectedCard.colorTag }}
+                          />
+                        )}
+                      </View>
+                    </Button>
 
                     {/* Change Edition */}
-                    <Pressable
+                    <Button
                       onPress={() => {
                         setCardModalVisible(false);
                         setActionSheetCard(selectedCard);
                         setTimeout(() => handleShowEditions(), 100);
                         setTimeout(() => setActionSheetVisible(true), 100);
                       }}
-                      className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
+                      variant="secondary"
+                      className="p-4"
                     >
-                      <RefreshCcw size={20} color="#94a3b8" />
-                      <Text className="text-white">Change Edition</Text>
-                    </Pressable>
+                      <View className="flex-row items-center gap-3">
+                        <RefreshCcw size={20} color="#94a3b8" />
+                        <Text className="text-white">Change Edition</Text>
+                      </View>
+                    </Button>
 
                     {/* Move to Sideboard/Mainboard */}
-                    <Pressable
+                    <Button
                       onPress={() => {
                         setCardModalVisible(false);
                         if (selectedCard) handleMoveToSideboard(selectedCard);
                       }}
-                      className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
+                      variant="secondary"
+                      className="p-4"
                     >
-                      <Sidebar size={20} color="#94a3b8" />
-                      <Text className="text-white">
-                        {selectedCard?.categories?.includes("Sideboard")
-                          ? "Move to Mainboard"
-                          : "Move to Sideboard"}
-                      </Text>
-                    </Pressable>
+                      <View className="flex-row items-center gap-3">
+                        <Sidebar size={20} color="#94a3b8" />
+                        <Text className="text-white">
+                          {selectedCard?.categories?.includes("Sideboard")
+                            ? "Move to Mainboard"
+                            : "Move to Sideboard"}
+                        </Text>
+                      </View>
+                    </Button>
 
                     {/* Link/Unlink Collection */}
                     {selectedCard?.isLinkedToCollection ? (
-                      <Pressable
+                      <Button
                         onPress={() => {
                           setCardModalVisible(false);
                           setActionSheetCard(selectedCard);
                           setTimeout(() => handleUnlinkFromCollection(), 100);
                         }}
-                        className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
+                        variant="secondary"
+                        className="p-4"
                       >
-                        <Unlink size={20} color="#94a3b8" />
-                        <Text className="text-white">
-                          Unlink from Collection
-                        </Text>
-                      </Pressable>
+                        <View className="flex-row items-center gap-3">
+                          <Unlink size={20} color="#94a3b8" />
+                          <Text className="text-white">
+                            Unlink from Collection
+                          </Text>
+                        </View>
+                      </Button>
                     ) : (selectedCard?.inCollection ||
                         selectedCard?.inCollectionDifferentPrint) &&
                       selectedCard?.hasAvailableCollectionCard ? (
-                      <Pressable
+                      <Button
                         onPress={() => {
                           setCardModalVisible(false);
                           setActionSheetCard(selectedCard);
                           setTimeout(() => handleLinkToCollection(), 100);
                         }}
-                        className="bg-slate-800 rounded-xl p-4 flex-row items-center gap-3 active:bg-slate-700"
+                        variant="secondary"
+                        className="p-4"
                       >
-                        <Link size={20} color="#7C3AED" />
-                        <View className="flex-1">
-                          <Text className="text-purple-500 font-medium">
-                            Link to Collection
-                          </Text>
-                          {selectedCard?.inCollectionDifferentPrint &&
-                            !selectedCard?.inCollection && (
-                              <Text className="text-slate-400 text-xs mt-0.5">
-                                Will change to your collection edition
-                              </Text>
-                            )}
+                        <View className="flex-row items-center gap-3 w-full">
+                          <Link size={20} color="#7C3AED" />
+                          <View className="flex-1">
+                            <Text className="text-purple-500 font-medium">
+                              Link to Collection
+                            </Text>
+                            {selectedCard?.inCollectionDifferentPrint &&
+                              !selectedCard?.inCollection && (
+                                <Text className="text-slate-400 text-xs mt-0.5">
+                                  Will change to your collection edition
+                                </Text>
+                              )}
+                          </View>
                         </View>
-                      </Pressable>
+                      </Button>
                     ) : null}
 
                     {/* Remove from Deck */}
-                    <Pressable
+                    <Button
                       onPress={() => {
                         setCardModalVisible(false);
                         setActionSheetCard(selectedCard);
                         setTimeout(() => handleRemoveCard(), 100);
                       }}
-                      className="bg-red-900/30 rounded-xl p-4 flex-row items-center gap-3 active:bg-red-900/40"
+                      variant="destructive"
+                      className="p-4"
                     >
-                      <X size={20} color="#ef4444" />
-                      <Text className="text-red-500 font-medium">
-                        Remove from Deck
-                      </Text>
-                    </Pressable>
+                      <View className="flex-row items-center gap-3">
+                        <X size={20} color="white" />
+                        <Text className="text-white font-medium">
+                          Remove from Deck
+                        </Text>
+                      </View>
+                    </Button>
                   </View>
                 </>
               )}
@@ -3841,9 +3950,9 @@ export default function DeckDetailScreen() {
         visible={confirmDialog.visible}
         title={confirmDialog.title}
         message={confirmDialog.message}
-        confirmText={confirmDialog.confirmText || "Pull"}
+        confirmText={confirmDialog.confirmText || "Confirm"}
         cancelText="Cancel"
-        destructive={true}
+        destructive={confirmDialog.destructive}
         onConfirm={confirmDialog.onConfirm}
         onCancel={() =>
           setConfirmDialog((prev) => ({ ...prev, visible: false }))

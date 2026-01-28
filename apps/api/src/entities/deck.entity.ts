@@ -27,8 +27,8 @@ export class Deck {
   @Column({ name: 'user_id' })
   userId: string;
 
-  @Column({ name: 'archidekt_id', type: 'int' })
-  archidektId: number;
+  @Column({ name: 'archidekt_id', type: 'int', nullable: true })
+  archidektId: number | null;
 
   @Column()
   name: string;

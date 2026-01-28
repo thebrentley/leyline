@@ -23,6 +23,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Button } from "~/components/ui/button";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   advisorApi,
@@ -896,13 +897,15 @@ export function ChatPanel({ deck, visible, onClose, onDeckUpdated, isDark }: Cha
                   <Text className={`mt-4 text-center ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                     No chat session selected
                   </Text>
-                  <Pressable
+                  <Button
                     onPress={handleCreateSession}
-                    className="mt-4 bg-purple-500 px-6 py-3 rounded-xl flex-row items-center gap-2"
+                    className="mt-4 px-6 py-3"
                   >
-                    <Plus size={18} color="white" />
-                    <Text className="text-white font-medium">Start New Chat</Text>
-                  </Pressable>
+                    <View className="flex-row items-center gap-2">
+                      <Plus size={18} color="white" />
+                      <Text className="text-white font-medium">Start New Chat</Text>
+                    </View>
+                  </Button>
                 </View>
               )}
             </>

@@ -8,6 +8,7 @@ import {
   Layers,
   Loader2,
   Menu,
+  Plus,
   RefreshCw,
   Trash2,
 } from "lucide-react-native";
@@ -30,6 +31,7 @@ import { useSocket } from "~/contexts/SocketContext";
 import { decksApi, type DeckSummary, type DeckSyncStatus } from "~/lib/api";
 import { showToast } from "~/lib/toast";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
+import { CreateDeckDialog } from "~/components/ui/CreateDeckDialog";
 import { useResponsive } from "~/hooks/useResponsive";
 
 // Color identity colors
@@ -231,6 +233,7 @@ export default function DecksScreen() {
     visible: boolean;
     deck: DeckSummary | null;
   }>({ visible: false, deck: null });
+  const [createDialogVisible, setCreateDialogVisible] = useState(false);
 
   const openDrawer = () => {
     navigation.dispatch(DrawerActions.openDrawer());
@@ -322,6 +325,25 @@ export default function DecksScreen() {
       }
     } catch (err) {
       showToast.error("Failed to delete deck");
+    }
+  };
+
+  const handleCreateDeck = async (name: string) => {
+    setCreateDialogVisible(false);
+
+    try {
+      const result = await decksApi.create(name);
+      if (result.error) {
+        showToast.error(result.error);
+      } else if (result.data) {
+        // Add to local state
+        setDecks((prev) => [result.data!, ...prev]);
+        showToast.success("Deck created successfully");
+        // Navigate to the new deck
+        router.push(`/deck/${result.data.id}`);
+      }
+    } catch (err) {
+      showToast.error("Failed to create deck");
     }
   };
 
@@ -433,6 +455,18 @@ export default function DecksScreen() {
               My Decks
             </Text>
           </View>
+          <Button
+            onPress={() => setCreateDialogVisible(true)}
+            className="px-3 py-2"
+            size="sm"
+          >
+            <View className="flex-row items-center gap-2">
+              <Plus size={20} color="white" />
+              <Text className="text-white font-medium hidden lg:flex">
+                New Deck
+              </Text>
+            </View>
+          </Button>
         </View>
 
         {/* Content */}
@@ -493,6 +527,13 @@ export default function DecksScreen() {
         destructive
         onConfirm={confirmDeleteDeck}
         onCancel={() => setConfirmDelete({ visible: false, deck: null })}
+      />
+
+      {/* Create Deck Dialog */}
+      <CreateDeckDialog
+        visible={createDialogVisible}
+        onConfirm={handleCreateDeck}
+        onCancel={() => setCreateDialogVisible(false)}
       />
     </SafeAreaView>
   );

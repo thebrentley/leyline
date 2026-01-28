@@ -89,7 +89,7 @@ export type DeckSyncStatus = 'waiting' | 'syncing' | 'synced' | 'error';
 
 export interface DeckSummary {
   id: string;
-  archidektId: number;
+  archidektId: number | null;
   name: string;
   format: string | null;
   cardCount: number;
@@ -129,7 +129,7 @@ export interface DeckCard {
 
 export interface DeckDetail {
   id: string;
-  archidektId: number;
+  archidektId: number | null;
   name: string;
   format: string | null;
   description: string | null;
@@ -293,6 +293,13 @@ export const authApi = {
 export const decksApi = {
   async list(): Promise<ApiResponse<DeckSummary[]>> {
     return request<DeckSummary[]>("/decks");
+  },
+
+  async create(name: string): Promise<ApiResponse<DeckSummary>> {
+    return request<DeckSummary>("/decks", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
   },
 
   async get(id: string): Promise<ApiResponse<DeckDetail>> {

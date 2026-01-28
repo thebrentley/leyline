@@ -4,6 +4,7 @@ import { SnakeNamingStrategy } from './snake-naming.strategy';
 import {
   InitialSchema1769481839420,
   CamelToSnakeCase1769532303427,
+  MakeArchidektIdNullable1738095600000,
 } from './migrations';
 
 config();
@@ -12,6 +13,7 @@ config();
 export const migrations = [
   InitialSchema1769481839420,
   CamelToSnakeCase1769532303427,
+  MakeArchidektIdNullable1738095600000,
 ];
 
 export const AppDataSource = new DataSource({

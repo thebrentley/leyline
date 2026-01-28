@@ -37,7 +37,7 @@ interface ButtonProps
 }
 
 const Button = React.forwardRef<React.ElementRef<typeof Pressable>, ButtonProps>(
-  ({ className, variant = "default", size, children, ...props }, ref) => {
+  ({ className, variant = "default", size, children, disabled, ...props }, ref) => {
     const { colorScheme } = useColorScheme();
     const isDark = colorScheme === "dark";
 
@@ -66,8 +66,10 @@ const Button = React.forwardRef<React.ElementRef<typeof Pressable>, ButtonProps>
         ref={ref}
         className={cn(
           buttonVariants({ size, className }),
-          variantStyles[variant || "default"]
+          variantStyles[variant || "default"],
+          disabled && "opacity-50"
         )}
+        disabled={disabled}
         {...props}
       >
         {typeof children === "string" ? (

@@ -36,6 +36,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { CardScanner } from "~/components/camera/CardScanner";
 import { ScryfallSearch } from "~/components/ScryfallSearch";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
+import { Button } from "~/components/ui/button";
 import { cardsApi, collectionApi, type CardSearchResult, type CollectionCard, type CollectionStats } from "~/lib/api";
 import { cache, CACHE_KEYS, CACHE_TTL, cachedFetch } from "~/lib/cache";
 import { showToast } from "~/lib/toast";
@@ -564,25 +565,28 @@ function CardDetailModal({
         >
           <View className="gap-3">
             {hasChanges && (
-              <Pressable
+              <Button
                 onPress={handleSave}
                 disabled={saving}
-                className="bg-purple-500 rounded-xl py-3 items-center"
+                className="py-3"
               >
                 {saving ? (
                   <ActivityIndicator color="white" />
                 ) : (
                   <Text className="text-white font-semibold">Save Changes</Text>
                 )}
-              </Pressable>
+              </Button>
             )}
-            <Pressable
+            <Button
               onPress={handleRemove}
-              className={`rounded-xl py-3 items-center flex-row justify-center gap-2 ${isDark ? "bg-red-900/30" : "bg-red-50"}`}
+              variant="destructive"
+              className="py-3"
             >
-              <Trash2 size={18} color="#ef4444" />
-              <Text className="text-red-500 font-medium">Remove from Collection</Text>
-            </Pressable>
+              <View className="flex-row items-center gap-2">
+                <Trash2 size={18} color="white" />
+                <Text className="text-white font-medium">Remove from Collection</Text>
+              </View>
+            </Button>
           </View>
         </View>
       </View>
