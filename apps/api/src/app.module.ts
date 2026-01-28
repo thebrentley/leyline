@@ -9,6 +9,7 @@ import { AdvisorModule } from './modules/advisor/advisor.module';
 import { EventsModule } from './modules/events/events.module';
 import { CommonModule } from './common/common.module';
 import { SnakeNamingStrategy } from './database/snake-naming.strategy';
+import { migrations } from './database/data-source';
 
 @Module({
   imports: [
@@ -25,8 +26,10 @@ import { SnakeNamingStrategy } from './database/snake-naming.strategy';
         type: 'postgres',
         url: configService.get('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: configService.get('NODE_ENV') !== 'production',
-        logging: false,
+        migrations,
+        migrationsRun: true, // Auto-run pending migrations on startup
+        synchronize: false, // Never use synchronize - use migrations instead
+        logging: configService.get('NODE_ENV') === 'development',
         // IMPORTANT: Only enable this AFTER running the CamelToSnakeCase migration!
         // namingStrategy: new SnakeNamingStrategy(),
       }),
