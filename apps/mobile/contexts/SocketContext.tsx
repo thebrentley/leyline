@@ -9,7 +9,9 @@ import React, {
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "./AuthContext";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
+// Socket.io connects to the server root, not the /api path
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3001";
+const SOCKET_URL = API_URL.replace(/\/api$/, "");
 
 interface DeckSyncStatusEvent {
   deckId: string;
@@ -45,8 +47,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Connect with auth token
-    const socket = io(API_URL, {
+    // Connect with auth token to the server root (not /api path)
+    console.log("[Socket] Connecting to:", SOCKET_URL);
+    const socket = io(SOCKET_URL, {
       auth: { token },
       transports: ["websocket"],
       reconnection: true,

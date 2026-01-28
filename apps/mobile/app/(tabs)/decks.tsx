@@ -28,7 +28,6 @@ import { Spinner } from "~/components/Spinner";
 import { Button } from "~/components/ui/button";
 import { useSocket } from "~/contexts/SocketContext";
 import { decksApi, type DeckSummary, type DeckSyncStatus } from "~/lib/api";
-import { cache, CACHE_KEYS, CACHE_TTL, cachedFetch } from "~/lib/cache";
 import { showToast } from "~/lib/toast";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { useResponsive } from "~/hooks/useResponsive";
@@ -57,8 +56,8 @@ function SyncStatusBadge({
     );
   }
 
-  // Show loader icon for pending (queued) and syncing (active)
-  if (status === "syncing" || status === "pending") {
+  // Show loader icon for waiting (queued) and syncing (active)
+  if (status === "syncing" || status === "waiting") {
     return (
       <View className="flex-row items-center gap-1">
         <Loader2
@@ -237,19 +236,11 @@ export default function DecksScreen() {
     navigation.dispatch(DrawerActions.openDrawer());
   };
 
-  const loadDecks = useCallback(async (skipCache = false) => {
+  const loadDecks = useCallback(async () => {
     try {
       setError(null);
 
-      if (skipCache) {
-        await cache.remove(CACHE_KEYS.DECKS_LIST);
-      }
-
-      const result = await cachedFetch(
-        CACHE_KEYS.DECKS_LIST,
-        CACHE_TTL.DECKS_LIST,
-        () => decksApi.list(),
-      );
+      const result = await decksApi.list();
 
       if (result.error) {
         setError(result.error);
@@ -266,7 +257,7 @@ export default function DecksScreen() {
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
-    loadDecks(true);
+    loadDecks();
   }, [loadDecks]);
 
   const handleSyncAll = async () => {
@@ -275,7 +266,7 @@ export default function DecksScreen() {
       const result = await decksApi.syncAllFromArchidekt();
       if (result.data) {
         // Refresh to show new decks (metadata only, no cards synced)
-        await loadDecks(true);
+        await loadDecks();
       }
     } catch (err) {
       console.error("Sync failed:", err);
@@ -290,11 +281,11 @@ export default function DecksScreen() {
       if (result.error) {
         showToast.error(result.error);
       } else {
-        // Optimistically update the deck status to "pending"
+        // Optimistically update the deck status to "waiting"
         setDecks((prev) =>
           prev.map((deck) =>
             deck.archidektId === archidektId
-              ? { ...deck, syncStatus: "pending" as DeckSyncStatus, syncError: null }
+              ? { ...deck, syncStatus: "waiting" as DeckSyncStatus, syncError: null }
               : deck
           )
         );
@@ -327,8 +318,6 @@ export default function DecksScreen() {
       } else {
         // Remove from local state
         setDecks((prev) => prev.filter((d) => d.id !== deck.id));
-        // Clear cache
-        await cache.remove(CACHE_KEYS.DECKS_LIST);
         showToast.success("Deck deleted successfully");
       }
     } catch (err) {
@@ -358,19 +347,17 @@ export default function DecksScreen() {
 
       // If a deck just finished syncing, reload to get fresh data
       if (event.status === "synced" || event.status === "error") {
-        cache.remove(CACHE_KEYS.DECKS_LIST);
-        cache.remove(CACHE_KEYS.DECK_DETAIL(event.deckId));
-        loadDecks(true);
+        loadDecks();
       }
     });
 
     return unsubscribe;
   }, [onDeckSyncStatus, loadDecks]);
 
-  // Reset syncing state when no decks are pending or actively syncing
+  // Reset syncing state when no decks are waiting or actively syncing
   useEffect(() => {
     const hasSyncingDecks = decks.some(
-      (d) => d.syncStatus === "syncing" || d.syncStatus === "pending",
+      (d) => d.syncStatus === "syncing" || d.syncStatus === "waiting",
     );
     if (!hasSyncingDecks) {
       setSyncing(false);
@@ -462,7 +449,7 @@ export default function DecksScreen() {
             >
               {error}
             </Text>
-            <Button onPress={() => loadDecks(true)}>
+            <Button onPress={() => loadDecks()}>
               <Text className="font-medium text-white">Retry</Text>
             </Button>
           </View>

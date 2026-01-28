@@ -3,6 +3,8 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -12,6 +14,7 @@ import * as bcrypt from 'bcrypt';
 import axios from 'axios';
 import { User } from '../../entities/user.entity';
 import { EncryptionService } from '../../common/services/encryption.service';
+import { SyncQueueService } from '../decks/sync-queue.service';
 
 interface JwtPayload {
   sub: string;
@@ -50,6 +53,8 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private encryptionService: EncryptionService,
+    @Inject(forwardRef(() => SyncQueueService))
+    private syncQueueService: SyncQueueService,
   ) {}
 
   // ==================== Local Authentication ====================
@@ -170,6 +175,12 @@ export class AuthService {
     user.archidektConnectedAt = new Date();
 
     await this.userRepository.save(user);
+
+    // Fire and forget - handoff pattern, return immediately
+    // Auto-sync all decks after successful connection
+    this.syncQueueService.queueSyncAll(userId).catch((err) => {
+      console.error('[Auth] Auto-sync failed:', err.message);
+    });
 
     return this.sanitizeUser(user);
   }

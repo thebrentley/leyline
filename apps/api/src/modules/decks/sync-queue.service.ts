@@ -84,6 +84,9 @@ export class SyncQueueService implements OnModuleDestroy {
       syncError: null,
     });
 
+    // Emit WebSocket event for waiting status
+    this.eventsGateway.emitDeckSyncStatus(userId, deckId, 'waiting', null, 0);
+
     // Add to queue
     this.queue.push({
       deckId,
@@ -130,21 +133,37 @@ export class SyncQueueService implements OnModuleDestroy {
           userId,
           name: archDeck.name,
           format: archDeck.format || null,
-          syncStatus: 'waiting', // Not synced yet - no cards
+          syncStatus: 'waiting',
           lastSyncedAt: null,
         });
         await this.deckRepository.save(deck);
       } else {
-        // Existing deck - just update the name in case it changed
+        // Existing deck - reset to waiting for re-sync
         await this.deckRepository.update(deck.id, {
           name: archDeck.name,
+          syncStatus: 'waiting',
+          syncError: null,
         });
       }
 
+      // Emit WebSocket event for waiting status
+      this.eventsGateway.emitDeckSyncStatus(userId, deck.id, 'waiting', null, 0);
+
       syncedDecks.push({ id: deck.id, name: archDeck.name });
+
+      // Queue for card sync
+      this.queue.push({
+        deckId: deck.id,
+        archidektId: archDeck.id,
+        userId,
+        token: user.archidektToken,
+      });
     }
 
-    console.log(`[SyncQueue] Synced metadata for ${syncedDecks.length} decks`);
+    console.log(`[SyncQueue] Queued ${syncedDecks.length} decks for sync`);
+
+    // Start processing the queue
+    this.startProcessing();
 
     return { queued: syncedDecks.length, decks: syncedDecks };
   }
@@ -234,11 +253,11 @@ export class SyncQueueService implements OnModuleDestroy {
         collectorNumber: c.card.collectorNumber,
       }));
 
-      // Fetch cards from Scryfall using set + collector number
+      // Lookup cards from local database only (no Scryfall fetching)
       let fetchedCards: any[] = [];
       if (cardIdentifiers.length > 0) {
         fetchedCards =
-          await this.cardsService.getOrFetchManyBySetCollector(cardIdentifiers);
+          await this.cardsService.lookupExistingBySetCollector(cardIdentifiers);
       }
 
       // 70% - Fetched all cards from Scryfall

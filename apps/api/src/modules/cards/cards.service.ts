@@ -450,6 +450,30 @@ export class CardsService {
     return [...cached, ...upserted];
   }
 
+  /**
+   * Lookup cards by set code and collector number - LOCAL DATABASE ONLY
+   * Does NOT fetch from Scryfall. Returns only cards that already exist in the database.
+   */
+  async lookupExistingBySetCollector(
+    cards: Array<{ setCode: string; collectorNumber: string }>,
+  ): Promise<Card[]> {
+    if (cards.length === 0) return [];
+
+    const results: Card[] = [];
+    for (const card of cards) {
+      const existing = await this.cardRepository.findOne({
+        where: {
+          setCode: card.setCode.toLowerCase(),
+          collectorNumber: card.collectorNumber,
+        },
+      });
+      if (existing) {
+        results.push(existing);
+      }
+    }
+    return results;
+  }
+
   private async fetchCollectionBySetCollector(
     cards: Array<{ setCode: string; collectorNumber: string }>,
   ): Promise<ScryfallCard[]> {
