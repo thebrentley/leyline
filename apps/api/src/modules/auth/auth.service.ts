@@ -3,8 +3,6 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
-  Inject,
-  forwardRef,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -13,8 +11,9 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import axios from 'axios';
 import { User } from '../../entities/user.entity';
+import { Setting, SETTING_KEYS } from '../../entities/setting.entity';
 import { EncryptionService } from '../../common/services/encryption.service';
-import { SyncQueueService } from '../decks/sync-queue.service';
+import { SettingsService } from '../settings/settings.service';
 
 interface JwtPayload {
   sub: string;
@@ -27,6 +26,16 @@ interface ArchidektAuthResult {
   userId?: number;
   username?: string;
   error?: string;
+}
+
+export interface SanitizedUser {
+  id: string;
+  email: string;
+  displayName: string | null;
+  archidektId: number | null;
+  archidektUsername: string | null;
+  archidektConnectedAt: Date | null;
+  createdAt: Date;
 }
 
 @Injectable()
@@ -53,8 +62,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private encryptionService: EncryptionService,
-    @Inject(forwardRef(() => SyncQueueService))
-    private syncQueueService: SyncQueueService,
+    private settingsService: SettingsService,
   ) {}
 
   // ==================== Local Authentication ====================
@@ -63,7 +71,7 @@ export class AuthService {
     email: string,
     password: string,
     displayName?: string,
-  ): Promise<{ accessToken: string; user: Partial<User> }> {
+  ): Promise<{ accessToken: string; user: SanitizedUser }> {
     // Check if email already exists
     const existing = await this.userRepository.findOne({ where: { email } });
     if (existing) {
@@ -92,14 +100,14 @@ export class AuthService {
 
     return {
       accessToken,
-      user: this.sanitizeUser(user),
+      user: await this.sanitizeUser(user),
     };
   }
 
   async login(
     email: string,
     password: string,
-  ): Promise<{ accessToken: string; user: Partial<User> }> {
+  ): Promise<{ accessToken: string; user: SanitizedUser }> {
     const user = await this.userRepository.findOne({ where: { email } });
 
     if (!user) {
@@ -115,7 +123,7 @@ export class AuthService {
 
     return {
       accessToken,
-      user: this.sanitizeUser(user),
+      user: await this.sanitizeUser(user),
     };
   }
 
@@ -123,7 +131,7 @@ export class AuthService {
     return this.userRepository.findOne({ where: { id: userId } });
   }
 
-  async getMe(userId: string): Promise<Partial<User>> {
+  async getMe(userId: string): Promise<SanitizedUser> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -137,7 +145,7 @@ export class AuthService {
     userId: string,
     archidektUsername: string,
     archidektPassword: string,
-  ): Promise<Partial<User>> {
+  ): Promise<SanitizedUser> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -156,49 +164,34 @@ export class AuthService {
     }
 
     // Check if this Archidekt account is already connected to another user
-    const existingConnection = await this.userRepository.findOne({
-      where: { archidektId: result.userId },
-    });
-
-    if (existingConnection && existingConnection.id !== userId) {
+    const existingUserId = await this.findUserByArchidektId(result.userId!);
+    if (existingUserId && existingUserId !== userId) {
       throw new ConflictException(
         'This Archidekt account is already connected to another user',
       );
     }
 
-    // Update user with Archidekt connection
-    user.archidektId = result.userId!;
-    user.archidektUsername = result.username || archidektUsername;
-    user.archidektEmail = archidektUsername; // Store the email/username used for login
-    user.archidektToken = result.token;
-    user.archidektPassword = this.encryptionService.encrypt(archidektPassword);
-    user.archidektConnectedAt = new Date();
-
-    await this.userRepository.save(user);
-
-    // Fire and forget - handoff pattern, return immediately
-    // Auto-sync all decks after successful connection
-    this.syncQueueService.queueSyncAll(userId).catch((err) => {
-      console.error('[Auth] Auto-sync failed:', err.message);
+    // Store Archidekt connection in settings
+    await this.settingsService.setArchidektSettings(userId, {
+      archidektId: result.userId!,
+      archidektUsername: result.username || archidektUsername,
+      archidektEmail: archidektUsername,
+      archidektToken: result.token,
+      archidektPassword: this.encryptionService.encrypt(archidektPassword),
+      archidektConnectedAt: new Date(),
     });
 
     return this.sanitizeUser(user);
   }
 
-  async disconnectArchidekt(userId: string): Promise<Partial<User>> {
+  async disconnectArchidekt(userId: string): Promise<SanitizedUser> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
 
-    user.archidektId = null;
-    user.archidektUsername = null;
-    user.archidektEmail = null;
-    user.archidektToken = null;
-    user.archidektPassword = null;
-    user.archidektConnectedAt = null;
-
-    await this.userRepository.save(user);
+    // Clear all Archidekt settings
+    await this.settingsService.clearArchidektSettings(userId);
 
     return this.sanitizeUser(user);
   }
@@ -214,17 +207,19 @@ export class AuthService {
       return null;
     }
 
-    if (!user.archidektEmail || !user.archidektPassword) {
+    const archidektSettings = await this.settingsService.getArchidektSettings(userId);
+
+    if (!archidektSettings.archidektEmail || !archidektSettings.archidektPassword) {
       console.log('[Archidekt] Auto-refresh: No stored credentials (email or password missing)');
       return null;
     }
 
     try {
-      console.log('[Archidekt] Auto-refreshing token for:', user.archidektEmail);
+      console.log('[Archidekt] Auto-refreshing token for:', archidektSettings.archidektEmail);
 
-      const decryptedPassword = this.encryptionService.decrypt(user.archidektPassword);
+      const decryptedPassword = this.encryptionService.decrypt(archidektSettings.archidektPassword);
       const result = await this.authenticateWithArchidekt(
-        user.archidektEmail,
+        archidektSettings.archidektEmail,
         decryptedPassword,
       );
 
@@ -233,9 +228,8 @@ export class AuthService {
         return null;
       }
 
-      // Update token in database
-      user.archidektToken = result.token;
-      await this.userRepository.save(user);
+      // Update token in settings
+      await this.settingsService.updateArchidektToken(userId, result.token);
 
       console.log('[Archidekt] Token auto-refreshed successfully');
       return result.token;
@@ -249,14 +243,15 @@ export class AuthService {
     userId: string,
     archidektUsername: string,
     archidektPassword: string,
-  ): Promise<Partial<User>> {
+  ): Promise<SanitizedUser> {
     // Same as connect, but ensures user already has Archidekt connected
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
 
-    if (!user.archidektId) {
+    const archidektSettings = await this.settingsService.getArchidektSettings(userId);
+    if (!archidektSettings.archidektId) {
       throw new BadRequestException('Archidekt is not connected');
     }
 
@@ -271,8 +266,7 @@ export class AuthService {
       );
     }
 
-    user.archidektToken = result.token;
-    await this.userRepository.save(user);
+    await this.settingsService.updateArchidektToken(userId, result.token);
 
     return this.sanitizeUser(user);
   }
@@ -288,19 +282,20 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    const connected = !!user.archidektId && !!user.archidektToken;
+    const archidektSettings = await this.settingsService.getArchidektSettings(userId);
+    const connected = !!archidektSettings.archidektId && !!archidektSettings.archidektToken;
     let tokenValid = false;
 
     // Verify token is still valid by making a test request
-    if (connected && user.archidektToken) {
+    if (connected && archidektSettings.archidektToken) {
       try {
         await this.archidektRateLimit();
-        
+
         const response = await axios.get(
           `${this.ARCHIDEKT_API}/rest-auth/user/`,
           {
             headers: {
-              Authorization: `JWT ${user.archidektToken}`,
+              Authorization: `JWT ${archidektSettings.archidektToken}`,
               Accept: 'application/json',
             },
             timeout: 5000,
@@ -314,26 +309,57 @@ export class AuthService {
 
     return {
       connected,
-      username: user.archidektUsername,
-      connectedAt: user.archidektConnectedAt,
+      username: archidektSettings.archidektUsername,
+      connectedAt: archidektSettings.archidektConnectedAt,
       tokenValid,
     };
   }
 
+  /**
+   * Get Archidekt token for a user (used by other services like DecksService)
+   */
+  async getArchidektToken(userId: string): Promise<string | null> {
+    const settings = await this.settingsService.getArchidektSettings(userId);
+    return settings.archidektToken;
+  }
+
+  /**
+   * Get Archidekt ID for a user
+   */
+  async getArchidektId(userId: string): Promise<number | null> {
+    const settings = await this.settingsService.getArchidektSettings(userId);
+    return settings.archidektId;
+  }
+
   // ==================== Helpers ====================
+
+  /**
+   * Find user ID by Archidekt ID (to check for duplicate connections)
+   */
+  private async findUserByArchidektId(archidektId: number): Promise<string | null> {
+    const settingRepo = this.userRepository.manager.getRepository(Setting);
+    const found = await settingRepo.findOne({
+      where: {
+        key: SETTING_KEYS.ARCHIDEKT_ID,
+        value: archidektId.toString(),
+      },
+    });
+
+    return found?.userId ?? null;
+  }
 
   private async authenticateWithArchidekt(
     email: string,
     password: string,
   ): Promise<ArchidektAuthResult> {
     console.log('[Archidekt] Starting authentication for:', email);
-    
+
     try {
       await this.archidektRateLimit();
-      
+
       const loginUrl = `${this.ARCHIDEKT_API}/rest-auth/login/`;
       console.log('[Archidekt] POST to:', loginUrl);
-      
+
       const response = await axios.post(
         loginUrl,
         { email, password },
@@ -362,7 +388,7 @@ export class AuthService {
         // Get user info with the token - Archidekt uses JWT auth
         console.log('[Archidekt] Fetching user info...');
         await this.archidektRateLimit();
-        
+
         const userResponse = await axios.get(
           `${this.ARCHIDEKT_API}/rest-auth/user/`,
           {
@@ -390,7 +416,7 @@ export class AuthService {
       console.log('[Archidekt] Error occurred:', error.message);
       console.log('[Archidekt] Error response status:', error.response?.status);
       console.log('[Archidekt] Error response data:', JSON.stringify(error.response?.data, null, 2));
-      
+
       const message =
         error.response?.data?.non_field_errors?.[0] ||
         error.response?.data?.email?.[0] ||
@@ -411,14 +437,16 @@ export class AuthService {
     return this.jwtService.sign(payload);
   }
 
-  private sanitizeUser(user: User): Partial<User> {
+  private async sanitizeUser(user: User): Promise<SanitizedUser> {
+    const archidektSettings = await this.settingsService.getArchidektSettings(user.id);
+
     return {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
-      archidektId: user.archidektId,
-      archidektUsername: user.archidektUsername,
-      archidektConnectedAt: user.archidektConnectedAt,
+      archidektId: archidektSettings.archidektId,
+      archidektUsername: archidektSettings.archidektUsername,
+      archidektConnectedAt: archidektSettings.archidektConnectedAt,
       createdAt: user.createdAt,
     };
   }

@@ -56,6 +56,7 @@ import { Spinner } from "~/components/Spinner";
 import { ColorTagManager } from "~/components/ColorTagManager";
 import { EditionPickerModal } from "~/components/EditionPickerModal";
 import {
+  authApi,
   cardsApi,
   decksApi,
   type CardSearchResult,
@@ -524,6 +525,7 @@ export default function DeckDetailScreen() {
   const [editions, setEditions] = useState<CardSearchResult[]>([]);
   const [loadingEditions, setLoadingEditions] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [archidektConnected, setArchidektConnected] = useState(false);
 
   // Confirmation dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -716,6 +718,21 @@ export default function DeckDetailScreen() {
       if (mode) setViewMode(mode);
     });
   }, [loadDeck]);
+
+  // Check Archidekt connection status
+  useEffect(() => {
+    const checkArchidektConnection = async () => {
+      try {
+        const result = await authApi.getArchidektStatus();
+        if (result.data) {
+          setArchidektConnected(result.data.connected && result.data.tokenValid);
+        }
+      } catch (err) {
+        console.error("Failed to check Archidekt status:", err);
+      }
+    };
+    checkArchidektConnection();
+  }, []);
 
   const toggleViewMode = () => {
     const newMode = viewMode === "list" ? "grid" : "list";
@@ -1823,7 +1840,7 @@ export default function DeckDetailScreen() {
         </View>
       ) : sections.length === 0 ? (
         <View className="flex-1 items-center justify-center px-6">
-          {deck?.archidektId ? (
+          {deck?.archidektId && archidektConnected ? (
             <>
               <Text
                 className={`mb-2 text-lg font-semibold ${
@@ -2185,7 +2202,7 @@ export default function DeckDetailScreen() {
                 : "border-slate-200 bg-white"
             }`}
           >
-            {deck?.archidektId && (
+            {deck?.archidektId && archidektConnected && (
               <Pressable
                 onPress={handlePullFromArchidekt}
                 className={`flex-row items-center gap-3 px-4 py-3 ${

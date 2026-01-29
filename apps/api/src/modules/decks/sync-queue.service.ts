@@ -5,7 +5,6 @@ import axios from 'axios';
 import { Deck, DeckSyncStatus } from '../../entities/deck.entity';
 import { DeckCard } from '../../entities/deck-card.entity';
 import { DeckVersion, type VersionCard } from '../../entities/deck-version.entity';
-import { User } from '../../entities/user.entity';
 import { CardsService } from '../cards/cards.service';
 import { EventsGateway } from '../events/events.gateway';
 import { AuthService } from '../auth/auth.service';
@@ -57,8 +56,6 @@ export class SyncQueueService implements OnModuleDestroy {
     private deckCardRepository: Repository<DeckCard>,
     @InjectRepository(DeckVersion)
     private deckVersionRepository: Repository<DeckVersion>,
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
     private cardsService: CardsService,
     private eventsGateway: EventsGateway,
     @Inject(forwardRef(() => AuthService))
@@ -73,8 +70,8 @@ export class SyncQueueService implements OnModuleDestroy {
    * Add a deck to the sync queue
    */
   async queueSync(deckId: string, archidektId: number, userId: string): Promise<void> {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user?.archidektToken) {
+    const archidektToken = await this.authService.getArchidektToken(userId);
+    if (!archidektToken) {
       throw new Error('Archidekt not connected');
     }
 
@@ -92,7 +89,7 @@ export class SyncQueueService implements OnModuleDestroy {
       deckId,
       archidektId,
       userId,
-      token: user.archidektToken,
+      token: archidektToken,
     });
 
     console.log(`[SyncQueue] Added deck ${deckId} to queue. Queue size: ${this.queue.length}`);
@@ -106,18 +103,20 @@ export class SyncQueueService implements OnModuleDestroy {
    * Cards are synced when viewing individual deck
    */
   async queueSyncAll(userId: string): Promise<{ queued: number; decks: Array<{ id: string; name: string }> }> {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user?.archidektId || !user?.archidektToken) {
+    const archidektUserIdVal = await this.authService.getArchidektId(userId);
+    const archidektToken = await this.authService.getArchidektToken(userId);
+
+    if (!archidektUserIdVal || !archidektToken) {
       throw new Error('Archidekt not connected');
     }
 
-    console.log('[SyncQueue] Fetching deck list for user:', user.archidektUsername, 'archidektId:', user.archidektId);
+    console.log('[SyncQueue] Fetching deck list for archidektId:', archidektUserIdVal);
 
     // Fetch all decks from Archidekt (metadata only)
-    const archidektDecks = await this.fetchAllArchidektDecks(user.archidektId, user.archidektToken, userId);
-    
+    const archidektDecks = await this.fetchAllArchidektDecks(archidektUserIdVal, archidektToken, userId);
+
     console.log('[SyncQueue] Found', archidektDecks.length, 'decks from Archidekt');
-    
+
     const syncedDecks: Array<{ id: string; name: string }> = [];
 
     for (const archDeck of archidektDecks) {
@@ -156,7 +155,7 @@ export class SyncQueueService implements OnModuleDestroy {
         deckId: deck.id,
         archidektId: archDeck.id,
         userId,
-        token: user.archidektToken,
+        token: archidektToken,
       });
     }
 

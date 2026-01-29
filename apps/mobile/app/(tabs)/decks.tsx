@@ -29,7 +29,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Spinner } from "~/components/Spinner";
 import { Button } from "~/components/ui/button";
 import { useSocket } from "~/contexts/SocketContext";
-import { decksApi, type DeckSummary, type DeckSyncStatus } from "~/lib/api";
+import { authApi, decksApi, type DeckSummary, type DeckSyncStatus } from "~/lib/api";
 import { showToast } from "~/lib/toast";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { CreateDeckDialog } from "~/components/ui/CreateDeckDialog";
@@ -238,6 +238,7 @@ export default function DecksScreen() {
   const [createDialogVisible, setCreateDialogVisible] = useState(false);
   const [archidektDialogVisible, setArchidektDialogVisible] = useState(false);
   const [dropdownVisible, setDropdownVisible] = useState(false);
+  const [archidektConnected, setArchidektConnected] = useState(false);
 
   const openDrawer = () => {
     navigation.dispatch(DrawerActions.openDrawer());
@@ -372,6 +373,21 @@ export default function DecksScreen() {
     loadDecks();
   }, [loadDecks]);
 
+  // Check if Archidekt is connected
+  useEffect(() => {
+    const checkArchidektConnection = async () => {
+      try {
+        const result = await authApi.getArchidektStatus();
+        if (result.data) {
+          setArchidektConnected(result.data.connected && result.data.tokenValid);
+        }
+      } catch (err) {
+        console.error("Failed to check Archidekt status:", err);
+      }
+    };
+    checkArchidektConnection();
+  }, []);
+
   // Listen for real-time deck sync status updates
   useEffect(() => {
     const unsubscribe = onDeckSyncStatus((event) => {
@@ -428,22 +444,34 @@ export default function DecksScreen() {
           isDark ? "text-slate-400" : "text-slate-500"
         }`}
       >
-        Connect your Archidekt account and fetch your decks to get started
+        {archidektConnected
+          ? "Fetch your decks from Archidekt or create a new one"
+          : "Create a new deck or connect Archidekt in Settings → Connections"}
       </Text>
-      <Button onPress={handleSyncAll} disabled={syncing}>
+      {archidektConnected && (
+        <Button onPress={handleSyncAll} disabled={syncing} className="mb-3">
+          <View className="flex-row items-center gap-2">
+            {syncing ? (
+              <Spinner
+                size={16}
+                strokeWidth={2}
+                color="white"
+                backgroundColor="rgba(255,255,255,0.2)"
+              />
+            ) : (
+              <RefreshCw size={16} color="white" />
+            )}
+            <Text className="font-medium text-white">
+              {syncing ? "Fetching..." : "Fetch Decks from Archidekt"}
+            </Text>
+          </View>
+        </Button>
+      )}
+      <Button onPress={() => setCreateDialogVisible(true)} variant={archidektConnected ? "secondary" : "default"}>
         <View className="flex-row items-center gap-2">
-          {syncing ? (
-            <Spinner
-              size={16}
-              strokeWidth={2}
-              color="white"
-              backgroundColor="rgba(255,255,255,0.2)"
-            />
-          ) : (
-            <RefreshCw size={16} color="white" />
-          )}
-          <Text className="font-medium text-white">
-            {syncing ? "Fetching..." : "Fetch Decks from Archidekt"}
+          <Plus size={16} color={archidektConnected ? (isDark ? "#e2e8f0" : "#475569") : "white"} />
+          <Text className={`font-medium ${archidektConnected ? (isDark ? "text-slate-200" : "text-slate-700") : "text-white"}`}>
+            Create New Deck
           </Text>
         </View>
       </Button>
@@ -462,7 +490,7 @@ export default function DecksScreen() {
       )}
 
       {/* Dropdown menu - positioned absolutely at top level */}
-      {dropdownVisible && (
+      {dropdownVisible && archidektConnected && (
         <View
           className={`absolute right-4 lg:right-6 top-20 z-50 w-56 rounded-lg border shadow-lg ${
             isDark
@@ -513,11 +541,11 @@ export default function DecksScreen() {
               My Decks
             </Text>
           </View>
-          <View className="relative flex-row">
+          <View className="relative flex-row gap-0">
             {/* Main button */}
             <Button
               onPress={() => setCreateDialogVisible(true)}
-              className="px-3 py-2 rounded-r-none"
+              className={`px-3 py-2 ${archidektConnected ? "rounded-r-none -mr-px" : ""}`}
               size="sm"
             >
               <View className="flex-row items-center gap-2">
@@ -528,14 +556,16 @@ export default function DecksScreen() {
               </View>
             </Button>
 
-            {/* Dropdown trigger */}
-            <Button
-              onPress={() => setDropdownVisible(!dropdownVisible)}
-              className="px-2 py-2 rounded-l-none border-l border-purple-700"
-              size="sm"
-            >
-              <ChevronDown size={16} color="white" />
-            </Button>
+            {/* Dropdown trigger - only show when Archidekt is connected */}
+            {archidektConnected && (
+              <Button
+                onPress={() => setDropdownVisible(!dropdownVisible)}
+                className="px-2 py-2 rounded-l-none border-l border-purple-700 -ml-px"
+                size="sm"
+              >
+                <ChevronDown size={16} color="white" />
+              </Button>
+            )}
           </View>
         </View>
 

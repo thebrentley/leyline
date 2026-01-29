@@ -3,15 +3,15 @@ import {
   DrawerContentScrollView,
 } from "@react-navigation/drawer";
 import Constants from "expo-constants";
-import { router, Slot } from "expo-router";
+import { Slot } from "expo-router";
 import { Drawer } from "expo-router/drawer";
 import {
   ChevronRight,
   CircleHelp,
-  FolderSync,
   Home,
   Layers,
   Library,
+  Link2,
   LogOut,
   MessageSquarePlus,
   Moon,
@@ -176,11 +176,11 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         </View>
 
         <DrawerItem
-          icon={<FolderSync size={24} color={iconColor} />}
-          label="Archidekt"
-          onPress={() => router.push("/archidekt")}
+          icon={<Link2 size={24} color={currentRoute === "connections" ? "#7C3AED" : iconColor} />}
+          label="Connections"
+          onPress={() => props.navigation.navigate("connections")}
           isDark={isDark}
-          rightText={user?.archidektUsername ? `@${user.archidektUsername}` : undefined}
+          isActive={currentRoute === "connections"}
         />
         <Divider isDark={isDark} />
 
@@ -325,6 +325,12 @@ export default function DrawerLayout() {
       />
       <Drawer.Screen
         name="profile"
+        options={{
+          drawerItemStyle: { display: "none" },
+        }}
+      />
+      <Drawer.Screen
+        name="connections"
         options={{
           drawerItemStyle: { display: "none" },
         }}

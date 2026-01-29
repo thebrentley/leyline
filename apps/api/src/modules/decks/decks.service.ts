@@ -14,7 +14,6 @@ import {
   DeckVersion,
   type VersionCard,
 } from "../../entities/deck-version.entity";
-import { User } from "../../entities/user.entity";
 import { CollectionCard } from "../../entities/collection-card.entity";
 import { CardsService } from "../cards/cards.service";
 import { AuthService } from "../auth/auth.service";
@@ -57,8 +56,6 @@ export class DecksService {
     private deckCardRepository: Repository<DeckCard>,
     @InjectRepository(DeckVersion)
     private deckVersionRepository: Repository<DeckVersion>,
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
     @InjectRepository(CollectionCard)
     private collectionRepository: Repository<CollectionCard>,
     private cardsService: CardsService,
@@ -1104,8 +1101,10 @@ export class DecksService {
    * Sync a deck from Archidekt
    */
   async syncFromArchidekt(archidektId: number, userId: string): Promise<Deck> {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user?.archidektId || !user?.archidektToken) {
+    const archidektUserIdVal = await this.authService.getArchidektId(userId);
+    const archidektToken = await this.authService.getArchidektToken(userId);
+
+    if (!archidektUserIdVal || !archidektToken) {
       throw new BadRequestException(
         "Archidekt account not connected. Please connect your Archidekt account first.",
       );
@@ -1114,7 +1113,7 @@ export class DecksService {
     // Fetch deck from Archidekt
     const archidektDeck = await this.fetchArchidektDeck(
       archidektId,
-      user.archidektToken,
+      archidektToken,
     );
 
     if (!archidektDeck) {
@@ -1255,18 +1254,18 @@ export class DecksService {
   ): Promise<
     Array<{ archidektId: number; name: string; format: null; updatedAt: null }>
   > {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user?.archidektId || !user?.archidektToken) {
+    const archidektUserIdVal = await this.authService.getArchidektId(userId);
+    const archidektToken = await this.authService.getArchidektToken(userId);
+
+    if (!archidektUserIdVal || !archidektToken) {
       throw new BadRequestException(
         "Archidekt account not connected. Please connect your Archidekt account first.",
       );
     }
 
     console.log(
-      "[Archidekt] Fetching decks for user:",
-      user.archidektUsername,
-      "id:",
-      user.archidektId,
+      "[Archidekt] Fetching decks for archidektId:",
+      archidektUserIdVal,
     );
 
     try {
@@ -1289,7 +1288,7 @@ export class DecksService {
               pageSize: 36, // Archidekt's default page size
             },
             headers: {
-              Authorization: `JWT ${user.archidektToken}`,
+              Authorization: `JWT ${archidektToken}`,
               Accept: "application/json",
             },
           },

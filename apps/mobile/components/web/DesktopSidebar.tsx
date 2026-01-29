@@ -3,10 +3,10 @@ import { router, usePathname } from "expo-router";
 import {
   ChevronRight,
   CircleHelp,
-  FolderSync,
   Home,
   Layers,
   Library,
+  Link2,
   LogOut,
   MessageSquarePlus,
   Moon,
@@ -104,6 +104,7 @@ export function DesktopSidebar() {
     if (pathname.includes("/decks")) return "decks";
     if (pathname.includes("/collection")) return "collection";
     if (pathname.includes("/profile")) return "profile";
+    if (pathname.includes("/connections")) return "connections";
     return "";
   };
 
@@ -211,13 +212,11 @@ export function DesktopSidebar() {
         </View>
 
         <SidebarItem
-          icon={<FolderSync size={20} color={iconColor} />}
-          label="Archidekt"
-          onPress={() => router.push("/archidekt")}
+          icon={<Link2 size={20} color={currentRoute === "connections" ? "#7C3AED" : iconColor} />}
+          label="Connections"
+          onPress={() => router.push("/(tabs)/connections")}
           isDark={isDark}
-          rightText={
-            user?.archidektUsername ? `@${user.archidektUsername}` : undefined
-          }
+          isActive={currentRoute === "connections"}
         />
 
         {/* <SidebarItem

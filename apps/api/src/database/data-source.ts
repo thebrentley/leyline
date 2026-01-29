@@ -5,6 +5,7 @@ import {
   InitialSchema1769481839420,
   CamelToSnakeCase1769532303427,
   MakeArchidektIdNullable1738095600000,
+  CreateSettingsTable1738200000000,
 } from './migrations';
 
 config();
@@ -14,6 +15,7 @@ export const migrations = [
   InitialSchema1769481839420,
   CamelToSnakeCase1769532303427,
   MakeArchidektIdNullable1738095600000,
+  CreateSettingsTable1738200000000,
 ];
 
 export const AppDataSource = new DataSource({
