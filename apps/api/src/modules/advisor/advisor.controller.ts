@@ -29,6 +29,12 @@ class SendMessageDto {
   @IsString()
   @IsNotEmpty()
   message: string;
+
+  @IsOptional()
+  includeCollection?: boolean;
+
+  @IsOptional()
+  skipPersist?: boolean;
 }
 
 class UpdateChangeStatusDto {
@@ -86,7 +92,14 @@ export class AdvisorController {
     @CurrentUser() user: CurrentUserPayload,
     @Res() res: Response,
   ) {
-    return this.advisorService.chat(sessionId, user.userId, dto.message, res);
+    return this.advisorService.chat(
+      sessionId,
+      user.userId,
+      dto.message,
+      res,
+      dto.includeCollection,
+      dto.skipPersist,
+    );
   }
 
   @Put('session/:sessionId/change')

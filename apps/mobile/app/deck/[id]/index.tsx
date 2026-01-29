@@ -20,10 +20,13 @@ import {
   Minus,
   MoreVertical,
   Palette,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   RefreshCcw,
   Search,
   Sidebar,
+  Sparkles,
   Trash2,
   Unlink,
   X,
@@ -65,7 +68,9 @@ import {
 } from "~/lib/api";
 import { cache, CACHE_KEYS, CACHE_TTL, cachedFetch } from "~/lib/cache";
 import { useResponsive } from "~/hooks/useResponsive";
+import { useAdvisorChat } from "~/hooks/useAdvisorChat";
 import { DesktopSidebar } from "~/components/web/DesktopSidebar";
+import { AdvisorSidePanel } from "~/components/AdvisorSidePanel";
 
 // Color identity colors
 const MANA_COLORS: Record<string, string> = {
@@ -508,6 +513,7 @@ export default function DeckDetailScreen() {
   const [scryfallSearchVisible, setScryfallSearchVisible] = useState(false);
   const [colorTagManagerVisible, setColorTagManagerVisible] = useState(false);
   const [chatPanelVisible, setChatPanelVisible] = useState(false);
+  const [advisorPanelVisible, setAdvisorPanelVisible] = useState(true); // Desktop side panel
 
   // Card action sheet state
   const [actionSheetCard, setActionSheetCard] = useState<DeckCard | null>(null);
@@ -518,7 +524,8 @@ export default function DeckDetailScreen() {
   } | null>(null);
   const [colorTagPickerVisible, setColorTagPickerVisible] = useState(false);
   const [colorTagSubmenuOpen, setColorTagSubmenuOpen] = useState(false);
-  const [headerColorTagDropdownOpen, setHeaderColorTagDropdownOpen] = useState(false);
+  const [headerColorTagDropdownOpen, setHeaderColorTagDropdownOpen] =
+    useState(false);
   const [editionPickerVisible, setEditionPickerVisible] = useState(false);
   const [editionPickerModalVisible, setEditionPickerModalVisible] =
     useState(false);
@@ -611,6 +618,17 @@ export default function DeckDetailScreen() {
     setRefreshing(true);
     loadDeck(true);
   }, [loadDeck]);
+
+  // AI Advisor hook - shared between ChatPanel (mobile) and AdvisorSidePanel (desktop)
+  const handleAdvisorDeckUpdate = useCallback(() => {
+    cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
+    loadDeck(true);
+  }, [id, loadDeck]);
+
+  const advisorChat = useAdvisorChat({
+    deck,
+    onDeckUpdated: handleAdvisorDeckUpdate,
+  });
 
   const pollForSyncComplete = useCallback(() => {
     const checkSync = async () => {
@@ -725,7 +743,9 @@ export default function DeckDetailScreen() {
       try {
         const result = await authApi.getArchidektStatus();
         if (result.data) {
-          setArchidektConnected(result.data.connected && result.data.tokenValid);
+          setArchidektConnected(
+            result.data.connected && result.data.tokenValid,
+          );
         }
       } catch (err) {
         console.error("Failed to check Archidekt status:", err);
@@ -1174,7 +1194,7 @@ export default function DeckDetailScreen() {
 
       // Optimistically update the selected card immediately
       setSelectedCard((prev) =>
-        prev ? { ...prev, colorTag: tag ?? undefined } : null
+        prev ? { ...prev, colorTag: tag ?? undefined } : null,
       );
 
       setActionLoading(true);
@@ -1184,7 +1204,7 @@ export default function DeckDetailScreen() {
           showToast.error(result.error);
           // Revert on error
           setSelectedCard((prev) =>
-            prev ? { ...prev, colorTag: selectedCard.colorTag } : null
+            prev ? { ...prev, colorTag: selectedCard.colorTag } : null,
           );
         } else {
           await cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
@@ -1194,7 +1214,7 @@ export default function DeckDetailScreen() {
         showToast.error("Failed to update color tag");
         // Revert on error
         setSelectedCard((prev) =>
-          prev ? { ...prev, colorTag: selectedCard.colorTag } : null
+          prev ? { ...prev, colorTag: selectedCard.colorTag } : null,
         );
       } finally {
         setActionLoading(false);
@@ -1544,6 +1564,36 @@ export default function DeckDetailScreen() {
               </Text>
             )}
           </Pressable>
+          {/* AI Advisor Toggle - Desktop only */}
+          {isDesktop && (
+            <Pressable
+              onPress={() => setAdvisorPanelVisible(!advisorPanelVisible)}
+              className={`flex-row items-center gap-1.5 rounded-full p-2 lg:px-3 lg:py-2 lg:rounded-lg ${
+                advisorPanelVisible
+                  ? "bg-purple-600"
+                  : isDark
+                    ? "active:bg-slate-800 lg:hover:bg-slate-800 lg:bg-slate-800"
+                    : "active:bg-slate-100 lg:hover:bg-slate-100 lg:bg-slate-100"
+              }`}
+              accessibilityRole="button"
+              accessibilityLabel={
+                advisorPanelVisible ? "Hide AI Advisor" : "Show AI Advisor"
+              }
+            >
+              {advisorPanelVisible ? (
+                <PanelRightClose size={20} color="white" />
+              ) : (
+                <Sparkles size={20} color="#7C3AED" />
+              )}
+              <Text
+                className={`text-sm font-medium ${
+                  advisorPanelVisible ? "text-white" : "text-purple-500"
+                }`}
+              >
+                Advisor
+              </Text>
+            </Pressable>
+          )}
           {/* Menu */}
           <View ref={menuButtonRef} collapsable={false}>
             <Pressable
@@ -2209,7 +2259,10 @@ export default function DeckDetailScreen() {
                   isDark ? "active:bg-slate-700" : "active:bg-slate-100"
                 }`}
               >
-                <CloudDownload size={18} color={isDark ? "#94a3b8" : "#64748b"} />
+                <CloudDownload
+                  size={18}
+                  color={isDark ? "#94a3b8" : "#64748b"}
+                />
                 <Text className={isDark ? "text-white" : "text-slate-900"}>
                   Pull from Archidekt
                 </Text>
@@ -2222,9 +2275,7 @@ export default function DeckDetailScreen() {
               }`}
             >
               <Trash2 size={18} color="#ef4444" />
-              <Text className="text-red-500">
-                Delete Deck
-              </Text>
+              <Text className="text-red-500">Delete Deck</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -2341,11 +2392,23 @@ export default function DeckDetailScreen() {
                 </View>
 
                 {/* Navigation */}
-                <View className="flex-row items-center gap-2" style={{ zIndex: 50 }}>
+                <View
+                  className="flex-row items-center gap-2"
+                  style={{ zIndex: 50 }}
+                >
                   {/* Color Tag Chip with Dropdown */}
-                  <View style={{ position: "relative" as any, zIndex: headerColorTagDropdownOpen ? 1000 : 1 }}>
+                  <View
+                    style={{
+                      position: "relative" as any,
+                      zIndex: headerColorTagDropdownOpen ? 1000 : 1,
+                    }}
+                  >
                     <Pressable
-                      onPress={() => setHeaderColorTagDropdownOpen(!headerColorTagDropdownOpen)}
+                      onPress={() =>
+                        setHeaderColorTagDropdownOpen(
+                          !headerColorTagDropdownOpen,
+                        )
+                      }
                       className={`flex-row items-center gap-1.5 rounded-full px-3 py-1 mr-2 ${
                         selectedCard?.colorTag
                           ? ""
@@ -2353,7 +2416,11 @@ export default function DeckDetailScreen() {
                             ? "bg-slate-700"
                             : "bg-slate-100"
                       }`}
-                      style={selectedCard?.colorTag ? { backgroundColor: `${selectedCard.colorTag}20` } : undefined}
+                      style={
+                        selectedCard?.colorTag
+                          ? { backgroundColor: `${selectedCard.colorTag}20` }
+                          : undefined
+                      }
                     >
                       {selectedCard?.colorTag ? (
                         <>
@@ -2365,18 +2432,31 @@ export default function DeckDetailScreen() {
                             className="text-xs font-medium"
                             style={{ color: selectedCard.colorTag }}
                           >
-                            {deck?.colorTags?.find(t => t.color === selectedCard.colorTag)?.name || 'Tagged'}
+                            {deck?.colorTags?.find(
+                              (t) => t.color === selectedCard.colorTag,
+                            )?.name || "Tagged"}
                           </Text>
                         </>
                       ) : (
                         <>
-                          <Palette size={12} color={isDark ? "#94a3b8" : "#64748b"} />
-                          <Text className={`text-xs font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                          <Palette
+                            size={12}
+                            color={isDark ? "#94a3b8" : "#64748b"}
+                          />
+                          <Text
+                            className={`text-xs font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                          >
                             Tag
                           </Text>
                         </>
                       )}
-                      <ChevronDown size={12} color={selectedCard?.colorTag || (isDark ? "#94a3b8" : "#64748b")} />
+                      <ChevronDown
+                        size={12}
+                        color={
+                          selectedCard?.colorTag ||
+                          (isDark ? "#94a3b8" : "#64748b")
+                        }
+                      />
                     </Pressable>
 
                     {/* Dropdown Menu */}
@@ -2414,7 +2494,9 @@ export default function DeckDetailScreen() {
                             onPress={() => handleHeaderSetColorTag(null)}
                             disabled={actionLoading}
                             className={`flex-row items-center gap-2 px-3 py-2 ${
-                              isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+                              isDark
+                                ? "hover:bg-slate-700"
+                                : "hover:bg-slate-50"
                             }`}
                           >
                             <View className="h-4 w-4 rounded-full border border-dashed border-slate-400" />
@@ -2435,7 +2517,9 @@ export default function DeckDetailScreen() {
                               onPress={() => handleHeaderSetColorTag(tag.color)}
                               disabled={actionLoading}
                               className={`flex-row items-center gap-2 px-3 py-2 ${
-                                isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
+                                isDark
+                                  ? "hover:bg-slate-700"
+                                  : "hover:bg-slate-50"
                               }`}
                             >
                               <View
@@ -2713,7 +2797,9 @@ export default function DeckDetailScreen() {
                             <Crown
                               size={18}
                               color={
-                                selectedCard?.isCommander ? "#eab308" : "#94a3b8"
+                                selectedCard?.isCommander
+                                  ? "#eab308"
+                                  : "#94a3b8"
                               }
                             />
                             <Text
@@ -2740,7 +2826,9 @@ export default function DeckDetailScreen() {
                           <View className="flex-row items-center gap-3">
                             <RefreshCcw size={18} color="#94a3b8" />
                             <Text
-                              className={isDark ? "text-white" : "text-slate-900"}
+                              className={
+                                isDark ? "text-white" : "text-slate-900"
+                              }
                             >
                               Change Edition
                             </Text>
@@ -2760,7 +2848,9 @@ export default function DeckDetailScreen() {
                           <View className="flex-row items-center gap-3">
                             <Sidebar size={18} color="#94a3b8" />
                             <Text
-                              className={isDark ? "text-white" : "text-slate-900"}
+                              className={
+                                isDark ? "text-white" : "text-slate-900"
+                              }
                             >
                               {selectedCard?.categories?.includes("Sideboard")
                                 ? "Move to Mainboard"
@@ -3947,18 +4037,14 @@ export default function DeckDetailScreen() {
         />
       )}
 
-      {/* AI Advisor Chat Panel */}
-      {deck && (
+      {/* AI Advisor Chat Panel - Mobile only */}
+      {!isDesktop && deck && (
         <ChatPanel
           deck={deck}
           visible={chatPanelVisible}
           onClose={() => setChatPanelVisible(false)}
-          onDeckUpdated={() => {
-            // Reload deck after AI advisor changes are applied
-            cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
-            loadDeck(true);
-          }}
           isDark={isDark}
+          {...advisorChat}
         />
       )}
 
@@ -4142,6 +4228,14 @@ export default function DeckDetailScreen() {
         <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
           {pageContent}
         </View>
+        {deck && (
+          <AdvisorSidePanel
+            deck={deck}
+            visible={advisorPanelVisible}
+            onClose={() => setAdvisorPanelVisible(false)}
+            {...advisorChat}
+          />
+        )}
       </View>
     );
   }

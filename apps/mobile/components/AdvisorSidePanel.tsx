@@ -2,6 +2,7 @@ import {
   ArrowUp,
   Bot,
   FolderOpen,
+  GripVertical,
   Loader2,
   MessageSquare,
   MessagesSquare,
@@ -10,59 +11,60 @@ import {
   User,
   X,
 } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   Text,
   TextInput,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useColorScheme } from "nativewind";
 import { Button } from "~/components/ui/button";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AdvisorQuickActions } from "~/components/AdvisorQuickActions";
 import {
   cardsApi,
   type CardSearchResult,
   type ChatMessage,
+  type ChatSession,
   type DeckChange,
   type DeckDetail,
 } from "~/lib/api";
-import { CardDetailModal } from "./CardDetailModal";
 import { showToast } from "~/lib/toast";
+import { CardDetailModal } from "./CardDetailModal";
+import { ChatHistoryModal } from "./ChatHistoryModal";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
-import { AdvisorQuickActions } from "~/components/AdvisorQuickActions";
-import { ChatHistoryModal } from "~/components/ChatHistoryModal";
 import type { UseAdvisorChatReturn } from "~/hooks/useAdvisorChat";
 
-interface ChatPanelProps extends UseAdvisorChatReturn {
+const PANEL_WIDTH_KEY = "advisor_panel_width";
+const DEFAULT_WIDTH = 400;
+const MIN_WIDTH = 320;
+const MAX_WIDTH = 600;
+
+interface AdvisorSidePanelProps extends UseAdvisorChatReturn {
   deck: DeckDetail;
   visible: boolean;
   onClose: () => void;
-  isDark: boolean;
 }
 
 // Input component with internal state to prevent parent re-renders on typing
-interface ChatInputProps {
+interface SidePanelInputProps {
   onSend: (message: string) => void;
   sending: boolean;
   includeCollection: boolean;
   setIncludeCollection: (value: boolean) => void;
   isDark: boolean;
-  bottomInset: number;
 }
 
-function ChatInput({
+function SidePanelInput({
   onSend,
   sending,
   includeCollection,
   setIncludeCollection,
   isDark,
-  bottomInset,
-}: ChatInputProps) {
+}: SidePanelInputProps) {
   const [localMessage, setLocalMessage] = useState("");
 
   const handleSend = useCallback(() => {
@@ -73,10 +75,7 @@ function ChatInput({
   }, [localMessage, sending, onSend]);
 
   return (
-    <View
-      className={`px-4 pt-3 ${isDark ? "bg-gray-950" : "bg-gray-50"}`}
-      style={{ paddingBottom: Math.max(16, bottomInset) }}
-    >
+    <View className={`px-4 py-3 ${isDark ? "bg-gray-950" : "bg-gray-50"}`}>
       <Pressable
         onPress={() => setIncludeCollection(!includeCollection)}
         className={`flex-row items-center gap-2 mb-3 px-3 py-2 rounded-full self-start border ${
@@ -116,20 +115,24 @@ function ChatInput({
         }`}
       >
         <TextInput
+          value={localMessage}
+          onChangeText={setLocalMessage}
+          placeholder="Ask about your deck..."
+          placeholderTextColor={isDark ? "#64748b" : "#9ca3af"}
+          multiline
+          maxLength={2000}
+          onSubmitEditing={handleSend}
           className={`flex-1 min-h-[40px] max-h-[100px] px-2 py-2 text-base ${
             isDark ? "text-white" : "text-slate-900"
           }`}
-          placeholder="Ask about your deck..."
-          placeholderTextColor={isDark ? "#64748b" : "#9ca3af"}
-          value={localMessage}
-          onChangeText={setLocalMessage}
-          multiline
           editable={!sending}
+          accessibilityLabel="Message input"
+          accessibilityHint="Type your question about the deck"
         />
         <Pressable
           onPress={handleSend}
           disabled={!localMessage.trim() || sending}
-          className={`h-10 w-10 rounded-xl items-center justify-center ml-2 ${
+          className={`h-10 w-10 rounded-xl items-center justify-center ml-2 focus-visible:ring-2 focus-visible:ring-purple-500 ${
             !localMessage.trim() || sending
               ? isDark
                 ? "bg-slate-700"
@@ -138,12 +141,12 @@ function ChatInput({
                 ? "bg-white"
                 : "bg-slate-900"
           }`}
+          accessibilityRole="button"
+          accessibilityLabel="Send message"
+          accessibilityState={{ disabled: !localMessage.trim() || sending }}
         >
           {sending ? (
-            <ActivityIndicator
-              color={isDark ? "#64748b" : "#94a3b8"}
-              size="small"
-            />
+            <Loader2 size={20} color="#7C3AED" className="animate-spin" style={{ transformOrigin: 'center' }} />
           ) : (
             <ArrowUp
               size={20}
@@ -164,11 +167,10 @@ function ChatInput({
   );
 }
 
-export function ChatPanel({
+export function AdvisorSidePanel({
   deck,
   visible,
   onClose,
-  isDark,
   // Hook state
   sessions,
   activeSession,
@@ -188,10 +190,17 @@ export function ChatPanel({
   setIncludeCollection,
   // Hook refs
   scrollViewRef,
-}: ChatPanelProps) {
-  const insets = useSafeAreaInsets();
+}: AdvisorSidePanelProps) {
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === "dark";
 
-  // Local UI state
+  // Panel width state
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  // UI state
+  const [showHistory, setShowHistory] = useState(false);
   const [selectedCard, setSelectedCard] = useState<CardSearchResult | null>(
     null,
   );
@@ -205,7 +214,6 @@ export function ChatPanel({
       }
     | undefined
   >(undefined);
-  const [showHistory, setShowHistory] = useState(false);
 
   // Confirmation dialogs
   const [confirmApplyAll, setConfirmApplyAll] = useState<{
@@ -216,6 +224,75 @@ export function ChatPanel({
     visible: boolean;
     changes: DeckChange[];
   }>({ visible: false, changes: [] });
+
+  // Load saved panel width
+  useEffect(() => {
+    AsyncStorage.getItem(PANEL_WIDTH_KEY).then((saved) => {
+      if (saved) {
+        const width = parseInt(saved, 10);
+        if (width >= MIN_WIDTH && width <= MAX_WIDTH) {
+          setPanelWidth(width);
+        }
+      }
+    });
+  }, []);
+
+  // Save panel width on change
+  useEffect(() => {
+    if (!isResizing) {
+      AsyncStorage.setItem(PANEL_WIDTH_KEY, panelWidth.toString());
+    }
+  }, [panelWidth, isResizing]);
+
+  // Keyboard handling for Escape
+  useEffect(() => {
+    if (!visible) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [visible, onClose]);
+
+  // Resize handlers
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      setIsResizing(true);
+      resizeRef.current = { startX: e.clientX, startWidth: panelWidth };
+    },
+    [panelWidth],
+  );
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const delta = resizeRef.current.startX - e.clientX;
+      const newWidth = Math.min(
+        MAX_WIDTH,
+        Math.max(MIN_WIDTH, resizeRef.current.startWidth + delta),
+      );
+      setPanelWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      resizeRef.current = null;
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizing]);
 
   const handleCardClick = async (cardName: string, change?: DeckChange) => {
     setLoadingCard(true);
@@ -414,13 +491,17 @@ export function ChatPanel({
                   <View className="flex-row gap-1">
                     <Pressable
                       onPress={() => handleChangeStatus(change.id, "accepted")}
-                      className="px-3 py-2 rounded bg-purple-600"
+                      className="px-3 py-2 rounded bg-purple-600 focus-visible:ring-2 focus-visible:ring-purple-500"
+                      accessibilityRole="button"
+                      accessibilityLabel={`Apply ${change.cardName}`}
                     >
                       <Text className="text-white text-xs">Apply</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => handleChangeStatus(change.id, "rejected")}
-                      className={`px-3 py-2 rounded ${isDark ? "bg-slate-600" : "bg-slate-200"}`}
+                      className={`px-3 py-2 rounded focus-visible:ring-2 focus-visible:ring-purple-500 ${isDark ? "bg-slate-600" : "bg-slate-200"}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Reject ${change.cardName}`}
                     >
                       <Text
                         className={`text-xs ${isDark ? "text-white" : "text-slate-900"}`}
@@ -447,7 +528,9 @@ export function ChatPanel({
                   onPress={() =>
                     handleApplyAllClick(msg.suggestedChanges || [])
                   }
-                  className="flex-1 px-3 py-2 rounded-lg bg-purple-600 items-center"
+                  className="flex-1 px-3 py-2 rounded-lg bg-purple-600 items-center focus-visible:ring-2 focus-visible:ring-purple-500"
+                  accessibilityRole="button"
+                  accessibilityLabel="Apply all suggested changes"
                 >
                   <Text className="text-white text-xs font-medium">
                     Apply All
@@ -457,9 +540,11 @@ export function ChatPanel({
                   onPress={() =>
                     handleRejectAllClick(msg.suggestedChanges || [])
                   }
-                  className={`flex-1 px-3 py-2 rounded-lg items-center ${
+                  className={`flex-1 px-3 py-2 rounded-lg items-center focus-visible:ring-2 focus-visible:ring-purple-500 ${
                     isDark ? "bg-slate-700" : "bg-slate-200"
                   }`}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reject all suggested changes"
                 >
                   <Text
                     className={`text-xs font-medium ${isDark ? "text-white" : "text-slate-900"}`}
@@ -475,18 +560,27 @@ export function ChatPanel({
     );
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal
-      visible={visible}
-      transparent={false}
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
+    <>
       <View
-        className={`flex-1 ${isDark ? "bg-gray-950" : "bg-white"}`}
-        style={{ paddingTop: insets.top }}
+        role="complementary"
+        aria-label="AI Deck Advisor"
+        className={`flex-col h-full border-l ${isDark ? "border-slate-800 bg-gray-950" : "border-slate-200 bg-white"}`}
+        style={{ width: panelWidth }}
       >
+        {/* Resize handle */}
+        <View
+          className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-purple-600/50"
+          // @ts-ignore - Web-specific mouse events
+          onMouseDown={handleResizeStart}
+        >
+          <View className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 p-1">
+            <GripVertical size={12} color={isDark ? "#475569" : "#94a3b8"} />
+          </View>
+        </View>
+
         {/* Header with gradient */}
         <View
           className={`flex-row items-center justify-between px-4 py-3 border-b ${isDark ? "border-slate-800 bg-gradient-to-r from-purple-950 to-gray-900" : "border-slate-200 bg-slate-50"}`}
@@ -502,178 +596,177 @@ export function ChatPanel({
           <View className="flex-row items-center gap-2">
             <Pressable
               onPress={() => setShowHistory(true)}
-              className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
+              className={`rounded-full p-2 focus-visible:ring-2 focus-visible:ring-purple-500 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
+              accessibilityRole="button"
+              accessibilityLabel="View chat history"
             >
               <MessagesSquare size={20} color="#7C3AED" />
             </Pressable>
             <Pressable
               onPress={createSession}
-              className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
+              className={`rounded-full p-2 focus-visible:ring-2 focus-visible:ring-purple-500 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
+              accessibilityRole="button"
+              accessibilityLabel="Create new chat session"
             >
               <Plus size={20} color="#7C3AED" />
             </Pressable>
-            <Pressable onPress={onClose} className="rounded-full p-2">
+            <Pressable
+              onPress={onClose}
+              className="rounded-full p-2 focus-visible:ring-2 focus-visible:ring-purple-500"
+              accessibilityRole="button"
+              accessibilityLabel="Close advisor panel"
+            >
               <X size={24} color={isDark ? "white" : "#1e293b"} />
             </Pressable>
           </View>
         </View>
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
-        >
-          {loading ? (
-            <View className="flex-1 items-center justify-center">
-              <ActivityIndicator size="large" color="#7C3AED" />
-            </View>
-          ) : (
-            <>
-              {/* Chat area */}
-              {activeSession ? (
-                <>
-                  <ScrollView
-                    ref={scrollViewRef}
-                    className="flex-1 px-4 pt-4"
-                    contentContainerStyle={{ paddingBottom: 16 }}
-                  >
-                    {activeSession.messages.length === 0 &&
-                    !streamingContent ? (
-                      <View className="py-8">
-                        <View className="items-center mb-6">
-                          <View
-                            className={`p-4 rounded-full mb-4 ${isDark ? "bg-purple-900/30" : "bg-purple-100"}`}
-                          >
-                            <MessageSquare size={32} color="#7C3AED" />
-                          </View>
-                          <Text
-                            className={`text-lg font-medium text-center mb-2 ${isDark ? "text-white" : "text-slate-900"}`}
-                          >
-                            Welcome to Deck Advisor
-                          </Text>
-                          <Text
-                            className={`text-sm text-center px-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}
-                          >
-                            Ask me anything about improving your "{deck.name}"
-                            deck.
-                          </Text>
-                        </View>
-                        <View className="px-2">
-                          <Text
-                            className={`text-xs font-medium mb-2 px-2 ${isDark ? "text-slate-500" : "text-slate-400"}`}
-                          >
-                            Quick Actions
-                          </Text>
-                          <AdvisorQuickActions
-                            onActionSelect={(prompt) => sendMessage(prompt)}
-                            disabled={sending}
-                            isDark={isDark}
-                          />
-                        </View>
-                      </View>
-                    ) : (
-                      <>
-                        {activeSession.messages.map(renderMessage)}
-                        {/* Streaming message */}
-                        {sending && streamingContent && (
-                          <View
-                            className={`p-4 rounded-xl mb-3 ${isDark ? "bg-slate-800" : "bg-slate-100"}`}
-                          >
-                            <View className="flex-row items-center gap-2 mb-2">
-                              <View
-                                className={`h-6 w-6 rounded-full items-center justify-center ${isDark ? "bg-slate-700" : "bg-slate-300"}`}
-                              >
-                                <Bot
-                                  size={14}
-                                  color={isDark ? "#A78BFA" : "#7C3AED"}
-                                />
-                              </View>
-                              <Text
-                                className={`text-sm font-medium ${isDark ? "text-white" : "text-slate-900"}`}
-                              >
-                                Deck Advisor
-                              </Text>
-                              <View className="flex-row items-center gap-1 ml-auto">
-                                <Loader2
-                                  size={12}
-                                  color="#7C3AED"
-                                  className="animate-spin"
-                                />
-                                <Text className="text-xs text-purple-400">
-                                  thinking
-                                </Text>
-                              </View>
-                            </View>
-                            <Text
-                              className={`text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}
-                            >
-                              {streamingContent}
-                              <Text className="text-purple-400">▊</Text>
-                            </Text>
-                          </View>
-                        )}
-                        {sending && !streamingContent && (
-                          <View
-                            className={`flex-row items-center gap-3 p-4 rounded-xl mb-3 ${isDark ? "bg-purple-900/30" : "bg-purple-50"}`}
-                          >
-                            <Loader2
-                              size={18}
-                              color="#7C3AED"
-                              className="animate-spin"
-                            />
-                            <Text
-                              className={`text-sm font-medium ${isDark ? "text-purple-300" : "text-purple-600"}`}
-                            >
-                              {statusMessage || "Thinking..."}
-                            </Text>
-                          </View>
-                        )}
-                      </>
-                    )}
-                  </ScrollView>
-
-                  <ChatInput
-                    onSend={sendMessage}
-                    sending={sending}
-                    includeCollection={includeCollection}
-                    setIncludeCollection={setIncludeCollection}
-                    isDark={isDark}
-                    bottomInset={insets.bottom}
-                  />
-                </>
-              ) : (
-                <View className="flex-1 items-center justify-center px-6">
-                  <View
-                    className={`p-4 rounded-full mb-4 ${isDark ? "bg-purple-900/30" : "bg-purple-100"}`}
-                  >
-                    <MessageSquare size={48} color="#7C3AED" />
+        {loading ? (
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator size="large" color="#7C3AED" />
+          </View>
+        ) : (
+          <>
+            {/* Chat messages */}
+            <ScrollView
+              ref={scrollViewRef}
+              className="flex-1 px-4 py-3"
+              role="log"
+              aria-live="polite"
+              aria-atomic={false}
+            >
+              {!activeSession || activeSession.messages.length === 0 ? (
+                <View className="flex-1 py-8">
+                  <View className="items-center mb-6">
+                    <View
+                      className={`p-4 rounded-full mb-4 ${isDark ? "bg-purple-900/30" : "bg-purple-100"}`}
+                    >
+                      <MessageSquare size={32} color="#7C3AED" />
+                    </View>
+                    <Text
+                      className={`text-lg font-medium text-center mb-2 ${isDark ? "text-white" : "text-slate-900"}`}
+                    >
+                      Welcome to Deck Advisor
+                    </Text>
+                    <Text
+                      className={`text-sm text-center px-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                    >
+                      Ask me anything about improving your "{deck.name}" deck.
+                    </Text>
                   </View>
-                  <Text
-                    className={`text-lg font-medium text-center mb-2 ${isDark ? "text-white" : "text-slate-900"}`}
-                  >
-                    No chat session selected
-                  </Text>
-                  <Text
-                    className={`text-sm text-center mb-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}
-                  >
-                    Start a new chat to get AI-powered deck advice
-                  </Text>
-                  <Button
-                    onPress={createSession}
-                    className="px-6 py-3 bg-purple-600"
-                  >
-                    <View className="flex-row items-center gap-2">
-                      <Plus size={18} color="white" />
-                      <Text className="text-white font-medium">
-                        Start New Chat
+                  <View className="px-2">
+                    <Text
+                      className={`text-xs font-medium mb-2 px-2 ${isDark ? "text-slate-500" : "text-slate-400"}`}
+                    >
+                      Quick Actions
+                    </Text>
+                    <AdvisorQuickActions
+                      onActionSelect={(prompt) => sendMessage(prompt)}
+                      disabled={sending}
+                      isDark={isDark}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <>
+                  {activeSession.messages.map(renderMessage)}
+                  {/* Status indicator - shows while processing before streaming starts */}
+                  {sending && !streamingContent && (
+                    <View
+                      className={`flex-row items-center gap-3 p-4 rounded-xl mb-3 ${isDark ? "bg-purple-900/30" : "bg-purple-50"}`}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <Loader2
+                        size={18}
+                        color="#7C3AED"
+                        className="animate-spin"
+                        style={{ transformOrigin: 'center' }}
+                      />
+                      <Text
+                        className={`text-sm font-medium ${isDark ? "text-purple-300" : "text-purple-600"}`}
+                      >
+                        {statusMessage || "Thinking..."}
                       </Text>
                     </View>
-                  </Button>
-                </View>
+                  )}
+                  {/* Streaming content */}
+                  {sending && streamingContent && (
+                    <View
+                      className={`p-4 rounded-xl mb-3 ${isDark ? "bg-slate-800" : "bg-slate-100"}`}
+                      role="status"
+                      aria-live="polite"
+                      accessibilityLabel="Advisor is responding"
+                    >
+                      <View className="flex-row items-center gap-2 mb-2">
+                        <View
+                          className={`h-6 w-6 rounded-full items-center justify-center ${isDark ? "bg-slate-700" : "bg-slate-300"}`}
+                        >
+                          <Bot
+                            size={14}
+                            color={isDark ? "#A78BFA" : "#7C3AED"}
+                          />
+                        </View>
+                        <Text
+                          className={`text-sm font-medium ${isDark ? "text-white" : "text-slate-900"}`}
+                        >
+                          Deck Advisor
+                        </Text>
+                        <View className="flex-row items-center gap-1 ml-auto">
+                          <Loader2
+                            size={12}
+                            color="#7C3AED"
+                            className="animate-spin"
+                            style={{ transformOrigin: 'center' }}
+                          />
+                          <Text className="text-xs text-purple-400">
+                            thinking
+                          </Text>
+                        </View>
+                      </View>
+                      <Text
+                        className={`text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}
+                      >
+                        {streamingContent}
+                        <Text className="text-purple-400">▊</Text>
+                      </Text>
+                    </View>
+                  )}
+                </>
               )}
-            </>
-          )}
-        </KeyboardAvoidingView>
+            </ScrollView>
+
+            <SidePanelInput
+              onSend={sendMessage}
+              sending={sending}
+              includeCollection={includeCollection}
+              setIncludeCollection={setIncludeCollection}
+              isDark={isDark}
+            />
+          </>
+        )}
       </View>
+
+      {/* Confirmation Dialogs */}
+      <ConfirmDialog
+        visible={confirmApplyAll.visible}
+        title="Apply All Changes"
+        message={`Apply ${confirmApplyAll.changes.length} ${confirmApplyAll.changes.length === 1 ? "change" : "changes"} to your deck?`}
+        confirmText="Apply All"
+        cancelText="Cancel"
+        onConfirm={confirmApplyAllHandler}
+        onCancel={() => setConfirmApplyAll({ visible: false, changes: [] })}
+      />
+      <ConfirmDialog
+        visible={confirmRejectAll.visible}
+        title="Reject All Changes"
+        message={`Reject ${confirmRejectAll.changes.length} ${confirmRejectAll.changes.length === 1 ? "change" : "changes"}?`}
+        confirmText="Reject All"
+        cancelText="Cancel"
+        onConfirm={confirmRejectAllHandler}
+        onCancel={() => setConfirmRejectAll({ visible: false, changes: [] })}
+        destructive
+      />
 
       {/* Card Detail Modal */}
       <CardDetailModal
@@ -687,28 +780,6 @@ export function ChatPanel({
         changeContext={selectedChangeContext}
       />
 
-      {/* Confirmation Dialogs */}
-      <ConfirmDialog
-        visible={confirmApplyAll.visible}
-        title="Apply All Changes"
-        message={`Apply ${confirmApplyAll.changes.length} ${confirmApplyAll.changes.length === 1 ? "change" : "changes"} to your deck?`}
-        confirmText="Apply All"
-        cancelText="Cancel"
-        onConfirm={confirmApplyAllHandler}
-        onCancel={() => setConfirmApplyAll({ visible: false, changes: [] })}
-      />
-
-      <ConfirmDialog
-        visible={confirmRejectAll.visible}
-        title="Reject All Changes"
-        message={`Reject ${confirmRejectAll.changes.length} ${confirmRejectAll.changes.length === 1 ? "change" : "changes"}?`}
-        confirmText="Reject All"
-        cancelText="Cancel"
-        destructive
-        onConfirm={confirmRejectAllHandler}
-        onCancel={() => setConfirmRejectAll({ visible: false, changes: [] })}
-      />
-
       {/* Chat History Modal */}
       <ChatHistoryModal
         visible={showHistory}
@@ -720,6 +791,6 @@ export function ChatPanel({
         onDeleteSession={deleteSession}
         isDark={isDark}
       />
-    </Modal>
+    </>
   );
 }

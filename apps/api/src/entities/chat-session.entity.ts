@@ -47,6 +47,9 @@ export class ChatSession {
   @Column({ name: 'pending_changes', type: 'jsonb', default: [] })
   pendingChanges: DeckChange[];
 
+  @Column({ name: 'commander_analysis', type: 'text', nullable: true })
+  commanderAnalysis: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

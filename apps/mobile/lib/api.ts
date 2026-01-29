@@ -231,7 +231,9 @@ export interface CardSearchResult {
   setName: string;
   collectorNumber: string;
   manaCost?: string;
+  cmc?: number;
   typeLine?: string;
+  oracleText?: string;
   rarity: string;
   colors?: string[];
   colorIdentity?: string[];
@@ -772,6 +774,13 @@ export const advisorApi = {
   async deleteSession(sessionId: string): Promise<ApiResponse<{ success: boolean }>> {
     return request<{ success: boolean }>(`/advisor/session/${sessionId}`, {
       method: "DELETE",
+    });
+  },
+
+  async updateSession(sessionId: string, updates: { name?: string }): Promise<ApiResponse<ChatSession>> {
+    return request<ChatSession>(`/advisor/session/${sessionId}`, {
+      method: "PATCH",
+      body: JSON.stringify(updates),
     });
   },
 };
