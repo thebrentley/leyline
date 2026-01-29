@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import {
   AlertCircle,
   CheckCircle,
+  ChevronDown,
   CloudDownload,
   Crown,
   Layers,
@@ -32,6 +33,7 @@ import { decksApi, type DeckSummary, type DeckSyncStatus } from "~/lib/api";
 import { showToast } from "~/lib/toast";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { CreateDeckDialog } from "~/components/ui/CreateDeckDialog";
+import { ArchidektDeckDialog } from "~/components/ui/ArchidektDeckDialog";
 import { useResponsive } from "~/hooks/useResponsive";
 
 // Color identity colors
@@ -234,6 +236,8 @@ export default function DecksScreen() {
     deck: DeckSummary | null;
   }>({ visible: false, deck: null });
   const [createDialogVisible, setCreateDialogVisible] = useState(false);
+  const [archidektDialogVisible, setArchidektDialogVisible] = useState(false);
+  const [dropdownVisible, setDropdownVisible] = useState(false);
 
   const openDrawer = () => {
     navigation.dispatch(DrawerActions.openDrawer());
@@ -347,6 +351,23 @@ export default function DecksScreen() {
     }
   };
 
+  const handleAddFromArchidekt = async (archidektId: number) => {
+    setArchidektDialogVisible(false);
+
+    try {
+      const result = await decksApi.syncFromArchidekt(archidektId);
+      if (result.error) {
+        showToast.error(result.error);
+      } else {
+        // Reload decks to show the new one
+        await loadDecks();
+        showToast.success("Deck added and syncing started");
+      }
+    } catch (err) {
+      showToast.error("Failed to add deck from Archidekt");
+    }
+  };
+
   useEffect(() => {
     loadDecks();
   }, [loadDecks]);
@@ -431,6 +452,43 @@ export default function DecksScreen() {
 
   return (
     <SafeAreaView className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+      {/* Backdrop for dropdown */}
+      {dropdownVisible && (
+        <Pressable
+          onPress={() => setDropdownVisible(false)}
+          className="absolute inset-0 z-30"
+          style={{ backgroundColor: 'transparent' }}
+        />
+      )}
+
+      {/* Dropdown menu - positioned absolutely at top level */}
+      {dropdownVisible && (
+        <View
+          className={`absolute right-4 lg:right-6 top-20 z-50 w-56 rounded-lg border shadow-lg ${
+            isDark
+              ? "bg-slate-900 border-slate-800"
+              : "bg-white border-slate-200"
+          }`}
+        >
+          <View className="py-1">
+            <Pressable
+              onPress={() => {
+                setDropdownVisible(false);
+                setArchidektDialogVisible(true);
+              }}
+              className={`flex-row items-center gap-3 px-4 py-3 ${
+                isDark ? "hover:bg-slate-800" : "hover:bg-slate-50"
+              }`}
+            >
+              <CloudDownload size={18} color={isDark ? "#94a3b8" : "#64748b"} />
+              <Text className={`text-sm ${isDark ? "text-white" : "text-slate-900"}`}>
+                Add from Archidekt
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       <View className="flex-1">
         {/* Header */}
         <View
@@ -455,18 +513,30 @@ export default function DecksScreen() {
               My Decks
             </Text>
           </View>
-          <Button
-            onPress={() => setCreateDialogVisible(true)}
-            className="px-3 py-2"
-            size="sm"
-          >
-            <View className="flex-row items-center gap-2">
-              <Plus size={20} color="white" />
-              <Text className="text-white font-medium hidden lg:flex">
-                New Deck
-              </Text>
-            </View>
-          </Button>
+          <View className="relative flex-row">
+            {/* Main button */}
+            <Button
+              onPress={() => setCreateDialogVisible(true)}
+              className="px-3 py-2 rounded-r-none"
+              size="sm"
+            >
+              <View className="flex-row items-center gap-2">
+                <Plus size={20} color="white" />
+                <Text className="text-white font-medium hidden lg:flex">
+                  New Deck
+                </Text>
+              </View>
+            </Button>
+
+            {/* Dropdown trigger */}
+            <Button
+              onPress={() => setDropdownVisible(!dropdownVisible)}
+              className="px-2 py-2 rounded-l-none border-l border-purple-700"
+              size="sm"
+            >
+              <ChevronDown size={16} color="white" />
+            </Button>
+          </View>
         </View>
 
         {/* Content */}
@@ -534,6 +604,14 @@ export default function DecksScreen() {
         visible={createDialogVisible}
         onConfirm={handleCreateDeck}
         onCancel={() => setCreateDialogVisible(false)}
+      />
+
+      {/* Archidekt Deck Dialog */}
+      <ArchidektDeckDialog
+        visible={archidektDialogVisible}
+        onConfirm={handleAddFromArchidekt}
+        onCancel={() => setArchidektDialogVisible(false)}
+        existingDecks={decks}
       />
     </SafeAreaView>
   );

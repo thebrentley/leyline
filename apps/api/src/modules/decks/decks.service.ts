@@ -1,14 +1,23 @@
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import axios from 'axios';
-import { Deck } from '../../entities/deck.entity';
-import { DeckCard } from '../../entities/deck-card.entity';
-import { DeckVersion, type VersionCard } from '../../entities/deck-version.entity';
-import { User } from '../../entities/user.entity';
-import { CollectionCard } from '../../entities/collection-card.entity';
-import { CardsService } from '../cards/cards.service';
-import { AuthService } from '../auth/auth.service';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import axios from "axios";
+import { Deck } from "../../entities/deck.entity";
+import { DeckCard } from "../../entities/deck-card.entity";
+import {
+  DeckVersion,
+  type VersionCard,
+} from "../../entities/deck-version.entity";
+import { User } from "../../entities/user.entity";
+import { CollectionCard } from "../../entities/collection-card.entity";
+import { CardsService } from "../cards/cards.service";
+import { AuthService } from "../auth/auth.service";
 
 interface ArchidektCard {
   card: {
@@ -37,7 +46,7 @@ interface ArchidektDeck {
 
 @Injectable()
 export class DecksService {
-  private readonly ARCHIDEKT_API = 'https://archidekt.com/api';
+  private readonly ARCHIDEKT_API = "https://archidekt.com/api";
   private lastArchidektRequest = 0;
   private readonly ARCHIDEKT_RATE_LIMIT_MS = 500; // 500ms between requests
 
@@ -83,18 +92,13 @@ export class DecksService {
       description: null,
       colorTags: [],
       lastSyncedAt: null,
-      syncStatus: 'synced', // No sync needed for manual decks
+      syncStatus: "synced", // No sync needed for manual decks
     });
 
     await this.deckRepository.save(deck);
 
     // Create initial version
-    await this.createVersion(
-      deck.id,
-      userId,
-      'manual',
-      'Deck created'
-    );
+    await this.createVersion(deck.id, userId, "manual", "Deck created");
 
     return deck;
   }
@@ -105,7 +109,7 @@ export class DecksService {
   async getUserDecks(userId: string) {
     const decks = await this.deckRepository.find({
       where: { userId },
-      order: { updatedAt: 'DESC' },
+      order: { updatedAt: "DESC" },
     });
 
     return Promise.all(
@@ -118,22 +122,34 @@ export class DecksService {
 
         const commanders = await this.deckCardRepository.find({
           where: { deckId: deck.id, isCommander: true },
-          relations: ['card'],
+          relations: ["card"],
         });
 
         // Get primary commander (first one) for image
         const primaryCommander = commanders[0]?.card;
-        
+
         // Debug logging
         if (commanders.length > 0) {
-          console.log(`[Deck ${deck.name}] Commanders found:`, commanders.length);
-          console.log(`[Deck ${deck.name}] Primary commander:`, primaryCommander?.name);
-          console.log(`[Deck ${deck.name}] imageArtCrop:`, primaryCommander?.imageArtCrop?.substring(0, 50) || 'null');
-          console.log(`[Deck ${deck.name}] imageNormal:`, primaryCommander?.imageNormal?.substring(0, 50) || 'null');
+          console.log(
+            `[Deck ${deck.name}] Commanders found:`,
+            commanders.length,
+          );
+          console.log(
+            `[Deck ${deck.name}] Primary commander:`,
+            primaryCommander?.name,
+          );
+          console.log(
+            `[Deck ${deck.name}] imageArtCrop:`,
+            primaryCommander?.imageArtCrop?.substring(0, 50) || "null",
+          );
+          console.log(
+            `[Deck ${deck.name}] imageNormal:`,
+            primaryCommander?.imageNormal?.substring(0, 50) || "null",
+          );
         } else {
           console.log(`[Deck ${deck.name}] No commanders found`);
         }
-        
+
         return {
           id: deck.id,
           archidektId: deck.archidektId,
@@ -165,7 +181,7 @@ export class DecksService {
         archidektId,
         userId,
         name: `Deck ${archidektId}`, // Will be updated during sync
-        syncStatus: 'waiting',
+        syncStatus: "waiting",
         lastSyncedAt: null,
       });
       await this.deckRepository.save(deck);
@@ -180,11 +196,11 @@ export class DecksService {
   async getDeck(deckId: string, userId: string): Promise<Deck> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards', 'cards.card'],
+      relations: ["cards", "cards.card"],
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     return deck;
@@ -199,7 +215,7 @@ export class DecksService {
     // Get user's collection to check which cards they own
     const collectionCards = await this.collectionRepository.find({
       where: { userId },
-      relations: ['card'],
+      relations: ["card"],
     });
 
     // Build lookup maps for collection
@@ -224,7 +240,7 @@ export class DecksService {
     const sideboard: any[] = [];
 
     for (const deckCard of deck.cards) {
-      const cardName = deckCard.card?.name || 'Unknown';
+      const cardName = deckCard.card?.name || "Unknown";
 
       // Check if exact printing is in collection
       const exactCollectionCard = collectionByScryfall.get(deckCard.scryfallId);
@@ -233,22 +249,24 @@ export class DecksService {
       // Check if same card name but different printing is in collection
       const cardsWithSameName = collectionByName.get(cardName) || [];
       const differentPrintCards = cardsWithSameName.filter(
-        (cc) => cc.scryfallId !== deckCard.scryfallId
+        (cc) => cc.scryfallId !== deckCard.scryfallId,
       );
       const inCollectionDifferentPrint = differentPrintCards.length > 0;
 
       // Check if this card is linked to this deck in collection
       const linkedCollectionCard = cardsWithSameName.find(
-        (cc) => cc.linkedDeckCard?.deckId === deck.id
+        (cc) => cc.linkedDeckCard?.deckId === deck.id,
       );
       const isLinkedToCollection = !!linkedCollectionCard;
 
       // Check if there are any available (unlinked) collection cards to link
       // A card is available if it's not linked to a different deck
-      const availableExact = exactCollectionCard &&
-        (!exactCollectionCard.linkedDeckCard || exactCollectionCard.linkedDeckCard.deckId === deck.id);
+      const availableExact =
+        exactCollectionCard &&
+        (!exactCollectionCard.linkedDeckCard ||
+          exactCollectionCard.linkedDeckCard.deckId === deck.id);
       const availableDifferent = differentPrintCards.some(
-        (cc) => !cc.linkedDeckCard || cc.linkedDeckCard.deckId === deck.id
+        (cc) => !cc.linkedDeckCard || cc.linkedDeckCard.deckId === deck.id,
       );
       const hasAvailableCollectionCard = availableExact || availableDifferent;
 
@@ -280,7 +298,7 @@ export class DecksService {
       if (deckCard.isCommander) {
         commanders.push(cardData);
       } else if (
-        deckCard.categories.some((c) => c.toLowerCase() === 'sideboard')
+        deckCard.categories.some((c) => c.toLowerCase() === "sideboard")
       ) {
         sideboard.push(cardData);
       } else {
@@ -322,7 +340,7 @@ export class DecksService {
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     await this.deckRepository.remove(deck);
@@ -339,11 +357,11 @@ export class DecksService {
   ): Promise<{ success: boolean; newQuantity: number }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards', 'cards.card'],
+      relations: ["cards", "cards.card"],
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     // Find the card in the deck
@@ -355,7 +373,7 @@ export class DecksService {
     if (!deckCard && delta > 0) {
       // Search for the card by name in Scryfall/cache
       const card = await this.cardsService.searchByExactName(cardName);
-      
+
       if (!card) {
         throw new NotFoundException(`Card "${cardName}" not found`);
       }
@@ -366,9 +384,9 @@ export class DecksService {
         scryfallId: card.scryfallId,
         quantity: delta,
         isCommander: false,
-        categories: ['Mainboard'],
+        categories: ["Mainboard"],
       });
-      
+
       await this.deckCardRepository.save(deckCard);
       return { success: true, newQuantity: delta };
     }
@@ -404,11 +422,11 @@ export class DecksService {
   ): Promise<{ success: boolean; cardName: string }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards', 'cards.card'],
+      relations: ["cards", "cards.card"],
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     // Fetch the card from Scryfall/cache
@@ -431,7 +449,7 @@ export class DecksService {
       scryfallId: card.scryfallId,
       quantity,
       isCommander: false,
-      categories: ['Mainboard'],
+      categories: ["Mainboard"],
     });
 
     await this.deckCardRepository.save(deckCard);
@@ -440,8 +458,8 @@ export class DecksService {
     await this.createVersion(
       deck.id,
       userId,
-      'manual',
-      `Added ${quantity}x ${card.name}`
+      "manual",
+      `Added ${quantity}x ${card.name}`,
     );
 
     return { success: true, cardName: card.name };
@@ -457,11 +475,11 @@ export class DecksService {
   ): Promise<{ success: boolean }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards', 'cards.card'],
+      relations: ["cards", "cards.card"],
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     // Find the card by name
@@ -475,12 +493,7 @@ export class DecksService {
     await this.deckCardRepository.remove(deckCard);
 
     // Create version
-    await this.createVersion(
-      deck.id,
-      userId,
-      'manual',
-      `Removed ${cardName}`
-    );
+    await this.createVersion(deck.id, userId, "manual", `Removed ${cardName}`);
 
     return { success: true };
   }
@@ -496,11 +509,11 @@ export class DecksService {
   ): Promise<{ success: boolean }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards', 'cards.card'],
+      relations: ["cards", "cards.card"],
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     const deckCard = deck.cards.find(
@@ -528,11 +541,11 @@ export class DecksService {
   ): Promise<{ success: boolean }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards', 'cards.card'],
+      relations: ["cards", "cards.card"],
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     const deckCard = deck.cards.find(
@@ -546,10 +559,10 @@ export class DecksService {
     deckCard.isCommander = isCommander;
     if (isCommander) {
       // Remove from mainboard/sideboard categories, add to commander
-      deckCard.categories = ['Commander'];
+      deckCard.categories = ["Commander"];
     } else {
       // Move back to mainboard
-      deckCard.categories = ['Mainboard'];
+      deckCard.categories = ["Mainboard"];
     }
     await this.deckCardRepository.save(deckCard);
 
@@ -562,16 +575,16 @@ export class DecksService {
   async setCardCategory(
     deckId: string,
     cardName: string,
-    category: 'mainboard' | 'sideboard',
+    category: "mainboard" | "sideboard",
     userId: string,
   ): Promise<{ success: boolean }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards', 'cards.card'],
+      relations: ["cards", "cards.card"],
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     const deckCard = deck.cards.find(
@@ -582,7 +595,9 @@ export class DecksService {
       throw new NotFoundException(`Card "${cardName}" not found in deck`);
     }
 
-    deckCard.categories = [category === 'sideboard' ? 'Sideboard' : 'Mainboard'];
+    deckCard.categories = [
+      category === "sideboard" ? "Sideboard" : "Mainboard",
+    ];
     deckCard.isCommander = false; // Can't be commander if moving to sideboard/mainboard
     await this.deckCardRepository.save(deckCard);
 
@@ -600,11 +615,11 @@ export class DecksService {
   ): Promise<{ success: boolean }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards', 'cards.card'],
+      relations: ["cards", "cards.card"],
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     const deckCard = deck.cards.find(
@@ -641,21 +656,32 @@ export class DecksService {
   ): Promise<{
     success: boolean;
     linkedDeckCard?: { deckId: string; deckName: string };
-    availablePrintings?: Array<{ id: string; scryfallId: string; setCode: string; setName: string; collectorNumber: string; quantity: number; foilQuantity: number; linkedTo?: { deckId: string; deckName: string } }>;
+    availablePrintings?: Array<{
+      id: string;
+      scryfallId: string;
+      setCode: string;
+      setName: string;
+      collectorNumber: string;
+      quantity: number;
+      foilQuantity: number;
+      linkedTo?: { deckId: string; deckName: string };
+    }>;
     needsSelection?: boolean;
     editionChanged?: boolean;
     alreadyLinked?: { deckId: string; deckName: string };
   }> {
-    console.log(`[LinkToCollection] Starting: deckId=${deckId}, cardName=${cardName}, collectionCardId=${collectionCardId}`);
+    console.log(
+      `[LinkToCollection] Starting: deckId=${deckId}, cardName=${cardName}, collectionCardId=${collectionCardId}`,
+    );
 
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards', 'cards.card'],
+      relations: ["cards", "cards.card"],
     });
 
     if (!deck) {
       console.error(`[LinkToCollection] Deck not found: ${deckId}`);
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     const deckCard = deck.cards.find(
@@ -667,29 +693,37 @@ export class DecksService {
       throw new NotFoundException(`Card "${cardName}" not found in deck`);
     }
 
-    console.log(`[LinkToCollection] Found deck card: ${deckCard.card?.name} (${deckCard.scryfallId})`);
+    console.log(
+      `[LinkToCollection] Found deck card: ${deckCard.card?.name} (${deckCard.scryfallId})`,
+    );
 
     // If specific collection card ID provided, use that
     if (collectionCardId) {
       const collectionCard = await this.collectionRepository.findOne({
         where: { id: collectionCardId, userId },
-        relations: ['card'],
+        relations: ["card"],
       });
 
       if (!collectionCard) {
-        throw new NotFoundException('Collection card not found');
+        throw new NotFoundException("Collection card not found");
       }
 
       // Verify it's the same card name
       if (collectionCard.card?.name?.toLowerCase() !== cardName.toLowerCase()) {
-        throw new BadRequestException('Collection card name does not match deck card');
+        throw new BadRequestException(
+          "Collection card name does not match deck card",
+        );
       }
 
       // Check if this collection card is already linked to a different deck
-      if (collectionCard.linkedDeckCard &&
-          collectionCard.linkedDeckCard.deckId !== deckId &&
-          !forceUnlink) {
-        console.log(`[LinkToCollection] Collection card already linked to deck ${collectionCard.linkedDeckCard.deckName}`);
+      if (
+        collectionCard.linkedDeckCard &&
+        collectionCard.linkedDeckCard.deckId !== deckId &&
+        !forceUnlink
+      ) {
+        console.log(
+          `[LinkToCollection] Collection card already linked to deck ${collectionCard.linkedDeckCard.deckName}`,
+        );
         return {
           success: false,
           alreadyLinked: collectionCard.linkedDeckCard,
@@ -702,7 +736,7 @@ export class DecksService {
       // change the deck card's edition to match the collection
       if (collectionCard.scryfallId !== deckCard.scryfallId) {
         console.log(
-          `[LinkToCollection] Changing deck card edition from ${deckCard.scryfallId} to ${collectionCard.scryfallId}`
+          `[LinkToCollection] Changing deck card edition from ${deckCard.scryfallId} to ${collectionCard.scryfallId}`,
         );
         deckCard.scryfallId = collectionCard.scryfallId;
         await this.deckCardRepository.save(deckCard);
@@ -712,8 +746,8 @@ export class DecksService {
         await this.createVersion(
           deck.id,
           userId,
-          'manual',
-          `Changed ${cardName} edition to ${collectionCard.card?.setCode} #${collectionCard.card?.collectorNumber}`
+          "manual",
+          `Changed ${cardName} edition to ${collectionCard.card?.setCode} #${collectionCard.card?.collectorNumber}`,
         );
       }
 
@@ -723,9 +757,11 @@ export class DecksService {
       });
 
       for (const card of existingLinks) {
-        if (card.linkedDeckCard?.deckId === deckId &&
-            card.card?.name?.toLowerCase() === cardName.toLowerCase() &&
-            card.id !== collectionCardId) {
+        if (
+          card.linkedDeckCard?.deckId === deckId &&
+          card.card?.name?.toLowerCase() === cardName.toLowerCase() &&
+          card.id !== collectionCardId
+        ) {
           card.linkedDeckCard = null;
           await this.collectionRepository.save(card);
         }
@@ -738,25 +774,31 @@ export class DecksService {
       return {
         success: true,
         linkedDeckCard: { deckId: deck.id, deckName: deck.name },
-        editionChanged
+        editionChanged,
       };
     }
 
     // Auto-link: Try to find exact match first (same scryfallId)
-    console.log(`[LinkToCollection] Looking for exact match with scryfallId: ${deckCard.scryfallId}`);
+    console.log(
+      `[LinkToCollection] Looking for exact match with scryfallId: ${deckCard.scryfallId}`,
+    );
     let collectionCard = await this.collectionRepository.findOne({
       where: { userId, scryfallId: deckCard.scryfallId },
-      relations: ['card'],
+      relations: ["card"],
     });
 
     if (collectionCard) {
       console.log(`[LinkToCollection] Found exact match`);
 
       // Check if this collection card is already linked to a different deck
-      if (collectionCard.linkedDeckCard &&
-          collectionCard.linkedDeckCard.deckId !== deckId &&
-          !forceUnlink) {
-        console.log(`[LinkToCollection] Collection card already linked to deck ${collectionCard.linkedDeckCard.deckName}`);
+      if (
+        collectionCard.linkedDeckCard &&
+        collectionCard.linkedDeckCard.deckId !== deckId &&
+        !forceUnlink
+      ) {
+        console.log(
+          `[LinkToCollection] Collection card already linked to deck ${collectionCard.linkedDeckCard.deckName}`,
+        );
         return {
           success: false,
           alreadyLinked: collectionCard.linkedDeckCard,
@@ -766,25 +808,34 @@ export class DecksService {
       // Link it automatically
       collectionCard.linkedDeckCard = { deckId: deck.id, deckName: deck.name };
       await this.collectionRepository.save(collectionCard);
-      return { success: true, linkedDeckCard: { deckId: deck.id, deckName: deck.name } };
+      return {
+        success: true,
+        linkedDeckCard: { deckId: deck.id, deckName: deck.name },
+      };
     }
 
-    console.log(`[LinkToCollection] No exact match - searching for other printings`);
+    console.log(
+      `[LinkToCollection] No exact match - searching for other printings`,
+    );
     // No exact match - find all collection cards with same name
     const allCollectionCards = await this.collectionRepository.find({
       where: { userId },
-      relations: ['card'],
+      relations: ["card"],
     });
 
     const matchingCards = allCollectionCards.filter(
-      (c) => c.card?.name?.toLowerCase() === cardName.toLowerCase()
+      (c) => c.card?.name?.toLowerCase() === cardName.toLowerCase(),
     );
 
-    console.log(`[LinkToCollection] Found ${matchingCards.length} printings of "${cardName}" in collection`);
+    console.log(
+      `[LinkToCollection] Found ${matchingCards.length} printings of "${cardName}" in collection`,
+    );
 
     if (matchingCards.length === 0) {
       console.error(`[LinkToCollection] Card not found in collection`);
-      throw new NotFoundException('Card not found in your collection. Add it first.');
+      throw new NotFoundException(
+        "Card not found in your collection. Add it first.",
+      );
     }
 
     if (matchingCards.length === 1) {
@@ -792,10 +843,14 @@ export class DecksService {
       const card = matchingCards[0];
 
       // Check if this collection card is already linked to a different deck
-      if (card.linkedDeckCard &&
-          card.linkedDeckCard.deckId !== deckId &&
-          !forceUnlink) {
-        console.log(`[LinkToCollection] Collection card already linked to deck ${card.linkedDeckCard.deckName}`);
+      if (
+        card.linkedDeckCard &&
+        card.linkedDeckCard.deckId !== deckId &&
+        !forceUnlink
+      ) {
+        console.log(
+          `[LinkToCollection] Collection card already linked to deck ${card.linkedDeckCard.deckName}`,
+        );
         return {
           success: false,
           alreadyLinked: card.linkedDeckCard,
@@ -806,14 +861,16 @@ export class DecksService {
 
       // Change deck card edition if different
       if (editionChanged) {
-        console.log(`[LinkToCollection] Changing edition from ${deckCard.scryfallId} to ${card.scryfallId}`);
+        console.log(
+          `[LinkToCollection] Changing edition from ${deckCard.scryfallId} to ${card.scryfallId}`,
+        );
         deckCard.scryfallId = card.scryfallId;
         await this.deckCardRepository.save(deckCard);
         await this.createVersion(
           deck.id,
           userId,
-          'manual',
-          `Changed ${cardName} edition to ${card.card?.setCode} #${card.card?.collectorNumber}`
+          "manual",
+          `Changed ${cardName} edition to ${card.card?.setCode} #${card.card?.collectorNumber}`,
         );
       }
 
@@ -822,11 +879,13 @@ export class DecksService {
       return {
         success: true,
         linkedDeckCard: { deckId: deck.id, deckName: deck.name },
-        editionChanged
+        editionChanged,
       };
     }
 
-    console.log(`[LinkToCollection] Multiple printings - returning for user selection`);
+    console.log(
+      `[LinkToCollection] Multiple printings - returning for user selection`,
+    );
     // Multiple printings available - return them for user selection
     return {
       success: false,
@@ -834,14 +893,15 @@ export class DecksService {
       availablePrintings: matchingCards.map((c) => ({
         id: c.id,
         scryfallId: c.scryfallId,
-        setCode: c.card?.setCode || '',
-        setName: c.card?.setName || '',
-        collectorNumber: c.card?.collectorNumber || '',
+        setCode: c.card?.setCode || "",
+        setName: c.card?.setName || "",
+        collectorNumber: c.card?.collectorNumber || "",
         quantity: c.quantity,
         foilQuantity: c.foilQuantity,
-        linkedTo: c.linkedDeckCard && c.linkedDeckCard.deckId !== deckId
-          ? c.linkedDeckCard
-          : undefined,
+        linkedTo:
+          c.linkedDeckCard && c.linkedDeckCard.deckId !== deckId
+            ? c.linkedDeckCard
+            : undefined,
       })),
     };
   }
@@ -856,11 +916,11 @@ export class DecksService {
   ): Promise<{ success: boolean }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards', 'cards.card'],
+      relations: ["cards", "cards.card"],
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     const deckCard = deck.cards.find(
@@ -873,8 +933,8 @@ export class DecksService {
 
     // Find the collection card that's linked to this deck card
     const collectionCard = await this.collectionRepository.findOne({
-      where: { 
-        userId, 
+      where: {
+        userId,
         scryfallId: deckCard.scryfallId,
       },
     });
@@ -901,11 +961,13 @@ export class DecksService {
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     // Check if tag already exists
-    if (deck.colorTags.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+    if (
+      deck.colorTags.some((t) => t.name.toLowerCase() === name.toLowerCase())
+    ) {
       throw new BadRequestException(`Tag "${name}" already exists`);
     }
 
@@ -927,11 +989,11 @@ export class DecksService {
   ): Promise<{ success: boolean; colorTags: any[] }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards'],
+      relations: ["cards"],
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     const tagIndex = deck.colorTags.findIndex(
@@ -970,11 +1032,11 @@ export class DecksService {
   ): Promise<{ success: boolean; colorTags: any[] }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ['cards'],
+      relations: ["cards"],
     });
 
     if (!deck) {
-      throw new NotFoundException('Deck not found');
+      throw new NotFoundException("Deck not found");
     }
 
     const tagIndex = deck.colorTags.findIndex(
@@ -1014,20 +1076,23 @@ export class DecksService {
 
     for (const archDeck of archidektDecks) {
       try {
-        const synced = await this.syncFromArchidekt(archDeck.archidektId, userId);
+        const synced = await this.syncFromArchidekt(
+          archDeck.archidektId,
+          userId,
+        );
         results.synced++;
         results.decks.push({
           id: synced.id,
           name: synced.name,
-          status: 'synced',
+          status: "synced",
         });
       } catch (error) {
         results.failed++;
         results.decks.push({
           archidektId: archDeck.archidektId,
           name: archDeck.name,
-          status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          status: "failed",
+          error: error instanceof Error ? error.message : "Unknown error",
         });
       }
     }
@@ -1038,14 +1103,11 @@ export class DecksService {
   /**
    * Sync a deck from Archidekt
    */
-  async syncFromArchidekt(
-    archidektId: number,
-    userId: string,
-  ): Promise<Deck> {
+  async syncFromArchidekt(archidektId: number, userId: string): Promise<Deck> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user?.archidektId || !user?.archidektToken) {
       throw new BadRequestException(
-        'Archidekt account not connected. Please connect your Archidekt account first.',
+        "Archidekt account not connected. Please connect your Archidekt account first.",
       );
     }
 
@@ -1056,7 +1118,7 @@ export class DecksService {
     );
 
     if (!archidektDeck) {
-      throw new NotFoundException('Deck not found on Archidekt');
+      throw new NotFoundException("Deck not found on Archidekt");
     }
 
     // Find or create deck
@@ -1065,7 +1127,7 @@ export class DecksService {
     const colorTagSet = new Set<string>();
     for (const card of archidektDeck.cards || []) {
       const label = (card as any).label;
-      if (label && typeof label === 'string') {
+      if (label && typeof label === "string") {
         const match = label.match(/#[0-9A-Fa-f]{6}/);
         if (match) {
           colorTagSet.add(match[0].toUpperCase());
@@ -1074,7 +1136,7 @@ export class DecksService {
     }
 
     // Build colorTags array from unique colors found
-    const colorTags = Array.from(colorTagSet).map(color => ({
+    const colorTags = Array.from(colorTagSet).map((color) => ({
       name: color,
       color: color,
     }));
@@ -1125,7 +1187,11 @@ export class DecksService {
 
     // Create deck cards only for cards that exist in our database
     const deckCards: any[] = [];
-    const skippedCards: Array<{ name: string; set: string; collector: string }> = [];
+    const skippedCards: Array<{
+      name: string;
+      set: string;
+      collector: string;
+    }> = [];
 
     for (const archCard of archidektDeck.cards) {
       const key = `${archCard.card.edition.editioncode.toLowerCase()}:${archCard.card.collectorNumber}`;
@@ -1133,13 +1199,13 @@ export class DecksService {
 
       if (scryfallId) {
         const isCommander = archCard.categories.some(
-          (cat) => cat.toLowerCase() === 'commander',
+          (cat) => cat.toLowerCase() === "commander",
         );
 
         // Extract color tag from label field (format: ',#656565')
         let cardColorTag: string | null = null;
         const label = (archCard as any).label;
-        if (label && typeof label === 'string') {
+        if (label && typeof label === "string") {
           const match = label.match(/#[0-9A-Fa-f]{6}/);
           if (match) {
             cardColorTag = match[0].toUpperCase();
@@ -1183,59 +1249,94 @@ export class DecksService {
   /**
    * List user's decks from Archidekt (with pagination)
    */
-  async listArchidektDecks(userId: string, isRetry = false): Promise<Array<{ archidektId: number; name: string; format: null; updatedAt: null }>> {
+  async listArchidektDecks(
+    userId: string,
+    isRetry = false,
+  ): Promise<
+    Array<{ archidektId: number; name: string; format: null; updatedAt: null }>
+  > {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user?.archidektId || !user?.archidektToken) {
       throw new BadRequestException(
-        'Archidekt account not connected. Please connect your Archidekt account first.',
+        "Archidekt account not connected. Please connect your Archidekt account first.",
       );
     }
 
-    console.log('[Archidekt] Fetching decks for user:', user.archidektUsername, 'id:', user.archidektId);
+    console.log(
+      "[Archidekt] Fetching decks for user:",
+      user.archidektUsername,
+      "id:",
+      user.archidektId,
+    );
 
     try {
-      await this.archidektRateLimit();
+      const allDecks: any[] = [];
+      let page = 1;
+      let hasMore = true;
 
-      // Use /rest-auth/user/ endpoint which includes all user's decks
-      const response = await axios.get(
-        `${this.ARCHIDEKT_API}/rest-auth/user/`,
-        {
-          headers: {
-            Authorization: `JWT ${user.archidektToken}`,
-            Accept: 'application/json',
+      // Fetch all pages
+      while (hasMore) {
+        await this.archidektRateLimit();
+
+        console.log(`[Archidekt] Fetching page ${page}...`);
+
+        // Use the curated/self endpoint with pagination
+        const response = await axios.get(
+          `${this.ARCHIDEKT_API}/decks/curated/self/`,
+          {
+            params: {
+              page,
+              pageSize: 36, // Archidekt's default page size
+            },
+            headers: {
+              Authorization: `JWT ${user.archidektToken}`,
+              Accept: "application/json",
+            },
           },
-        },
-      );
+        );
 
-      const userData = response.data;
-      const decks = userData.decks || [];
+        const results = response.data.results || [];
+        console.log(`[Archidekt] Page ${page}: Found ${results.length} decks`);
 
-      console.log('[Archidekt] Found', decks.length, 'decks in user data');
+        allDecks.push(...results);
 
-      return decks.map((deck: any) => ({
+        // Check if there's a next page
+        hasMore = !!response.data.next;
+        page++;
+      }
+
+      console.log("[Archidekt] Total decks found:", allDecks.length);
+
+      return allDecks.map((deck: any) => ({
         archidektId: deck.id,
         name: deck.name,
         format: null, // Basic deck info doesn't include format
         updatedAt: null,
       }));
     } catch (error: any) {
-      console.log('[Archidekt] Error fetching decks:', error.message);
-      console.log('[Archidekt] Error response status:', error.response?.status);
-      
+      console.log("[Archidekt] Error fetching decks:", error.message);
+      console.log("[Archidekt] Error response status:", error.response?.status);
+
       // Handle token expiration - try to auto-refresh
       if (error.response?.status === 401 && !isRetry) {
-        console.log('[Archidekt] Token expired, attempting auto-refresh...');
-        const newToken = await this.authService.autoRefreshArchidektToken(userId);
-        
+        console.log("[Archidekt] Token expired, attempting auto-refresh...");
+        const newToken =
+          await this.authService.autoRefreshArchidektToken(userId);
+
         if (newToken) {
-          console.log('[Archidekt] Token refreshed, retrying...');
+          console.log("[Archidekt] Token refreshed, retrying...");
           return this.listArchidektDecks(userId, true);
         }
-        
-        throw new BadRequestException('Archidekt session expired. Please reconnect your account.');
+
+        throw new BadRequestException(
+          "Archidekt session expired. Please reconnect your account.",
+        );
       }
-      
-      throw new BadRequestException('Failed to fetch Archidekt decks: ' + (error.response?.data?.detail || error.message));
+
+      throw new BadRequestException(
+        "Failed to fetch Archidekt decks: " +
+          (error.response?.data?.detail || error.message),
+      );
     }
   }
 
@@ -1243,24 +1344,27 @@ export class DecksService {
     deckId: number,
     token: string,
   ): Promise<ArchidektDeck | null> {
-    console.log('[Archidekt] Fetching deck:', deckId);
+    console.log("[Archidekt] Fetching deck:", deckId);
     try {
       await this.archidektRateLimit();
-      
+
       const response = await axios.get(
         `${this.ARCHIDEKT_API}/decks/${deckId}/`,
         {
           headers: {
             Authorization: `JWT ${token}`,
-            Accept: 'application/json',
+            Accept: "application/json",
           },
         },
       );
-      console.log('[Archidekt] Deck fetched successfully:', response.data?.name);
+      console.log(
+        "[Archidekt] Deck fetched successfully:",
+        response.data?.name,
+      );
       return response.data;
     } catch (error: any) {
-      console.log('[Archidekt] Error fetching deck:', error.message);
-      console.log('[Archidekt] Error status:', error.response?.status);
+      console.log("[Archidekt] Error fetching deck:", error.message);
+      console.log("[Archidekt] Error status:", error.response?.status);
       return null;
     }
   }
@@ -1285,7 +1389,7 @@ export class DecksService {
   async createVersion(
     deckId: string,
     userId: string,
-    changeType: 'sync' | 'manual' | 'advisor' | 'revert',
+    changeType: "sync" | "manual" | "advisor" | "revert",
     description?: string,
   ): Promise<DeckVersion> {
     const deck = await this.getDeck(deckId, userId);
@@ -1293,13 +1397,13 @@ export class DecksService {
     // Get current version number
     const latestVersion = await this.deckVersionRepository.findOne({
       where: { deckId },
-      order: { versionNumber: 'DESC' },
+      order: { versionNumber: "DESC" },
     });
     const versionNumber = (latestVersion?.versionNumber || 0) + 1;
 
     // Create card snapshot
     const cards: VersionCard[] = deck.cards.map((c) => ({
-      name: c.card?.name || 'Unknown',
+      name: c.card?.name || "Unknown",
       scryfallId: c.scryfallId,
       quantity: c.quantity,
       colorTag: c.colorTag,
@@ -1310,7 +1414,8 @@ export class DecksService {
     const version = this.deckVersionRepository.create({
       deckId,
       versionNumber,
-      description: description || `${changeType} - ${new Date().toLocaleDateString()}`,
+      description:
+        description || `${changeType} - ${new Date().toLocaleDateString()}`,
       changeType,
       cards,
       colorTags: deck.colorTags,
@@ -1329,29 +1434,26 @@ export class DecksService {
 
     return this.deckVersionRepository.find({
       where: { deckId },
-      order: { versionNumber: 'DESC' },
+      order: { versionNumber: "DESC" },
     });
   }
 
   /**
    * Get a specific version
    */
-  async getVersion(
-    versionId: string,
-    userId: string,
-  ): Promise<DeckVersion> {
+  async getVersion(versionId: string, userId: string): Promise<DeckVersion> {
     const version = await this.deckVersionRepository.findOne({
       where: { id: versionId },
-      relations: ['deck'],
+      relations: ["deck"],
     });
 
     if (!version) {
-      throw new NotFoundException('Version not found');
+      throw new NotFoundException("Version not found");
     }
 
     // Verify user owns the deck
     if (version.deck.userId !== userId) {
-      throw new NotFoundException('Version not found');
+      throw new NotFoundException("Version not found");
     }
 
     return version;
@@ -1360,15 +1462,17 @@ export class DecksService {
   /**
    * Revert a deck to a previous version
    */
-  async revertToVersion(
-    versionId: string,
-    userId: string,
-  ): Promise<Deck> {
+  async revertToVersion(versionId: string, userId: string): Promise<Deck> {
     const version = await this.getVersion(versionId, userId);
     const deck = await this.getDeck(version.deckId, userId);
 
     // Create a snapshot of current state before reverting
-    await this.createVersion(deck.id, userId, 'revert', `Before revert to v${version.versionNumber}`);
+    await this.createVersion(
+      deck.id,
+      userId,
+      "revert",
+      `Before revert to v${version.versionNumber}`,
+    );
 
     // Remove all current cards
     await this.deckCardRepository.delete({ deckId: deck.id });
@@ -1401,7 +1505,12 @@ export class DecksService {
     await this.deckRepository.save(deck);
 
     // Create a new version for the reverted state
-    await this.createVersion(deck.id, userId, 'revert', `Reverted to v${version.versionNumber}`);
+    await this.createVersion(
+      deck.id,
+      userId,
+      "revert",
+      `Reverted to v${version.versionNumber}`,
+    );
 
     return this.getDeck(deck.id, userId);
   }
