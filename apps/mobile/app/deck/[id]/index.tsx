@@ -513,7 +513,7 @@ export default function DeckDetailScreen() {
   const [scryfallSearchVisible, setScryfallSearchVisible] = useState(false);
   const [colorTagManagerVisible, setColorTagManagerVisible] = useState(false);
   const [chatPanelVisible, setChatPanelVisible] = useState(false);
-  const [advisorPanelVisible, setAdvisorPanelVisible] = useState(true); // Desktop side panel
+  const [advisorPanelVisible, setAdvisorPanelVisible] = useState(false); // Desktop side panel
 
   // Card action sheet state
   const [actionSheetCard, setActionSheetCard] = useState<DeckCard | null>(null);
