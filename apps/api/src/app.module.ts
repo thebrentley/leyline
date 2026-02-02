@@ -6,6 +6,7 @@ import { DecksModule } from "./modules/decks/decks.module";
 import { CardsModule } from "./modules/cards/cards.module";
 import { CollectionModule } from "./modules/collection/collection.module";
 import { AdvisorModule } from "./modules/advisor/advisor.module";
+import { PlaytestingModule } from "./modules/playtesting/playtesting.module";
 import { EventsModule } from "./modules/events/events.module";
 import { CommonModule } from "./common/common.module";
 import { SnakeNamingStrategy } from "./database/snake-naming.strategy";
@@ -46,6 +47,7 @@ import { migrations } from "./database/data-source";
     CardsModule,
     CollectionModule,
     AdvisorModule,
+    PlaytestingModule,
   ],
 })
 export class AppModule {}

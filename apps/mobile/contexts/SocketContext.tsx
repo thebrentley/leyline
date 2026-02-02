@@ -21,9 +21,101 @@ interface DeckSyncStatusEvent {
   timestamp: string;
 }
 
+// =====================
+// Playtesting Types
+// =====================
+
+interface PlaytestMessageBase {
+  type: string;
+  deckId: string;
+  timestamp: string;
+}
+
+interface PlaytestSessionStartedMessage extends PlaytestMessageBase {
+  type: "session:started";
+  sessionId: string;
+}
+
+interface PlaytestSessionEndedMessage extends PlaytestMessageBase {
+  type: "session:ended";
+  sessionId: string;
+}
+
+interface PlaytestErrorMessage extends PlaytestMessageBase {
+  type: "error";
+  error: string;
+}
+
+// =====================
+// Playtesting Game State Types
+// =====================
+
+export type GameZone =
+  | "library"
+  | "hand"
+  | "battlefield"
+  | "graveyard"
+  | "exile"
+  | "command";
+
+export interface GameCard {
+  instanceId: string;
+  scryfallId: string;
+  name: string;
+  zone: GameZone;
+  isTapped: boolean;
+  isFaceDown: boolean;
+  imageUrl: string | null;
+  manaCost: string | null;
+  typeLine: string | null;
+  isCommander: boolean;
+}
+
+export interface PlaytestGameState {
+  sessionId: string;
+  deckId: string;
+  deckName: string;
+  turn: number;
+  life: number;
+  cards: Record<string, GameCard>;
+  libraryOrder: string[];
+  handOrder: string[];
+  updatedAt: string;
+}
+
+interface PlaytestGameStateUpdateMessage extends PlaytestMessageBase {
+  type: "gamestate:update";
+  gameState: PlaytestGameState;
+}
+
+/**
+ * Union of all playtest message types.
+ * Add new message types here as the feature expands.
+ */
+export type PlaytestMessage =
+  | PlaytestSessionStartedMessage
+  | PlaytestSessionEndedMessage
+  | PlaytestErrorMessage
+  | PlaytestGameStateUpdateMessage;
+
+export interface PlaytestJoinedEvent {
+  deckId: string;
+  sessionId: string | null;
+}
+
+export interface PlaytestLeftEvent {
+  deckId: string;
+}
+
 interface SocketContextValue {
   isConnected: boolean;
   onDeckSyncStatus: (callback: (event: DeckSyncStatusEvent) => void) => () => void;
+  // Playtesting methods
+  joinPlaytest: (deckId: string) => void;
+  leavePlaytest: (deckId: string) => void;
+  onPlaytestMessage: (callback: (message: PlaytestMessage) => void) => () => void;
+  onPlaytestJoined: (callback: (data: PlaytestJoinedEvent) => void) => () => void;
+  onPlaytestLeft: (callback: (data: PlaytestLeftEvent) => void) => () => void;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -33,6 +125,16 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const deckSyncListenersRef = useRef<Set<(event: DeckSyncStatusEvent) => void>>(
+    new Set()
+  );
+  // Playtesting listeners
+  const playtestMessageListenersRef = useRef<Set<(message: PlaytestMessage) => void>>(
+    new Set()
+  );
+  const playtestJoinedListenersRef = useRef<Set<(data: PlaytestJoinedEvent) => void>>(
+    new Set()
+  );
+  const playtestLeftListenersRef = useRef<Set<(data: PlaytestLeftEvent) => void>>(
     new Set()
   );
 
@@ -78,6 +180,22 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       deckSyncListenersRef.current.forEach((listener) => listener(event));
     });
 
+    // Listen for playtest events
+    socket.on("playtest:message", (message: PlaytestMessage) => {
+      console.log("[Socket] Playtest message:", message);
+      playtestMessageListenersRef.current.forEach((listener) => listener(message));
+    });
+
+    socket.on("playtest:joined", (data: PlaytestJoinedEvent) => {
+      console.log("[Socket] Playtest joined:", data);
+      playtestJoinedListenersRef.current.forEach((listener) => listener(data));
+    });
+
+    socket.on("playtest:left", (data: PlaytestLeftEvent) => {
+      console.log("[Socket] Playtest left:", data);
+      playtestLeftListenersRef.current.forEach((listener) => listener(data));
+    });
+
     socketRef.current = socket;
 
     return () => {
@@ -97,8 +215,63 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  // Playtesting methods
+  const joinPlaytest = useCallback((deckId: string) => {
+    if (socketRef.current?.connected) {
+      console.log("[Socket] Joining playtest:", deckId);
+      socketRef.current.emit("playtest:join", { deckId });
+    }
+  }, []);
+
+  const leavePlaytest = useCallback((deckId: string) => {
+    if (socketRef.current?.connected) {
+      console.log("[Socket] Leaving playtest:", deckId);
+      socketRef.current.emit("playtest:leave", { deckId });
+    }
+  }, []);
+
+  const onPlaytestMessage = useCallback(
+    (callback: (message: PlaytestMessage) => void) => {
+      playtestMessageListenersRef.current.add(callback);
+      return () => {
+        playtestMessageListenersRef.current.delete(callback);
+      };
+    },
+    []
+  );
+
+  const onPlaytestJoined = useCallback(
+    (callback: (data: PlaytestJoinedEvent) => void) => {
+      playtestJoinedListenersRef.current.add(callback);
+      return () => {
+        playtestJoinedListenersRef.current.delete(callback);
+      };
+    },
+    []
+  );
+
+  const onPlaytestLeft = useCallback(
+    (callback: (data: PlaytestLeftEvent) => void) => {
+      playtestLeftListenersRef.current.add(callback);
+      return () => {
+        playtestLeftListenersRef.current.delete(callback);
+      };
+    },
+    []
+  );
+
   return (
-    <SocketContext.Provider value={{ isConnected, onDeckSyncStatus }}>
+    <SocketContext.Provider
+      value={{
+        isConnected,
+        onDeckSyncStatus,
+        joinPlaytest,
+        leavePlaytest,
+        onPlaytestMessage,
+        onPlaytestJoined,
+        onPlaytestLeft,
+      }}
+    >
       {children}
     </SocketContext.Provider>
   );

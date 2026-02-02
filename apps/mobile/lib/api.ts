@@ -728,6 +728,37 @@ export interface ChatSession {
 
 // ==================== AI Advisor API ====================
 
+// ==================== Playtesting API ====================
+
+// Re-export types from SocketContext for convenience
+export type { PlaytestGameState, GameCard, GameZone } from "~/contexts/SocketContext";
+
+export interface StartPlaytestResponse {
+  success: boolean;
+  gameState: import("~/contexts/SocketContext").PlaytestGameState;
+}
+
+export const playtestingApi = {
+  async startGame(player1DeckId: string, player2DeckId: string): Promise<ApiResponse<StartPlaytestResponse>> {
+    return request<StartPlaytestResponse>(`/playtesting/start`, {
+      method: "POST",
+      body: JSON.stringify({ player1DeckId, player2DeckId }),
+    });
+  },
+
+  async getGameState(deckId: string): Promise<ApiResponse<{ success: boolean; gameState: import("~/contexts/SocketContext").PlaytestGameState | null }>> {
+    return request<{ success: boolean; gameState: import("~/contexts/SocketContext").PlaytestGameState | null }>(`/playtesting/game/${deckId}`);
+  },
+
+  async endGame(deckId: string): Promise<ApiResponse<{ success: boolean }>> {
+    return request<{ success: boolean }>(`/playtesting/game/${deckId}`, {
+      method: "DELETE",
+    });
+  },
+};
+
+// ==================== Advisor API ====================
+
 export const advisorApi = {
   async getSessions(deckId: string): Promise<ApiResponse<ChatSession[]>> {
     return request<ChatSession[]>(`/advisor/sessions/${deckId}`);

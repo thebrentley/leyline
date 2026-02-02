@@ -22,6 +22,7 @@ import {
   Palette,
   PanelRightClose,
   PanelRightOpen,
+  Play,
   Plus,
   RefreshCcw,
   Search,
@@ -1775,6 +1776,21 @@ export default function DeckDetailScreen() {
         </View>
 
         <View className="flex-row items-center gap-2 lg:gap-3">
+          {/* Playtest Button */}
+          <Pressable
+            onPress={() =>
+              router.push(
+                `/deck/${id}/playtest?name=${encodeURIComponent(deck?.name || "")}`,
+              )
+            }
+            className="flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg bg-green-500/10 lg:hover:bg-green-500/20"
+          >
+            <Play size={14} color="#22c55e" />
+            <Text className="text-xs lg:text-sm font-medium text-green-500">
+              Playtest
+            </Text>
+          </Pressable>
+
           {/* Price Button */}
           <Pressable
             onPress={() =>

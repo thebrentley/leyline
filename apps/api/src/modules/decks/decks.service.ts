@@ -127,22 +127,22 @@ export class DecksService {
 
         // Debug logging
         if (commanders.length > 0) {
-          console.log(
-            `[Deck ${deck.name}] Commanders found:`,
-            commanders.length,
-          );
-          console.log(
-            `[Deck ${deck.name}] Primary commander:`,
-            primaryCommander?.name,
-          );
-          console.log(
-            `[Deck ${deck.name}] imageArtCrop:`,
-            primaryCommander?.imageArtCrop?.substring(0, 50) || "null",
-          );
-          console.log(
-            `[Deck ${deck.name}] imageNormal:`,
-            primaryCommander?.imageNormal?.substring(0, 50) || "null",
-          );
+          // console.log(
+          //   `[Deck ${deck.name}] Commanders found:`,
+          //   commanders.length,
+          // );
+          // console.log(
+          //   `[Deck ${deck.name}] Primary commander:`,
+          //   primaryCommander?.name,
+          // );
+          // console.log(
+          //   `[Deck ${deck.name}] imageArtCrop:`,
+          //   primaryCommander?.imageArtCrop?.substring(0, 50) || "null",
+          // );
+          // console.log(
+          //   `[Deck ${deck.name}] imageNormal:`,
+          //   primaryCommander?.imageNormal?.substring(0, 50) || "null",
+          // );
         } else {
           console.log(`[Deck ${deck.name}] No commanders found`);
         }
