@@ -183,9 +183,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // Debug: check how many clients are in the room
     const room = this.server.sockets.adapter.rooms.get(roomName);
     const clientCount = room ? room.size : 0;
-    console.log(
-      `[WS] Emitting playtest:message to ${roomName} (${clientCount} clients): ${event.type}`,
-    );
+    // console.log(
+    //   `[WS] Emitting playtest:message to ${roomName} (${clientCount} clients): ${event.type}`,
+    // );
 
     if (clientCount === 0) {
       console.log(

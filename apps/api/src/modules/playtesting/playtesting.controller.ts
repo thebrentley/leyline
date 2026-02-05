@@ -2,7 +2,7 @@ import { Controller, Get, Post, Delete, Param, Body, UseGuards } from '@nestjs/c
 import { PlaytestingService } from './playtesting.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
-import { StartGameDto, PauseGameDto, ResumeGameDto } from './dto/game-action.dto';
+import { StartGameDto, PauseGameDto, ResumeGameDto, ContinueGameDto } from './dto/game-action.dto';
 
 @Controller('playtesting')
 @UseGuards(JwtAuthGuard)
@@ -107,6 +107,38 @@ export class PlaytestingController {
   ) {
     const resumed = this.playtestingService.resumeGame(deckId);
     return { success: resumed };
+  }
+
+  /**
+   * Continue a game from a saved state
+   * Loads the full game state and queues any incoming messages until ready
+   */
+  @Post('continue')
+  async continueGame(
+    @Body() body: ContinueGameDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    const gameState = await this.playtestingService.continueGame(
+      body.gameState,
+      user.userId,
+    );
+    return {
+      success: true,
+      sessionId: gameState.sessionId,
+      gameState,
+    };
+  }
+
+  /**
+   * Check if a game is currently loading (for action queueing)
+   */
+  @Get('loading/:deckId')
+  async isGameLoading(
+    @Param('deckId') deckId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    const loading = this.playtestingService.isGameLoading(deckId);
+    return { success: true, loading };
   }
 
   /**

@@ -89,7 +89,9 @@ export type ExtendedGameZone =
 
 export interface ExtendedGameCard {
   instanceId: string;
-  scryfallId: string;
+  scryfallId: string | null; // null for tokens
+  tokenId?: string; // Reference to token definition (for tokens only)
+  isToken: boolean; // True if this is a token
   name: string;
   owner: PlayerId;
   controller: PlayerId;
@@ -102,6 +104,7 @@ export interface ExtendedGameCard {
   attachments: string[]; // instanceIds of cards attached to this
   summoningSickness: boolean;
   damage: number;
+  chosenColor?: string; // For cards like Utopia Sprawl that choose a color as they enter
   // Card data (cached for quick access)
   imageUrl: string | null;
   manaCost: string | null;
@@ -113,6 +116,7 @@ export interface ExtendedGameCard {
   colors: string[];
   colorIdentity: string[];
   isCommander: boolean;
+  commanderTax: number; // How many times commander has been cast from command zone
   keywords: string[]; // parsed keywords like 'flying', 'haste', etc.
 }
 
@@ -197,6 +201,80 @@ export interface GameLogEntry {
 }
 
 // =====================
+// Watch/Trigger System
+// =====================
+
+export type WatchTriggerType =
+  | 'spell_cast'         // Triggered when a spell is cast
+  | 'combat_damage'      // Triggered when combat damage is dealt
+  | 'card_tapped'        // Triggered when a card is tapped
+  | 'card_enters'        // Triggered when a card enters battlefield
+  | 'card_dies'          // Triggered when a card dies
+  | 'life_changed';      // Triggered when life totals change
+
+export interface WatchCondition {
+  // Who must perform the action (null = anyone)
+  player?: PlayerId | null;
+  opponent?: boolean; // True if must be opponent of the watching card's controller
+
+  // For spell_cast triggers
+  spellType?: 'creature' | 'noncreature' | 'instant' | 'sorcery' | 'artifact' | 'enchantment';
+
+  // For combat_damage triggers
+  damageSource?: 'creature' | 'any';
+  damageTarget?: 'player' | 'planeswalker' | 'creature';
+
+  // For card_tapped triggers
+  cardType?: string; // e.g., "Food", "Treasure"
+
+  // Additional filters (can be extended)
+  minValue?: number;
+  maxValue?: number;
+}
+
+export interface WatchEffect {
+  action: 'create_token' | 'sacrifice' | 'deal_damage' | 'draw_card' | 'add_mana' | 'add_counter';
+
+  // For create_token
+  tokenType?: string; // e.g., "Food", "Treasure"
+  tokenCount?: number;
+
+  // For sacrifice
+  sacrificeType?: string; // e.g., "Food"
+
+  // For deal_damage
+  damageAmount?: number;
+  damageTarget?: 'player' | 'creature' | 'any';
+
+  // For draw_card
+  drawCount?: number;
+
+  // For add_mana
+  manaColors?: ManaColor[];
+  manaAmount?: number;
+
+  // For add_counter
+  counterType?: string;
+  counterAmount?: number;
+
+  // Additional cost or requirement
+  additionalCost?: {
+    tapCards?: number;
+    tapCardType?: string;
+  };
+}
+
+export interface GameWatch {
+  id: string;
+  sourceCardId: string; // The card creating this watch
+  controller: PlayerId; // Controller of the source card
+  triggerType: WatchTriggerType;
+  condition: WatchCondition;
+  effect: WatchEffect;
+  isActive: boolean; // False if temporarily disabled
+}
+
+// =====================
 // Full Game State
 // =====================
 
@@ -236,6 +314,9 @@ export interface FullPlaytestGameState {
   // Combat
   combat: CombatState;
 
+  // Watch/Trigger system
+  watches: GameWatch[];
+
   // Game log
   log: GameLogEntry[];
 
@@ -243,6 +324,9 @@ export interface FullPlaytestGameState {
   isGameOver: boolean;
   winner: PlayerId | null;
   gameOverReason: string | null;
+
+  // Token tracking for AI calls
+  tokenUsage: CumulativeTokenUsage;
 
   // Configuration
   config: GameConfig;
@@ -326,6 +410,12 @@ export type PlaytestEvent =
   | { type: 'card:attached'; cardId: string; attachedTo: string | null }
   | { type: 'card:destroyed'; cardId: string; reason: string }
 
+  // Zone events
+  | { type: 'zone:shuffled'; zone: ExtendedGameZone; player: PlayerId }
+
+  // Token events
+  | { type: 'token:created'; tokenIds: string[]; tokenName: string; controller: PlayerId }
+
   // Player state events
   | { type: 'life:changed'; player: PlayerId; life: number; change: number; source?: string }
   | { type: 'poison:changed'; player: PlayerId; count: number }
@@ -347,6 +437,7 @@ export type PlaytestEvent =
   // AI events
   | { type: 'ai:thinking'; player: PlayerId; action: string }
   | { type: 'ai:decided'; player: PlayerId; action: GameAction; reasoning?: string }
+  | { type: 'ai:tokens'; tokenUsage: CumulativeTokenUsage }
 
   // Mulligan events
   | { type: 'mulligan:evaluating'; player: PlayerId; mulliganCount: number; handSize: number }
@@ -404,10 +495,38 @@ export interface GameActionResponse {
 // AI Decision Types
 // =====================
 
+// =====================
+// Token Usage Tracking
+// =====================
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+}
+
+export interface CumulativeTokenUsage {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheReadInputTokens: number;
+  totalCacheCreationInputTokens: number;
+  callCount: number;
+}
+
+export const DEFAULT_TOKEN_USAGE: CumulativeTokenUsage = {
+  totalInputTokens: 0,
+  totalOutputTokens: 0,
+  totalCacheReadInputTokens: 0,
+  totalCacheCreationInputTokens: 0,
+  callCount: 0,
+};
+
 export interface AIDecision {
   action: GameAction;
   reasoning: string;
   confidence?: number;
+  tokenUsage?: TokenUsage;
 }
 
 export interface AIThinkingState {

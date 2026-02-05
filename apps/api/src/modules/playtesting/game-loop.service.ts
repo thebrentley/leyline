@@ -11,14 +11,22 @@ import type {
   GameAction,
   GameLogEntry,
   GameConfig,
-  DEFAULT_GAME_CONFIG,
+  TokenUsage,
 } from "@decktutor/shared";
+
+interface QueuedAction {
+  player: PlayerId;
+  action: GameAction;
+  timestamp: number;
+}
 
 interface RunningGame {
   state: FullPlaytestGameState;
   isRunning: boolean;
   isPaused: boolean;
+  isLoading: boolean; // True while game state is being restored
   abortController: AbortController;
+  actionQueue: QueuedAction[]; // Queue for actions received during loading
 }
 
 @Injectable()
@@ -50,7 +58,9 @@ export class GameLoopService {
       state,
       isRunning: true,
       isPaused: false,
+      isLoading: false,
       abortController,
+      actionQueue: [],
     };
 
     this.runningGames.set(deckId, runningGame);
@@ -73,6 +83,295 @@ export class GameLoopService {
     } finally {
       this.runningGames.delete(deckId);
       console.log(`[GameLoop] Game loop ended for deck ${deckId}`);
+    }
+  }
+
+  /**
+   * Continue a game from a saved state
+   * Queues any incoming actions until the game is fully loaded
+   */
+  async continueGameLoop(state: FullPlaytestGameState): Promise<void> {
+    const deckId = state.deckId;
+
+    // Check if game is already running
+    if (this.runningGames.has(deckId)) {
+      console.log(`[GameLoop] Game already running for deck ${deckId}`);
+      return;
+    }
+
+    const abortController = new AbortController();
+    const runningGame: RunningGame = {
+      state,
+      isRunning: true,
+      isPaused: false,
+      isLoading: true, // Start in loading state to queue incoming actions
+      abortController,
+      actionQueue: [],
+    };
+
+    this.runningGames.set(deckId, runningGame);
+
+    console.log(`[GameLoop] Continuing game loop for deck ${deckId} from turn ${state.turnNumber}`);
+
+    try {
+      // Emit full game state to sync clients
+      this.emitEvent(state.deckId, {
+        type: "gamestate:full",
+        gameState: state,
+      });
+
+      // Add log entry for game continuation
+      this.addLogEntry(state, {
+        type: "system",
+        player: "system",
+        message: `Game continued from turn ${state.turnNumber}`,
+      });
+
+      // Small delay to allow clients to process the full state
+      await this.delay(state.config.phaseDelay);
+
+      // Mark loading as complete - now ready to process queued actions
+      runningGame.isLoading = false;
+
+      // Process any queued actions that came in during loading
+      await this.processQueuedActions(runningGame);
+
+      // Continue with normal game loop
+      await this.runGameFromCurrentState(runningGame);
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        console.error(
+          `[GameLoop] Error in continued game loop for deck ${deckId}:`,
+          error,
+        );
+        this.emitEvent(deckId, {
+          type: "game:error",
+          error: error.message || "Unknown error in game loop",
+        });
+      }
+    } finally {
+      this.runningGames.delete(deckId);
+      console.log(`[GameLoop] Continued game loop ended for deck ${deckId}`);
+    }
+  }
+
+  /**
+   * Queue an action to be processed once the game is loaded
+   * Returns true if the action was queued, false if the game is ready for immediate processing
+   */
+  queueAction(deckId: string, player: PlayerId, action: GameAction): boolean {
+    const game = this.runningGames.get(deckId);
+    if (!game) {
+      return false;
+    }
+
+    if (game.isLoading) {
+      game.actionQueue.push({
+        player,
+        action,
+        timestamp: Date.now(),
+      });
+      console.log(`[GameLoop] Queued action for deck ${deckId}: ${action.type}`);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if a game is currently loading
+   */
+  isGameLoading(deckId: string): boolean {
+    const game = this.runningGames.get(deckId);
+    return game?.isLoading ?? false;
+  }
+
+  /**
+   * Process all queued actions in order
+   */
+  private async processQueuedActions(game: RunningGame): Promise<void> {
+    const state = game.state;
+    const config = state.config;
+
+    // Sort by timestamp to ensure order
+    game.actionQueue.sort((a, b) => a.timestamp - b.timestamp);
+
+    console.log(`[GameLoop] Processing ${game.actionQueue.length} queued actions for deck ${state.deckId}`);
+
+    while (game.actionQueue.length > 0 && game.isRunning && !state.isGameOver) {
+      const queuedAction = game.actionQueue.shift()!;
+
+      // Emit that we're processing a queued action
+      this.emitEvent(state.deckId, {
+        type: "ai:decided",
+        player: queuedAction.player,
+        action: queuedAction.action,
+        reasoning: "Processing queued action from reconnection",
+      });
+
+      // Process the action
+      const events = await this.processAction(
+        state,
+        queuedAction.player,
+        queuedAction.action,
+      );
+      this.emitEvents(state.deckId, events);
+
+      // If any life changes occurred, emit full game state for UI sync
+      const hasLifeChanges = events.some(e => e.type === "life:changed");
+      if (hasLifeChanges) {
+        this.emitEvent(state.deckId, {
+          type: "gamestate:full",
+          gameState: state,
+        });
+      }
+
+      await this.delay(config.actionDelay);
+    }
+  }
+
+  /**
+   * Run the game loop from the current state (for continued games)
+   */
+  private async runGameFromCurrentState(game: RunningGame): Promise<void> {
+    const state = game.state;
+    const config = state.config;
+
+    // If game is in pregame phase, complete mulligans first
+    if (state.phase === "pregame") {
+      await this.runPregameMulligans(game);
+
+      if (!game.isRunning || state.isGameOver) {
+        return;
+      }
+
+      // Transition to turn 1 if mulligans just completed
+      if (state.turnNumber === 0) {
+        state.turnNumber = 1;
+        state.phase = "beginning";
+        state.step = "untap";
+        state.activePlayer = "player";
+        state.priorityPlayer = null;
+
+        this.emitEvent(state.deckId, {
+          type: "turn:started",
+          turnNumber: 1,
+          activePlayer: "player",
+        });
+
+        this.emitEvent(state.deckId, {
+          type: "phase:changed",
+          phase: "beginning",
+          step: "untap",
+          activePlayer: "player",
+        });
+      }
+    }
+
+    // Continue with normal game loop
+    while (game.isRunning && !state.isGameOver) {
+      if (game.abortController.signal.aborted) {
+        break;
+      }
+
+      while (game.isPaused && game.isRunning) {
+        await this.delay(100);
+      }
+
+      if (state.turnNumber > config.maxTurns) {
+        state.isGameOver = true;
+        state.winner = null;
+        state.gameOverReason = "Maximum turns reached (draw)";
+        this.emitEvent(state.deckId, {
+          type: "game:over",
+          winner: "player",
+          reason: state.gameOverReason,
+        });
+        break;
+      }
+
+      const currentPlayer = state.priorityPlayer;
+
+      if (currentPlayer === null) {
+        const events = this.gameEngine.advancePhase(state);
+        this.emitEvents(state.deckId, events);
+
+        // If any life changes occurred, emit full game state for UI sync
+        const hasLifeChanges = events.some(e => e.type === "life:changed");
+        if (hasLifeChanges) {
+          this.emitEvent(state.deckId, {
+            type: "gamestate:full",
+            gameState: state,
+          });
+        }
+
+        await this.delay(config.phaseDelay / 2);
+        continue;
+      }
+
+      this.emitEvent(state.deckId, {
+        type: "ai:thinking",
+        player: currentPlayer,
+        action: `${currentPlayer === "player" ? "Player" : "Opponent"} is considering options...`,
+      });
+
+      const availableActions = this.gameEngine.getAvailableActions(
+        state,
+        currentPlayer,
+      );
+
+      const decision = await this.aiOpponent.decideAction(
+        state,
+        currentPlayer,
+        availableActions,
+      );
+
+      // Track token usage from AI decision
+      this.accumulateTokenUsage(state, decision.tokenUsage);
+
+      this.emitEvent(state.deckId, {
+        type: "ai:decided",
+        player: currentPlayer,
+        action: decision.action,
+        reasoning: decision.reasoning,
+      });
+
+      this.addLogEntry(state, {
+        type: "ai",
+        player: currentPlayer,
+        message: `${currentPlayer === "player" ? "Player" : "Opponent"}: ${decision.reasoning}`,
+      });
+
+      const events = await this.processAction(
+        state,
+        currentPlayer,
+        decision.action,
+      );
+      this.emitEvents(state.deckId, events);
+
+      // If any life changes occurred, emit full game state for UI sync
+      const hasLifeChanges = events.some(e => e.type === "life:changed");
+      if (hasLifeChanges) {
+        this.emitEvent(state.deckId, {
+          type: "gamestate:full",
+          gameState: state,
+        });
+      }
+
+      await this.delay(config.actionDelay);
+    }
+
+    if (state.isGameOver) {
+      this.addLogEntry(state, {
+        type: "system",
+        player: "system",
+        message: `Game ended: ${state.winner ? (state.winner === "player" ? state.deckName : state.opponentDeckName) + " wins!" : "Draw"}`,
+      });
+
+      this.emitEvent(state.deckId, {
+        type: "gamestate:full",
+        gameState: state,
+      });
     }
   }
 
@@ -209,6 +508,16 @@ export class GameLoopService {
         // No priority (untap/cleanup) - advance automatically
         const events = this.gameEngine.advancePhase(state);
         this.emitEvents(state.deckId, events);
+
+        // If any life changes occurred, emit full game state for UI sync
+        const hasLifeChanges = events.some(e => e.type === "life:changed");
+        if (hasLifeChanges) {
+          this.emitEvent(state.deckId, {
+            type: "gamestate:full",
+            gameState: state,
+          });
+        }
+
         await this.delay(config.phaseDelay / 2);
         continue;
       }
@@ -233,6 +542,9 @@ export class GameLoopService {
         availableActions,
       );
 
+      // Track token usage from AI decision
+      this.accumulateTokenUsage(state, decision.tokenUsage);
+
       // Emit decision with reasoning
       this.emitEvent(state.deckId, {
         type: "ai:decided",
@@ -255,6 +567,15 @@ export class GameLoopService {
         decision.action,
       );
       this.emitEvents(state.deckId, events);
+
+      // If any life changes occurred, emit full game state for UI sync
+      const hasLifeChanges = events.some(e => e.type === "life:changed");
+      if (hasLifeChanges) {
+        this.emitEvent(state.deckId, {
+          type: "gamestate:full",
+          gameState: state,
+        });
+      }
 
       // Small delay for UI to render
       await this.delay(config.actionDelay);
@@ -322,12 +643,21 @@ export class GameLoopService {
           handSize: playerState.handOrder.length,
         });
 
+        this.addLogEntry(state, {
+          type: "action",
+          player,
+          message: `${playerName} is evaluating their hand...`,
+        });
+
         // AI decides keep or mulligan
         const decision = await this.aiOpponent.decideMulligan(
           state,
           player,
           playerState.mulliganCount,
         );
+
+        // Track token usage from mulligan decision
+        this.accumulateTokenUsage(state, decision.tokenUsage);
 
         await this.delay(config.actionDelay);
 
@@ -379,8 +709,24 @@ export class GameLoopService {
           });
 
           // Perform the mulligan - shuffle hand into library, draw 7
-          const events = this.handleMulligan(state, player);
-          this.emitEvents(state.deckId, events);
+          this.handleMulligan(state, player);
+
+          // Emit updated game state first to clear the old hand
+          this.emitEvent(state.deckId, {
+            type: "gamestate:full",
+            gameState: state,
+          });
+
+          // Show the newly drawn cards
+          const drawnCardNames = playerState.handOrder
+            .map((cardId) => state.cards[cardId]?.name)
+            .filter(Boolean);
+
+          this.addLogEntry(state, {
+            type: "action",
+            player,
+            message: `${playerName} draws new hand: ${drawnCardNames.join(", ")}`,
+          });
 
           await this.delay(config.actionDelay);
         }
@@ -423,6 +769,9 @@ export class GameLoopService {
     // AI decides which cards to bottom
     const decision = await this.aiOpponent.decideBottomCards(state, player, cardsToBottom);
 
+    // Track token usage from bottom cards decision
+    this.accumulateTokenUsage(state, decision.tokenUsage);
+
     this.emitEvent(state.deckId, {
       type: "mulligan:bottomCards",
       player,
@@ -462,6 +811,12 @@ export class GameLoopService {
       message: `${playerName} puts ${cardsToBottom} card${cardsToBottom > 1 ? "s" : ""} on the bottom of their library`,
     });
 
+    // Emit updated game state to show reduced hand size
+    this.emitEvent(state.deckId, {
+      type: "gamestate:full",
+      gameState: state,
+    });
+
     await this.delay(config.actionDelay);
   }
 
@@ -477,7 +832,7 @@ export class GameLoopService {
 
     switch (action.type) {
       case "pass_priority":
-        events.push(...this.gameEngine.passPriority(state, player));
+        events.push(...await this.gameEngine.passPriority(state, player));
         break;
 
       case "concede":
@@ -697,5 +1052,27 @@ export class GameLoopService {
       const j = Math.floor(Math.random() * (i + 1));
       [array[i], array[j]] = [array[j], array[i]];
     }
+  }
+
+  /**
+   * Accumulate token usage from an AI call and emit the update
+   */
+  private accumulateTokenUsage(
+    state: FullPlaytestGameState,
+    tokenUsage: TokenUsage | undefined,
+  ): void {
+    if (!tokenUsage) return;
+
+    state.tokenUsage.totalInputTokens += tokenUsage.inputTokens;
+    state.tokenUsage.totalOutputTokens += tokenUsage.outputTokens;
+    state.tokenUsage.totalCacheReadInputTokens += tokenUsage.cacheReadInputTokens || 0;
+    state.tokenUsage.totalCacheCreationInputTokens += tokenUsage.cacheCreationInputTokens || 0;
+    state.tokenUsage.callCount += 1;
+
+    // Emit token update event
+    this.emitEvent(state.deckId, {
+      type: "ai:tokens",
+      tokenUsage: state.tokenUsage,
+    });
   }
 }

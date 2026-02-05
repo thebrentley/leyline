@@ -755,6 +755,18 @@ export const playtestingApi = {
       method: "DELETE",
     });
   },
+
+  async pauseGame(deckId: string): Promise<ApiResponse<{ success: boolean }>> {
+    return request<{ success: boolean }>(`/playtesting/pause/${deckId}`, {
+      method: "POST",
+    });
+  },
+
+  async resumeGame(deckId: string): Promise<ApiResponse<{ success: boolean }>> {
+    return request<{ success: boolean }>(`/playtesting/resume/${deckId}`, {
+      method: "POST",
+    });
+  },
 };
 
 // ==================== Advisor API ====================

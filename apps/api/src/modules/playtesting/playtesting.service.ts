@@ -12,10 +12,10 @@ import type {
   PlayerState,
   ManaPool,
   GameConfig,
-  DEFAULT_GAME_CONFIG,
   PlayerId,
   CombatState,
 } from '@decktutor/shared';
+import { DEFAULT_TOKEN_USAGE } from '@decktutor/shared';
 
 @Injectable()
 export class PlaytestingService {
@@ -142,6 +142,81 @@ export class PlaytestingService {
   }
 
   /**
+   * Continue a game from a saved state
+   * This loads the full game state and queues any incoming messages until ready
+   */
+  async continueGame(
+    gameState: FullPlaytestGameState,
+    userId: string,
+  ): Promise<FullPlaytestGameState> {
+    const deckId = gameState.deckId;
+
+    // Check if there's already an active session for this deck
+    const existingSession = this.eventsGateway.getActivePlaytestSession(deckId);
+    if (existingSession) {
+      throw new ConflictException('A playtest session is already active for this deck');
+    }
+
+    // Verify the decks still exist and belong to the user
+    const [deck1, deck2] = await Promise.all([
+      this.deckRepository.findOne({
+        where: { id: gameState.deckId, userId },
+      }),
+      this.deckRepository.findOne({
+        where: { id: gameState.opponentDeckId, userId },
+      }),
+    ]);
+
+    if (!deck1) {
+      throw new NotFoundException('Player deck not found');
+    }
+    if (!deck2) {
+      throw new NotFoundException('Opponent deck not found');
+    }
+
+    // Start the session via EventsGateway
+    const sessionId = this.eventsGateway.startPlaytestSession(deckId);
+    if (!sessionId) {
+      throw new ConflictException('Failed to start playtest session');
+    }
+
+    // Update the session ID in the game state
+    gameState.sessionId = sessionId;
+    gameState.updatedAt = new Date().toISOString();
+
+    // Store game state
+    this.gameStates.set(deckId, gameState);
+
+    // Emit session started event
+    this.eventsGateway.emitPlaytestEvent(deckId, {
+      type: 'session:started',
+      sessionId,
+    });
+
+    // Start the game loop from the saved state (runs in background)
+    this.gameLoopService.continueGameLoop(gameState).catch((error) => {
+      console.error('[PlaytestingService] Continue game loop error:', error);
+    });
+
+    return gameState;
+  }
+
+  /**
+   * Queue an action for a game that's loading
+   * Returns true if queued, false if game is ready for immediate processing
+   */
+  queueAction(deckId: string, player: 'player' | 'opponent', action: any): boolean {
+    return this.gameLoopService.queueAction(deckId, player, action);
+  }
+
+  /**
+   * Check if a game is currently loading
+   */
+  isGameLoading(deckId: string): boolean {
+    return this.gameLoopService.isGameLoading(deckId);
+  }
+
+  /**
    * Check if a game is currently running
    */
   isGameRunning(deckId: string): boolean {
@@ -178,6 +253,7 @@ export class PlaytestingService {
         const gameCard: ExtendedGameCard = {
           instanceId,
           scryfallId: deckCard.scryfallId,
+          isToken: false,
           name: deckCard.card?.name || 'Unknown Card',
           owner: 'player',
           controller: 'player',
@@ -200,6 +276,7 @@ export class PlaytestingService {
           colors: deckCard.card?.colors || [],
           colorIdentity: deckCard.card?.colorIdentity || [],
           isCommander,
+          commanderTax: 0,
           keywords,
         };
 
@@ -231,6 +308,7 @@ export class PlaytestingService {
         const gameCard: ExtendedGameCard = {
           instanceId,
           scryfallId: deckCard.scryfallId,
+          isToken: false,
           name: deckCard.card?.name || 'Unknown Card',
           owner: 'opponent',
           controller: 'opponent',
@@ -253,6 +331,7 @@ export class PlaytestingService {
           colors: deckCard.card?.colors || [],
           colorIdentity: deckCard.card?.colorIdentity || [],
           isCommander,
+          commanderTax: 0,
           keywords,
         };
 
@@ -283,8 +362,11 @@ export class PlaytestingService {
       player2State.handOrder.push(cardId);
     }
 
+    // Determine format (default to commander if not set)
+    const format = deck1.format || 'commander';
+
     // Determine starting life based on format
-    const life = this.getStartingLife(deck1.format);
+    const life = this.getStartingLife(format);
     player1State.life = life;
     player2State.life = life;
 
@@ -302,7 +384,7 @@ export class PlaytestingService {
       opponentDeckId: deck2.id,
       deckName: deck1.name,
       opponentDeckName: deck2.name,
-      format: deck1.format || 'commander',
+      format,
 
       turnNumber: 0, // Turn 0 = pregame (mulligans)
       activePlayer: 'player',
@@ -323,11 +405,14 @@ export class PlaytestingService {
 
       stack: [],
       combat,
+      watches: [],
       log: [],
 
       isGameOver: false,
       winner: null,
       gameOverReason: null,
+
+      tokenUsage: { ...DEFAULT_TOKEN_USAGE },
 
       config,
 

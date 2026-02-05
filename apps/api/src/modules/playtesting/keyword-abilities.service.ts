@@ -6,6 +6,7 @@ import type {
   PlayerState,
   PlaytestEvent,
   StackItem,
+  StackTarget,
   PlayerId,
 } from '@decktutor/shared';
 
@@ -769,6 +770,7 @@ export class KeywordAbilitiesService {
 
   /**
    * Check for ETB triggers
+   * Detects "When ~ enters the battlefield" triggers and parses their effects
    */
   checkETBTriggers(
     state: FullPlaytestGameState,
@@ -781,25 +783,56 @@ export class KeywordAbilitiesService {
 
     const text = card.oracleText.toLowerCase();
 
-    // Check for "When ~ enters the battlefield" patterns
-    const etbPattern = /when .+ enters the battlefield/;
+    // Check for "When ~ enters the battlefield" or "When ~ enters" patterns
+    const etbPattern = /when .+ enters(?:\s+the\s+battlefield)?/i;
     if (etbPattern.test(text)) {
-      // Extract the effect text (simplified)
-      const effectMatch = text.match(/when .+ enters the battlefield,?\s*(.+?)(?:\.|$)/);
+      // Extract the full trigger text including effect
+      const effectMatch = text.match(/when .+ enters(?:\s+the\s+battlefield)?,?\s*(.+?)(?:\.|$)/i);
       if (effectMatch) {
+        const fullTriggerText = effectMatch[0];
+        const effectText = effectMatch[1];
+
+        // Parse the effect to determine if we need targets
+        const targets = this.parseETBTargets(effectText, state, card.controller);
+
         triggers.push({
           id: uuidv4(),
           type: 'ability',
           sourceCardId: cardId,
           controller: card.controller,
-          targets: [],
-          abilityText: effectMatch[0],
+          targets,
+          abilityText: fullTriggerText,
           abilityType: 'triggered',
         });
       }
     }
 
     return triggers;
+  }
+
+  /**
+   * Parse ETB effect text to determine required targets
+   * For effects like "deal damage to target opponent" or "target player gains life"
+   */
+  private parseETBTargets(
+    effectText: string,
+    state: FullPlaytestGameState,
+    controller: PlayerId,
+  ): StackTarget[] {
+    const targets: StackTarget[] = [];
+
+    // Check for "target opponent" or "target player"
+    if (effectText.includes('target opponent')) {
+      // Auto-target the opponent
+      const opponent = controller === 'player' ? 'opponent' : 'player';
+      targets.push({ type: 'player', id: opponent });
+    } else if (effectText.includes('target player')) {
+      // For simplicity, auto-target the opponent (could be enhanced for player choice)
+      const opponent = controller === 'player' ? 'opponent' : 'player';
+      targets.push({ type: 'player', id: opponent });
+    }
+
+    return targets;
   }
 
   /**

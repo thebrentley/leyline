@@ -1,11 +1,13 @@
 import { router, useLocalSearchParams } from "expo-router";
+import * as Clipboard from "expo-clipboard";
 import {
   ArrowLeft,
   Bot,
   Check,
   ChevronDown,
-  ChevronRight,
+  Copy,
   MessageCircle,
+  Pause,
   Play,
   StopCircle,
   Swords,
@@ -37,6 +39,8 @@ import {
 import { useResponsive } from "~/hooks/useResponsive";
 import { DesktopSidebar } from "~/components/web/DesktopSidebar";
 import { useSocket, type PlaytestMessage } from "~/contexts/SocketContext";
+import { GameView } from "~/components/playtest";
+import type { ExtendedGameZone, FullPlaytestGameState, PlayerId, PlayerState, CumulativeTokenUsage } from "~/types/playtesting";
 
 // Color identity colors for deck display
 const MANA_COLORS: Record<string, string> = {
@@ -80,7 +84,6 @@ export default function PlaytestPage() {
   const [showExistingGameDialog, setShowExistingGameDialog] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isGameActive, setIsGameActive] = useState(false);
-  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
   // Track current game state for context in log entries
   const [currentGameContext, setCurrentGameContext] = useState<{
     phase?: string;
@@ -88,8 +91,18 @@ export default function PlaytestPage() {
     activePlayerDeckName?: string;
     turn?: number;
   }>({});
+  // Full game state for the game view
+  const [gameState, setGameState] = useState<FullPlaytestGameState | null>(null);
+  // Track which player is currently thinking (for AI thinking indicator)
+  const [thinkingPlayer, setThinkingPlayer] = useState<PlayerId | null>(null);
   // Friendly narrative panel state
   const [isNarrativePanelOpen, setIsNarrativePanelOpen] = useState(false);
+  // Token usage tracking
+  const [tokenUsage, setTokenUsage] = useState<CumulativeTokenUsage | null>(null);
+  // End game confirmation dialog
+  const [showEndGameConfirm, setShowEndGameConfirm] = useState(false);
+  // Game paused state
+  const [isGamePaused, setIsGamePaused] = useState(false);
   // Scroll stick-to-bottom state
   const narrativeScrollRef = useRef<ScrollView>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -98,6 +111,9 @@ export default function PlaytestPage() {
   // Animation for slide-from-right panel
   const PANEL_WIDTH = 320;
   const narrativePanelAnim = useRef(new Animated.Value(PANEL_WIDTH)).current;
+  // Debug game state display
+  const [showGameState, setShowGameState] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const openNarrativePanel = useCallback(() => {
     setIsNarrativePanelOpen(true);
@@ -185,24 +201,150 @@ export default function PlaytestPage() {
       // Update current game context based on message type
       if (messageAny.type === 'gamestate:full' && messageAny.gameState) {
         const gs = messageAny.gameState;
+        // Store full game state for the GameView
+        setGameState(gs);
         setCurrentGameContext({
           phase: gs.phase,
           step: gs.step,
           turn: gs.turnNumber,
           activePlayerDeckName: gs.activePlayer === 'player' ? gs.deckName : gs.opponentDeckName,
         });
+        // Update token usage from game state if present
+        if (gs.tokenUsage) {
+          setTokenUsage(gs.tokenUsage);
+        }
       } else if (messageAny.type === 'phase:changed') {
         setCurrentGameContext(prev => ({
           ...prev,
           phase: messageAny.phase,
           step: messageAny.step,
         }));
+        // Also update gameState so GameView sees the phase change
+        setGameState(prev => prev ? {
+          ...prev,
+          phase: messageAny.phase,
+          step: messageAny.step,
+        } : null);
       } else if (messageAny.type === 'turn:started') {
         setCurrentGameContext(prev => ({
           ...prev,
           turn: messageAny.turnNumber,
           // Active player deck name will be set by gamestate:full
         }));
+        // Also update gameState so GameView sees the turn change
+        setGameState(prev => prev ? {
+          ...prev,
+          turnNumber: messageAny.turnNumber,
+          activePlayer: messageAny.activePlayer,
+        } : null);
+      } else if (messageAny.type === 'mana:changed') {
+        // Update mana pool when mana is spent or added
+        setGameState(prev => {
+          if (!prev) return null;
+          const { player: manaPlayer, manaPool } = messageAny;
+          if (manaPlayer === 'player') {
+            return {
+              ...prev,
+              player: { ...prev.player, manaPool },
+            };
+          } else {
+            return {
+              ...prev,
+              opponent: { ...prev.opponent, manaPool },
+            };
+          }
+        });
+      } else if (messageAny.type === 'card:tapped') {
+        // Update card tapped state
+        setGameState(prev => {
+          if (!prev) return null;
+          const { cardId, isTapped } = messageAny;
+          const card = prev.cards[cardId];
+          if (!card) return prev;
+
+          return {
+            ...prev,
+            cards: {
+              ...prev.cards,
+              [cardId]: {
+                ...card,
+                isTapped,
+              },
+            },
+          };
+        });
+      } else if (messageAny.type === 'card:moved') {
+        // Update game state when a card is moved between zones
+        setGameState(prev => {
+          if (!prev) return null;
+
+          const { cardId, from, to, player: cardPlayer } = messageAny;
+          const card = prev.cards[cardId];
+          if (!card) return prev;
+
+          // Create updated cards map with new zone
+          const updatedCards = {
+            ...prev.cards,
+            [cardId]: {
+              ...card,
+              zone: to as ExtendedGameZone,
+            },
+          };
+
+          // Helper to remove cardId from an array
+          const removeFrom = (arr: string[]) => arr.filter(id => id !== cardId);
+
+          // Update player state for zone arrays
+          const updatePlayerState = (playerState: PlayerState, isOwner: boolean) => {
+            if (!isOwner) return playerState;
+
+            let updated = { ...playerState };
+
+            // Remove from source zone
+            if (from === 'hand') updated.handOrder = removeFrom(updated.handOrder);
+            else if (from === 'library') updated.libraryOrder = removeFrom(updated.libraryOrder);
+            else if (from === 'graveyard') updated.graveyardOrder = removeFrom(updated.graveyardOrder);
+            else if (from === 'exile') updated.exileOrder = removeFrom(updated.exileOrder);
+            else if (from === 'command') updated.commandZone = removeFrom(updated.commandZone);
+
+            // Add to destination zone
+            if (to === 'hand') updated.handOrder = [...updated.handOrder, cardId];
+            else if (to === 'library') updated.libraryOrder = [cardId, ...updated.libraryOrder]; // Top of library
+            else if (to === 'graveyard') updated.graveyardOrder = [...updated.graveyardOrder, cardId];
+            else if (to === 'exile') updated.exileOrder = [...updated.exileOrder, cardId];
+            else if (to === 'command') updated.commandZone = [...updated.commandZone, cardId];
+
+            return updated;
+          };
+
+          const isPlayerCard = cardPlayer === 'player';
+
+          // Update battlefield order
+          let battlefieldOrder = { ...prev.battlefieldOrder };
+          const battlefieldKey = isPlayerCard ? 'player' : 'opponent';
+
+          if (from === 'battlefield') {
+            battlefieldOrder[battlefieldKey] = removeFrom(battlefieldOrder[battlefieldKey]);
+          }
+          if (to === 'battlefield') {
+            battlefieldOrder[battlefieldKey] = [...battlefieldOrder[battlefieldKey], cardId];
+          }
+
+          return {
+            ...prev,
+            cards: updatedCards,
+            player: updatePlayerState(prev.player, isPlayerCard),
+            opponent: updatePlayerState(prev.opponent, !isPlayerCard),
+            battlefieldOrder,
+          };
+        });
+      } else if (messageAny.type === 'ai:thinking' || messageAny.type === 'mulligan:evaluating') {
+        setThinkingPlayer(messageAny.player as PlayerId);
+      } else if (messageAny.type === 'ai:decided' || messageAny.type === 'mulligan:decision') {
+        setThinkingPlayer(null);
+      } else if (messageAny.type === 'ai:tokens') {
+        // Update token usage from dedicated token event
+        setTokenUsage(messageAny.tokenUsage);
       }
 
       // Skip noisy message types
@@ -235,6 +377,8 @@ export default function PlaytestPage() {
     if (!id || !opponentDeck) return;
 
     setStartingGame(true);
+    setIsGamePaused(false);
+    setTokenUsage(null);
     try {
       const response = await playtestingApi.startGame(id, opponentDeck.id);
       if (response.data?.success) {
@@ -261,12 +405,55 @@ export default function PlaytestPage() {
       await playtestingApi.endGame(id);
       // Reset game state
       setIsGameActive(false);
+      setGameState(null);
       setLogs([]);
-      setExpandedLogs(new Set());
       setCurrentGameContext({});
+      setThinkingPlayer(null);
       setIsNarrativePanelOpen(false);
+      setIsGamePaused(false);
+      setTokenUsage(null);
     } catch (err) {
       console.error("Error ending game:", err);
+    }
+  };
+
+  const handlePlayAgain = async () => {
+    if (!id || !opponentDeck) return;
+    // End current game and start a new one
+    try {
+      await playtestingApi.endGame(id);
+      setGameState(null);
+      setLogs([]);
+      setCurrentGameContext({});
+      setThinkingPlayer(null);
+      setIsGamePaused(false);
+      setTokenUsage(null);
+      // Start new game with same opponent
+      const response = await playtestingApi.startGame(id, opponentDeck.id);
+      if (response.data?.success) {
+        setIsGameActive(true);
+      }
+    } catch (err) {
+      console.error("Error restarting game:", err);
+    }
+  };
+
+  const handlePauseToggle = async () => {
+    if (!id) return;
+    try {
+      if (isGamePaused) {
+        const response = await playtestingApi.resumeGame(id);
+        if (response.data?.success) {
+          setIsGamePaused(false);
+        }
+      } else {
+        const response = await playtestingApi.pauseGame(id);
+        if (response.data?.success) {
+          setIsGamePaused(true);
+        }
+      }
+    } catch (err) {
+      console.error("Error toggling pause:", err);
     }
   };
 
@@ -423,6 +610,22 @@ export default function PlaytestPage() {
     }
   };
 
+  const handleGetGameState = () => {
+    console.log('[DEBUG] Full Game State:', JSON.stringify(gameState, null, 2));
+    setShowGameState(!showGameState);
+  };
+
+  const handleCopyGameState = async () => {
+    if (!gameState) return;
+    try {
+      await Clipboard.setStringAsync(JSON.stringify(gameState, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy game state:', error);
+    }
+  };
+
   const renderDeckOption = ({ item }: { item: DeckSummary }) => {
     const isSelected = opponentDeck?.id === item.id;
 
@@ -575,6 +778,66 @@ export default function PlaytestPage() {
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#22c55e" />
         </View>
+      ) : isGameActive ? (
+        /* Game View - Full Screen Visual Board */
+        <View className="flex-1">
+          {/* Header with connection status and action buttons */}
+          <View className="flex-row items-center justify-between px-2 py-1">
+            <View className="flex-row items-center">
+              <View
+                className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
+              />
+            </View>
+            <View className="flex-row items-center gap-2">
+              <Pressable
+                onPress={() => setShowEndGameConfirm(true)}
+                className={`flex-row items-center gap-2 px-3 py-1.5 rounded-lg ${
+                  isDark ? "bg-red-900/30 active:bg-red-900/50" : "bg-red-100 active:bg-red-200"
+                }`}
+              >
+                <StopCircle size={14} color="#ef4444" />
+                <Text className="text-red-500 font-medium text-xs">End Game</Text>
+              </Pressable>
+              <Pressable
+                onPress={handlePauseToggle}
+                className={`flex-row items-center gap-2 px-3 py-1.5 rounded-lg ${
+                  isDark ? "bg-amber-900/30 active:bg-amber-900/50" : "bg-amber-100 active:bg-amber-200"
+                }`}
+              >
+                {isGamePaused ? (
+                  <>
+                    <Play size={14} color="#f59e0b" />
+                    <Text className="text-amber-500 font-medium text-xs">Resume</Text>
+                  </>
+                ) : (
+                  <>
+                    <Pause size={14} color="#f59e0b" />
+                    <Text className="text-amber-500 font-medium text-xs">Pause</Text>
+                  </>
+                )}
+              </Pressable>
+              <Pressable
+                onPress={openNarrativePanel}
+                className={`flex-row items-center gap-2 px-3 py-1.5 rounded-lg ${
+                  isDark ? "bg-purple-900/30 active:bg-purple-900/50" : "bg-purple-100 active:bg-purple-200"
+                }`}
+              >
+                <MessageCircle size={14} color="#a855f7" />
+                <Text className="text-purple-500 font-medium text-xs">Log</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Game Board */}
+          <GameView
+            gameState={gameState}
+            playerName={deckName}
+            opponentName={opponentDeck?.name || "Opponent"}
+            thinkingPlayer={thinkingPlayer}
+            onPlayAgain={handlePlayAgain}
+            onEndGame={handleEndGame}
+          />
+        </View>
       ) : (
         <ScrollView
           className="flex-1"
@@ -584,151 +847,26 @@ export default function PlaytestPage() {
             flexGrow: 1,
           }}
         >
-          <View className={`max-w-2xl ${isDesktop ? "mx-auto w-full" : ""}`}>
-            {isGameActive ? (
-              /* Game View - Socket Messages */
-              <View>
-                <View className="flex-row items-center justify-between mb-4">
-                  <View className="flex-row items-center gap-2">
-                    <Text
-                      className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}
-                    >
-                      Socket Messages
-                    </Text>
-                    <View
-                      className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
-                    />
-                  </View>
-                  <Pressable
-                    onPress={handleEndGame}
-                    className={`flex-row items-center gap-2 px-3 py-2 rounded-lg ${
-                      isDark ? "bg-red-900/30 active:bg-red-900/50" : "bg-red-100 active:bg-red-200"
+          <View className={`flex-1 ${isDesktop ? "max-w-4xl mx-auto w-full" : ""}`}>
+            {/* Selection UI */}
+            <>
+                {/* Experimental Feature Warning Banner */}
+                <View
+                  className={`mb-6 p-4 rounded-xl border ${
+                    isDark
+                      ? "bg-amber-900/20 border-amber-700/50"
+                      : "bg-amber-50 border-amber-200"
+                  }`}
+                >
+                  <Text
+                    className={`text-center text-sm leading-relaxed ${
+                      isDark ? "text-amber-200" : "text-amber-800"
                     }`}
                   >
-                    <StopCircle size={16} color="#ef4444" />
-                    <Text className="text-red-500 font-medium text-sm">End Game</Text>
-                  </Pressable>
-                </View>
-                {logs.length === 0 ? (
-                  <Text
-                    className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}
-                  >
-                    Waiting for messages...
+                    Playtesting is an experimental feature. Some mechanics may not function and the AI may not make the most optimal play in some circumstances.
                   </Text>
-                ) : (
-                  logs.map((log) => {
-                    const isExpanded = expandedLogs.has(log.id);
-                    const toggleExpanded = () => {
-                      setExpandedLogs((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(log.id)) {
-                          next.delete(log.id);
-                        } else {
-                          next.add(log.id);
-                        }
-                        return next;
-                      });
-                    };
+                </View>
 
-                    // Format phase/step for display
-                    const formatPhaseStep = (phase?: string, step?: string) => {
-                      if (!phase) return null;
-                      const phaseLabels: Record<string, string> = {
-                        pregame: 'Pregame',
-                        beginning: 'Beginning',
-                        precombat_main: 'Main 1',
-                        combat: 'Combat',
-                        postcombat_main: 'Main 2',
-                        ending: 'Ending',
-                      };
-                      const stepLabels: Record<string, string> = {
-                        mulligan: 'Mulligan',
-                        bottom_cards: 'Bottom Cards',
-                        untap: 'Untap',
-                        upkeep: 'Upkeep',
-                        draw: 'Draw',
-                        main: 'Main',
-                        beginning_of_combat: 'Begin Combat',
-                        declare_attackers: 'Attackers',
-                        declare_blockers: 'Blockers',
-                        first_strike_damage: '1st Strike',
-                        combat_damage: 'Damage',
-                        end_of_combat: 'End Combat',
-                        end: 'End',
-                        cleanup: 'Cleanup',
-                      };
-                      const phaseStr = phaseLabels[phase] || phase;
-                      const stepStr = step ? stepLabels[step] || step : null;
-                      return stepStr ? `${phaseStr} - ${stepStr}` : phaseStr;
-                    };
-
-                    const phaseStepStr = formatPhaseStep(log.context.phase, log.context.step);
-
-                    return (
-                      <Pressable
-                        key={log.id}
-                        onPress={toggleExpanded}
-                        className={`mb-3 p-3 rounded-lg ${isDark ? "bg-slate-800 active:bg-slate-700" : "bg-slate-100 active:bg-slate-200"}`}
-                      >
-                        <View className="flex-row items-center gap-2 flex-wrap">
-                          {isExpanded ? (
-                            <ChevronDown size={16} color={isDark ? "#94a3b8" : "#64748b"} />
-                          ) : (
-                            <ChevronRight size={16} color={isDark ? "#94a3b8" : "#64748b"} />
-                          )}
-                          {/* Turn number */}
-                          {log.context.turn && (
-                            <Text
-                              className={`text-xs font-semibold ${isDark ? "text-amber-400" : "text-amber-600"}`}
-                            >
-                              T{log.context.turn}
-                            </Text>
-                          )}
-                          {/* Deck name (active player) */}
-                          {log.context.activePlayerDeckName && (
-                            <Text
-                              className={`text-sm font-semibold ${isDark ? "text-blue-400" : "text-blue-600"}`}
-                              numberOfLines={1}
-                            >
-                              {log.context.activePlayerDeckName}
-                            </Text>
-                          )}
-                          {/* Phase/Step */}
-                          {phaseStepStr && (
-                            <Text
-                              className={`text-xs px-1.5 py-0.5 rounded ${isDark ? "bg-slate-700 text-slate-300" : "bg-slate-200 text-slate-600"}`}
-                            >
-                              {phaseStepStr}
-                            </Text>
-                          )}
-                          {/* Message type */}
-                          <Text
-                            className={`font-mono text-sm font-semibold ${isDark ? "text-green-400" : "text-green-600"}`}
-                          >
-                            {log.message.type}
-                          </Text>
-                          {/* Timestamp */}
-                          <Text
-                            className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}
-                          >
-                            {new Date(log.timestamp).toLocaleTimeString()}
-                          </Text>
-                        </View>
-                        {isExpanded && (
-                          <Text
-                            className={`font-mono text-xs mt-2 ml-6 ${isDark ? "text-slate-300" : "text-slate-600"}`}
-                          >
-                            {JSON.stringify(log.message, null, 2)}
-                          </Text>
-                        )}
-                      </Pressable>
-                    );
-                  })
-                )}
-              </View>
-            ) : (
-              /* Selection UI */
-              <>
                 {/* AI vs AI Badge */}
                 <View
                   className={`flex-row items-center justify-center gap-2 mb-6 py-2 px-4 rounded-full self-center ${
@@ -914,7 +1052,6 @@ export default function PlaytestPage() {
                   Player vs AI mode coming soon
                 </Text>
               </>
-            )}
           </View>
         </ScrollView>
       )}
@@ -1021,19 +1158,6 @@ export default function PlaytestPage() {
         </View>
       </Modal>
 
-      {/* Floating Narrative Panel Toggle Button */}
-      {isGameActive && (
-        <Pressable
-          onPress={openNarrativePanel}
-          className={`absolute bottom-6 right-6 w-14 h-14 rounded-full items-center justify-center shadow-lg ${
-            isDark ? "bg-purple-600 active:bg-purple-700" : "bg-purple-500 active:bg-purple-600"
-          }`}
-          style={{ elevation: 5 }}
-        >
-          <MessageCircle size={24} color="white" />
-        </Pressable>
-      )}
-
       {/* Narrative Panel Slide-out */}
       <Modal
         visible={isNarrativePanelOpen}
@@ -1086,6 +1210,108 @@ export default function PlaytestPage() {
                 <X size={20} color={isDark ? "#94a3b8" : "#64748b"} />
               </Pressable>
             </View>
+
+            {/* Token Usage Display */}
+            {tokenUsage && (
+              <View
+                className={`px-4 py-3 border-b ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-slate-50"}`}
+              >
+                <View className="flex-row items-center justify-between">
+                  <Text className={`text-xs font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                    AI Token Usage
+                  </Text>
+                  <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                    {tokenUsage.callCount} calls
+                  </Text>
+                </View>
+                <View className="flex-row items-center justify-between mt-1">
+                  <View className="flex-row items-center gap-3">
+                    <View>
+                      <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>Input</Text>
+                      <Text className={`text-sm font-semibold ${isDark ? "text-blue-400" : "text-blue-600"}`}>
+                        {tokenUsage.totalInputTokens.toLocaleString()}
+                      </Text>
+                    </View>
+                    <View>
+                      <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>Output</Text>
+                      <Text className={`text-sm font-semibold ${isDark ? "text-green-400" : "text-green-600"}`}>
+                        {tokenUsage.totalOutputTokens.toLocaleString()}
+                      </Text>
+                    </View>
+                    {tokenUsage.totalCacheReadInputTokens > 0 && (
+                      <View>
+                        <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>Cache</Text>
+                        <Text className={`text-sm font-semibold ${isDark ? "text-amber-400" : "text-amber-600"}`}>
+                          {tokenUsage.totalCacheReadInputTokens.toLocaleString()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View>
+                    <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>Total</Text>
+                    <Text className={`text-sm font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                      {(tokenUsage.totalInputTokens + tokenUsage.totalOutputTokens).toLocaleString()}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Debug: Get Game State Button */}
+            <View
+              className={`px-4 py-3 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}
+            >
+              <Pressable
+                onPress={handleGetGameState}
+                className={`flex-row items-center justify-center gap-2 py-2 rounded-lg ${
+                  isDark ? "bg-blue-900/30 active:bg-blue-900/50" : "bg-blue-100 active:bg-blue-200"
+                }`}
+              >
+                <Text className={`text-xs font-semibold ${isDark ? "text-blue-400" : "text-blue-600"}`}>
+                  {showGameState ? "Hide Game State" : "Get Game State"}
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* Game State Display */}
+            {showGameState && gameState && (
+              <View className="relative">
+                <ScrollView
+                  className={`max-h-64 border-b ${isDark ? "border-slate-800 bg-slate-950" : "border-slate-200 bg-slate-50"}`}
+                  contentContainerStyle={{ padding: 12, paddingTop: 40 }}
+                >
+                  <Text
+                    className={`text-xs font-mono ${isDark ? "text-slate-300" : "text-slate-700"}`}
+                    selectable
+                  >
+                    {JSON.stringify(gameState, null, 2)}
+                  </Text>
+                </ScrollView>
+                {/* Copy Button Overlay */}
+                <View className="absolute top-2 right-2">
+                  <Pressable
+                    onPress={handleCopyGameState}
+                    className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+                      copied
+                        ? (isDark ? "bg-green-900/50" : "bg-green-100")
+                        : (isDark ? "bg-blue-900/50 active:bg-blue-900/70" : "bg-blue-100 active:bg-blue-200")
+                    }`}
+                  >
+                    {copied ? (
+                      <>
+                        <Check size={12} color="#22c55e" />
+                        <Text className="text-green-500 font-medium text-xs">Copied!</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={12} color={isDark ? "#60a5fa" : "#2563eb"} />
+                        <Text className={`font-medium text-xs ${isDark ? "text-blue-400" : "text-blue-600"}`}>Copy</Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+              </View>
+            )}
 
             {/* Narrative Content */}
             <ScrollView
@@ -1149,6 +1375,50 @@ export default function PlaytestPage() {
               </Pressable>
             </View>
           </Animated.View>
+        </View>
+      </Modal>
+
+      {/* End Game Confirmation Dialog */}
+      <Modal
+        visible={showEndGameConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEndGameConfirm(false)}
+      >
+        <View className="flex-1 bg-black/50 items-center justify-center p-4">
+          <View
+            className={`w-full max-w-sm rounded-2xl p-6 ${isDark ? "bg-slate-900" : "bg-white"}`}
+          >
+            <Text
+              className={`text-lg font-bold mb-2 ${isDark ? "text-white" : "text-slate-900"}`}
+            >
+              End Game?
+            </Text>
+            <Text
+              className={`mb-6 ${isDark ? "text-slate-400" : "text-slate-500"}`}
+            >
+              Are you sure you want to end the current game? This cannot be undone.
+            </Text>
+
+            <View className="flex-row gap-3">
+              <Button
+                onPress={() => setShowEndGameConfirm(false)}
+                className={`flex-1 h-12 ${isDark ? "bg-slate-700 active:bg-slate-600" : "bg-slate-200 active:bg-slate-300"}`}
+              >
+                <Text className={`font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>Cancel</Text>
+              </Button>
+
+              <Button
+                onPress={() => {
+                  setShowEndGameConfirm(false);
+                  handleEndGame();
+                }}
+                className="flex-1 h-12 bg-red-500 active:bg-red-600"
+              >
+                <Text className="text-white font-semibold">End Game</Text>
+              </Button>
+            </View>
+          </View>
         </View>
       </Modal>
     </>

@@ -1,5 +1,6 @@
 export { User } from './user.entity';
 export { Card } from './card.entity';
+export { Token } from './token.entity';
 export { Deck } from './deck.entity';
 export { DeckCard } from './deck-card.entity';
 export { DeckVersion } from './deck-version.entity';
