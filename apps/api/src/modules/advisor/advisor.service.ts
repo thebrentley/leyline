@@ -213,14 +213,16 @@ export class AdvisorService {
       const systemPrompt = skipPersist
         ? this.buildSubchatSystemPrompt(deck, commanderAnalysis)
         : this.buildSystemPrompt(deck, collectionCards, commanderAnalysis);
-      console.log(systemPrompt);
+      if (isFirstMessage) {
+        console.log("[ADVISOR] System prompt:\n", systemPrompt);
+      }
       const messages = this.buildMessages(session.messages);
 
       let fullResponse = "";
       const suggestedChanges: DeckChange[] = [];
 
       const stream = await this.anthropic.messages.stream({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-opus-4-6",
         max_tokens: 4096,
         system: systemPrompt,
         messages,
@@ -751,84 +753,44 @@ ${availableCards.join("\n")}
         ? `${creatureStats.total} creatures (avg CMC: ${creatureStats.avgCmc}, max CMC: ${creatureStats.maxCmc}) | Low (0-2): ${creatureStats.lowCmc} | Mid (3-5): ${creatureStats.midCmc} | High (6+): ${creatureStats.highCmc}${creatureStats.hasEtbEffects > 0 ? ` | ETB creatures: ${creatureStats.hasEtbEffects}` : ""}${creatureStats.hasTokenGenerators > 0 ? ` | Token makers: ${creatureStats.hasTokenGenerators}` : ""}`
         : "No creatures";
 
-    return `You are an expert Magic: The Gathering deck advisor specializing in Commander format. Your role is to help players optimize their decks by making suggestions that SYNERGIZE with their commander's strategy.
+    const colorIdentityStr = commanderColorIdentity.size > 0 ? Array.from(commanderColorIdentity).join("") : "Colorless";
+    const monoColorNote = commanderColorIdentity.size === 1
+      ? `This is a mono-${this.getColorName(Array.from(commanderColorIdentity)[0])} deck — only ${Array.from(commanderColorIdentity)[0]} and colorless cards are legal.\n`
+      : "";
+    const collectionNote = collectionCards.length > 0
+      ? "- **Prioritize cards the player already owns** from the collection list below\n"
+      : "";
 
-## ⚠️ ABSOLUTE REQUIREMENT: COLOR IDENTITY ⚠️
-**This deck's commander color identity is: ${commanderColorIdentity.size > 0 ? Array.from(commanderColorIdentity).join("") : "Colorless"}**
+    return `You are an expert Magic: The Gathering Commander deck advisor. Suggest changes that synergize with the commander's strategy.
 
-You MUST NEVER suggest any card that contains colors outside this identity. This is a hard rule in Commander format - cards with mana symbols or color indicators outside the commander's identity are ILLEGAL in the deck.
-
-${
-  commanderColorIdentity.size === 1
-    ? `This is a MONO-${this.getColorName(Array.from(commanderColorIdentity)[0])} deck. You may ONLY suggest:
-- ${Array.from(commanderColorIdentity)[0]} cards
-- Colorless cards
-- Lands that produce any color (they have no color identity)
-
-DO NOT suggest cards that are ${this.getExcludedColors(commanderColorIdentity)}.`
-    : ""
-}
-
-## CRITICAL: Synergy-First Approach
-Before suggesting ANY card, you MUST:
-1. **VERIFY THE CARD'S COLOR IDENTITY** - If it has mana symbols or color indicators outside ${Array.from(commanderColorIdentity).join("") || "colorless"}, DO NOT suggest it
-2. Understand what the commander DOES and what strategy it enables
-3. Verify the suggestion directly supports that strategy
-4. Consider if the deck has the right composition for the card to work
-
-**DO NOT suggest "generically good" cards that don't fit the strategy.** For example:
-- Don't suggest Finale of Devastation to tutor high-CMC creatures if the deck only has low-CMC creatures
-- Don't suggest big mana finishers for a low-to-the-ground aggro deck
-- Don't suggest blink effects if there are no ETB creatures
-
-## Deck Overview
-- **Name:** ${deck.name}
-- **Format:** ${deck.format || "Commander"}
-- **Total Cards:** ${totalCards}
-- **Commander Color Identity:** ${commanderColorIdentity.size > 0 ? Array.from(commanderColorIdentity).join("") : "Colorless"}
-
-## Commander(s)
+## Rules
+1. **Color identity: ${colorIdentityStr}** — NEVER suggest cards outside this identity. Cards with mana symbols or color indicators outside the commander's identity are illegal in Commander.
+${monoColorNote}2. **Synergy over power** — every suggestion must directly support the commander's strategy. Do not suggest generically good cards that don't fit.
+3. Use exact card names (no abbreviations), singleton except basics, ~100 cards total.
+4. Consider the deck's actual composition (creature count, CMC curve, ETB count) before suggesting tutors, payoffs, or blink effects.
+5. Ensure adequate ramp, card draw, and removal. Target 35-40 lands (adjust for CMC and ramp).
+6. Mention budget alternatives for expensive cards.
+${collectionNote}
+## Commander
 ${commanderSection}
 
-## Commander Strategy Analysis
+## Strategy Analysis
 ${strategyAnalysis}
 
-## Deck Statistics
+## Deck: ${deck.name} (${deck.format || "Commander"}, ${totalCards} cards)
+${typeBreakdownStr} | Mana curve: ${manaCurveStr}
+Creatures: ${creatureStatsStr}
+Color pips: ${colorPipsStr}
 
-### Card Type Breakdown
-${typeBreakdownStr}
-
-### Mana Curve (non-lands)
-${manaCurveStr}
-
-### Creature Breakdown
-${creatureStatsStr}
-
-### Color Pip Distribution
-${colorPipsStr}
-
-## Deck List
+## Card List
 ${cardList}
 ${collectionSection}
-## Instructions
-When suggesting changes, use this exact format for each suggestion:
-\`[CHANGE:action:cardName:quantity:reason]\`
+## Change Format
+Use exactly: \`[CHANGE:action:cardName:quantity:reason]\`
+- Actions: add, remove, swap
+- Swaps: \`[CHANGE:swap:CardToRemove->CardToAdd:quantity:reason]\`
 
-- **action:** add, remove, or swap
-- **For swaps:** \`[CHANGE:swap:CardToRemove->CardToAdd:quantity:reason]\`
-
-**Important Guidelines:**
-1. **COLOR IDENTITY IS MANDATORY** - NEVER suggest cards outside ${Array.from(commanderColorIdentity).join("") || "colorless"} identity. This is non-negotiable.
-2. **SYNERGY IS PARAMOUNT** - Every suggestion must directly support the commander's strategy
-3. Be specific with card names (exact names, no abbreviations)
-4. Consider the deck's creature composition when suggesting tutors or payoffs
-5. For Commander format: aim for ~100 cards total, singleton (except basics)
-6. Suggest budget alternatives when mentioning expensive cards
-7. Explain HOW each suggestion synergizes with the commander
-8. Recommend appropriate land count (typically 35-40 for Commander, but can be lower depending on other factors like average cmc, alternate mana production, and ramp)
-9. Ensure the deck has adequate ramp, card draw, and removal${collectionCards.length > 0 ? '\n10. **PRIORITIZE cards from the player\'s collection** - mention "You already own this card" when suggesting owned cards' : ""}
-
-**Before each suggestion, briefly explain why it fits THIS specific deck's strategy.**`;
+Before each suggestion, briefly explain how it synergizes with the commander.`;
   }
 
   /**
@@ -863,34 +825,13 @@ When suggesting changes, use this exact format for each suggestion:
       .filter((c) => c.card?.typeLine?.toLowerCase().includes("creature"))
       .reduce((sum, c) => sum + c.quantity, 0);
 
-    return `You are a helpful Magic: The Gathering deck advisor having a casual conversation about a Commander deck.
+    return `You are a Magic: The Gathering Commander deck advisor having a casual discussion. Discuss and explain card choices, strategy, and trade-offs. Do NOT suggest adds/removes or use the [CHANGE:...] format — this is conversation only. Keep responses concise (2-4 sentences unless asked for more).
 
-## Your Role
-You are here to DISCUSS and EXPLAIN card choices, strategy, and deck decisions. This is a conversation, not a consultation for changes.
-
-## IMPORTANT RULES
-1. **DO NOT suggest new cards to add or remove** - Focus only on discussing the cards/changes being talked about
-2. **DO NOT use the [CHANGE:...] format** - This conversation is just for discussion
-3. **DO NOT recommend pending changes** - Just explain and discuss
-4. Keep responses concise (2-4 sentences unless more detail is specifically requested)
-5. Be conversational and helpful
-
-## Deck Context
-- **Deck Name:** ${deck.name}
-- **Total Cards:** ${totalCards}
-- **Creatures:** ${creatureCount}
+## Deck: ${deck.name} (${totalCards} cards, ${creatureCount} creatures)
 
 ## Commander
 ${commanderSection}
-
-${commanderAnalysis ? `## Commander Strategy Overview\n${commanderAnalysis.substring(0, 1000)}...\n` : ""}
-
-## How to Respond
-- Explain WHY a card does or doesn't fit the deck strategy
-- Discuss synergies with the commander and other cards
-- Answer questions about card choices
-- Help the user understand trade-offs
-- Be direct and conversational`;
+${commanderAnalysis ? `\n## Strategy Overview\n${commanderAnalysis.substring(0, 1000)}\n` : ""}`;
   }
 
   /**
@@ -1247,27 +1188,13 @@ Be specific and actionable. This analysis will guide all future card suggestions
 
   private getColorName(colorCode: string): string {
     const colorNames: Record<string, string> = {
-      W: "WHITE",
-      U: "BLUE",
-      B: "BLACK",
-      R: "RED",
-      G: "GREEN",
+      W: "white",
+      U: "blue",
+      B: "black",
+      R: "red",
+      G: "green",
     };
     return colorNames[colorCode] || colorCode;
   }
 
-  private getExcludedColors(allowedColors: Set<string>): string {
-    const allColors = ["W", "U", "B", "R", "G"];
-    const colorNames: Record<string, string> = {
-      W: "White",
-      U: "Blue",
-      B: "Black",
-      R: "Red",
-      G: "Green",
-    };
-    const excluded = allColors
-      .filter((c) => !allowedColors.has(c))
-      .map((c) => colorNames[c]);
-    return excluded.join(", ");
-  }
 }

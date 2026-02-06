@@ -1,16 +1,14 @@
-import Constants from "expo-constants";
 import { router, usePathname } from "expo-router";
 import {
+  ChevronsLeft,
+  ChevronsRight,
   ChevronRight,
-  CircleHelp,
   Home,
   Layers,
   Library,
   Link2,
   LogOut,
-  MessageSquarePlus,
   Moon,
-  Settings,
 } from "lucide-react-native";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
@@ -26,6 +24,7 @@ interface SidebarItemProps {
   rightText?: string;
   isDark: boolean;
   isActive?: boolean;
+  isCollapsed?: boolean;
 }
 
 function SidebarItem({
@@ -35,11 +34,14 @@ function SidebarItem({
   rightText,
   isDark,
   isActive,
+  isCollapsed,
 }: SidebarItemProps) {
   return (
     <Pressable
       onPress={onPress}
-      className={`flex-row items-center justify-between px-6 py-3 transition-colors ${
+      className={`flex-row items-center ${
+        isCollapsed ? "justify-center py-3" : "justify-between px-6 py-3"
+      } transition-colors ${
         isActive
           ? isDark
             ? "bg-slate-800"
@@ -48,32 +50,39 @@ function SidebarItem({
             ? "hover:bg-slate-800/50 active:bg-slate-800/50"
             : "hover:bg-slate-50 active:bg-slate-50"
       }`}
+      {...(isCollapsed ? ({ title: label } as any) : {})}
     >
-      <View className="flex-row items-center gap-3">
-        {icon}
-        <Text
-          className={`text-sm ${
-            isActive
-              ? "font-semibold text-purple-500"
-              : isDark
-                ? "text-white"
-                : "text-slate-900"
-          }`}
-        >
-          {label}
-        </Text>
-      </View>
-      {rightText && (
-        <View className="flex-row items-center gap-2 ml-2 flex-shrink">
-          <Text
-            className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            {rightText}
-          </Text>
-          <ChevronRight size={16} color={isDark ? "#475569" : "#cbd5e1"} />
-        </View>
+      {isCollapsed ? (
+        icon
+      ) : (
+        <>
+          <View className="flex-row items-center gap-3">
+            {icon}
+            <Text
+              className={`text-sm ${
+                isActive
+                  ? "font-semibold text-purple-500"
+                  : isDark
+                    ? "text-white"
+                    : "text-slate-900"
+              }`}
+            >
+              {label}
+            </Text>
+          </View>
+          {rightText && (
+            <View className="flex-row items-center gap-2 ml-2 flex-shrink">
+              <Text
+                className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {rightText}
+              </Text>
+              <ChevronRight size={16} color={isDark ? "#475569" : "#cbd5e1"} />
+            </View>
+          )}
+        </>
       )}
     </Pressable>
   );
@@ -90,8 +99,21 @@ export function DesktopSidebar() {
   const { user, signOut } = useAuth();
   const pathname = usePathname();
   const iconColor = isDark ? "#94a3b8" : "#64748b";
-  const appVersion = Constants.expoConfig?.version || "1.0.0";
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
 
+  const toggleCollapsed = () => {
+    const next = !isCollapsed;
+    setIsCollapsed(next);
+    try {
+      localStorage.setItem("sidebar_collapsed", String(next));
+    } catch {}
+  };
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const handleLogout = () => {
@@ -112,7 +134,12 @@ export function DesktopSidebar() {
 
   return (
     <View
-      className={`w-60 flex-shrink-0 h-full flex-col border-r ${
+      style={{
+        width: isCollapsed ? 64 : 240,
+        // @ts-ignore - web only CSS transition
+        transition: "width 200ms ease-in-out",
+      }}
+      className={`flex-shrink-0 h-full flex-col border-r overflow-hidden ${
         isDark ? "bg-slate-950 border-slate-800" : "bg-white border-slate-200"
       }`}
     >
@@ -120,38 +147,57 @@ export function DesktopSidebar() {
         {/* User Profile Header */}
         <Pressable
           onPress={() => router.push("/(tabs)/profile")}
-          className={`mb-4 mt-6 flex-row items-center gap-3 px-6 py-3 ${
+          className={`mb-4 mt-6 flex-row items-center ${
+            isCollapsed ? "justify-center py-3" : "gap-3 px-6 py-3"
+          } ${
             isDark
               ? "hover:bg-slate-800/50 active:bg-slate-800/50"
               : "hover:bg-slate-50 active:bg-slate-50"
           }`}
+          {...(isCollapsed
+            ? ({
+                title:
+                  user?.displayName ||
+                  user?.email?.split("@")[0] ||
+                  "Profile",
+              } as any)
+            : {})}
         >
           {/* Avatar */}
-          <View className="h-12 w-12 items-center justify-center rounded-full bg-purple-600">
-            <Text className="text-lg font-bold text-white">
+          <View
+            className={`${isCollapsed ? "h-10 w-10" : "h-12 w-12"} items-center justify-center rounded-full bg-purple-600`}
+          >
+            <Text
+              className={`${isCollapsed ? "text-base" : "text-lg"} font-bold text-white`}
+            >
               {(user?.displayName || user?.email)?.charAt(0).toUpperCase() ||
                 "U"}
             </Text>
           </View>
           {/* Name & Edit */}
-          <View className="flex-1">
-            <Text
-              className={`text-base font-semibold ${
-                isDark ? "text-white" : "text-slate-900"
-              }`}
-              numberOfLines={1}
-            >
-              {user?.displayName || user?.email?.split("@")[0] || "User"}
-            </Text>
-            <View className="flex-row items-center gap-1">
+          {!isCollapsed && (
+            <View className="flex-1">
               <Text
-                className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                className={`text-base font-semibold ${
+                  isDark ? "text-white" : "text-slate-900"
+                }`}
+                numberOfLines={1}
               >
-                Edit profile
+                {user?.displayName || user?.email?.split("@")[0] || "User"}
               </Text>
-              <ChevronRight size={12} color={isDark ? "#94a3b8" : "#64748b"} />
+              <View className="flex-row items-center gap-1">
+                <Text
+                  className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                >
+                  Edit profile
+                </Text>
+                <ChevronRight
+                  size={12}
+                  color={isDark ? "#94a3b8" : "#64748b"}
+                />
+              </View>
             </View>
-          </View>
+          )}
         </Pressable>
 
         <Divider isDark={isDark} />
@@ -169,6 +215,7 @@ export function DesktopSidebar() {
             onPress={() => router.push("/(tabs)/")}
             isDark={isDark}
             isActive={currentRoute === "index"}
+            isCollapsed={isCollapsed}
           />
 
           <SidebarItem
@@ -182,6 +229,7 @@ export function DesktopSidebar() {
             onPress={() => router.push("/(tabs)/decks")}
             isDark={isDark}
             isActive={currentRoute === "decks"}
+            isCollapsed={isCollapsed}
           />
 
           <SidebarItem
@@ -195,104 +243,117 @@ export function DesktopSidebar() {
             onPress={() => router.push("/(tabs)/collection")}
             isDark={isDark}
             isActive={currentRoute === "collection"}
+            isCollapsed={isCollapsed}
           />
         </View>
 
         <Divider isDark={isDark} />
 
         {/* Settings Section */}
-        <View className="mt-4">
-          <Text
-            className={`px-6 pb-2 text-xs font-medium uppercase tracking-wider ${
-              isDark ? "text-slate-500" : "text-slate-400"
-            }`}
-          >
-            Settings
-          </Text>
-        </View>
+        {!isCollapsed && (
+          <View className="mt-4">
+            <Text
+              className={`px-6 pb-2 text-xs font-medium uppercase tracking-wider ${
+                isDark ? "text-slate-500" : "text-slate-400"
+              }`}
+            >
+              Settings
+            </Text>
+          </View>
+        )}
+        {isCollapsed && <View className="mt-4" />}
 
         <SidebarItem
-          icon={<Link2 size={20} color={currentRoute === "connections" ? "#7C3AED" : iconColor} />}
+          icon={
+            <Link2
+              size={20}
+              color={
+                currentRoute === "connections" ? "#7C3AED" : iconColor
+              }
+            />
+          }
           label="Connections"
           onPress={() => router.push("/(tabs)/connections")}
           isDark={isDark}
           isActive={currentRoute === "connections"}
+          isCollapsed={isCollapsed}
         />
 
-        {/* <SidebarItem
-          icon={<Settings size={20} color={iconColor} />}
-          label="Settings"
-          isDark={isDark}
-        /> */}
-
         {/* Dark Mode Toggle */}
-        <View className={`flex-row items-center justify-between px-6 py-3`}>
-          <View className="flex-row items-center gap-3">
+        {isCollapsed ? (
+          <Pressable
+            onPress={toggleColorScheme}
+            className={`items-center justify-center py-3 ${
+              isDark
+                ? "hover:bg-slate-800/50 active:bg-slate-800/50"
+                : "hover:bg-slate-50 active:bg-slate-50"
+            }`}
+            {...({ title: "Toggle dark mode" } as any)}
+          >
             <Moon size={20} color={iconColor} />
-            <Text
-              className={`text-sm ${isDark ? "text-white" : "text-slate-900"}`}
-            >
-              Dark mode
-            </Text>
+          </Pressable>
+        ) : (
+          <View className="flex-row items-center justify-between px-6 py-3">
+            <View className="flex-row items-center gap-3">
+              <Moon size={20} color={iconColor} />
+              <Text
+                className={`text-sm ${isDark ? "text-white" : "text-slate-900"}`}
+              >
+                Dark mode
+              </Text>
+            </View>
+            <StyledSwitch
+              value={isDark}
+              onValueChange={toggleColorScheme}
+              isDark={isDark}
+            />
           </View>
-          <StyledSwitch
-            value={isDark}
-            onValueChange={toggleColorScheme}
-            isDark={isDark}
-          />
-        </View>
+        )}
 
         <Divider isDark={isDark} />
-
-        {/* <SidebarItem
-          icon={<CircleHelp size={20} color={iconColor} />}
-          label="Help Center"
-          isDark={isDark}
-        /> */}
-
-        {/* <SidebarItem
-          icon={<MessageSquarePlus size={20} color={iconColor} />}
-          label="Give us feedback"
-          isDark={isDark}
-        /> */}
-
-        {/* <Divider isDark={isDark} /> */}
 
         {/* Log out */}
         <Pressable
           onPress={handleLogout}
-          className={`flex-row items-center gap-3 px-6 py-3 ${
+          className={`flex-row items-center ${
+            isCollapsed ? "justify-center py-3" : "gap-3 px-6 py-3"
+          } ${
             isDark
               ? "hover:bg-slate-800/50 active:bg-slate-800/50"
               : "hover:bg-slate-50 active:bg-slate-50"
           }`}
+          {...(isCollapsed ? ({ title: "Log out" } as any) : {})}
         >
           <LogOut size={20} color={iconColor} />
-          <Text
-            className={`text-sm ${isDark ? "text-white" : "text-slate-900"}`}
-          >
-            Log out
-          </Text>
+          {!isCollapsed && (
+            <Text
+              className={`text-sm ${isDark ? "text-white" : "text-slate-900"}`}
+            >
+              Log out
+            </Text>
+          )}
         </Pressable>
       </ScrollView>
 
-      {/* Footer */}
-      <View
-        className={`items-center gap-1 py-4 border-t ${isDark ? "border-slate-800" : "border-slate-200"}`}
+      {/* Collapse/Expand Toggle */}
+      <Pressable
+        onPress={toggleCollapsed}
+        className={`items-center justify-center py-3 border-t ${
+          isDark
+            ? "border-slate-800 hover:bg-slate-800/50 active:bg-slate-800/50"
+            : "border-slate-200 hover:bg-slate-50 active:bg-slate-50"
+        }`}
+        {...({
+          title: isCollapsed ? "Expand sidebar" : "Collapse sidebar",
+        } as any)}
       >
-        <Text
-          className={`text-xs ${isDark ? "text-slate-600" : "text-slate-400"}`}
-        >
-          Version {appVersion}
-        </Text>
-        <Pressable>
-          <Text
-            className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}
-          >
-            Terms of Service
-          </Text>
-        </Pressable>
-      </View>
+        {isCollapsed ? (
+          <ChevronsRight size={20} color={iconColor} />
+        ) : (
+          <ChevronsLeft size={20} color={iconColor} />
+        )}
+      </Pressable>
+
 
       {/* Logout Confirmation */}
       <ConfirmDialog

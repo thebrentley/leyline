@@ -81,6 +81,7 @@ export interface ArchidektStatus {
 }
 
 export interface ColorTag {
+  id: string;
   name: string;
   color: string;
 }
@@ -110,6 +111,7 @@ export interface DeckCard {
   setCode?: string;
   collectorNumber?: string;
   colorTag?: string;
+  colorTagId?: string;
   isCommander: boolean;
   categories?: string[];
   imageUrl?: string;
@@ -331,13 +333,13 @@ export const decksApi = {
   async updateCardTag(
     deckId: string,
     cardName: string,
-    tag: string | null
+    tagId: string | null
   ): Promise<ApiResponse<{ success: boolean }>> {
     return request<{ success: boolean }>(
       `/decks/${deckId}/cards/tag`,
       {
         method: "PATCH",
-        body: JSON.stringify({ cardName, tag }),
+        body: JSON.stringify({ cardName, tagId }),
       }
     );
   },
@@ -470,12 +472,12 @@ export const decksApi = {
 
   async updateColorTag(
     deckId: string,
-    oldName: string,
+    tagId: string,
     newName: string,
     color: string
   ): Promise<ApiResponse<{ success: boolean; colorTags: ColorTag[] }>> {
     return request<{ success: boolean; colorTags: ColorTag[] }>(
-      `/decks/${deckId}/color-tags/${encodeURIComponent(oldName)}`,
+      `/decks/${deckId}/color-tags/${tagId}`,
       {
         method: "PATCH",
         body: JSON.stringify({ name: newName, color }),
@@ -485,10 +487,10 @@ export const decksApi = {
 
   async deleteColorTag(
     deckId: string,
-    tagName: string
+    tagId: string
   ): Promise<ApiResponse<{ success: boolean; colorTags: ColorTag[] }>> {
     return request<{ success: boolean; colorTags: ColorTag[] }>(
-      `/decks/${deckId}/color-tags/${encodeURIComponent(tagName)}`,
+      `/decks/${deckId}/color-tags/${tagId}`,
       {
         method: "DELETE",
       }
@@ -667,6 +669,14 @@ export const cardsApi = {
     return request<CardSearchResult[]>(
       `/cards/prints/${encodeURIComponent(cardName)}`
     );
+  },
+
+  async getSets(): Promise<ApiResponse<Array<{ setCode: string; setName: string }>>> {
+    return request<Array<{ setCode: string; setName: string }>>('/cards/sets');
+  },
+
+  async getTypes(): Promise<ApiResponse<string[]>> {
+    return request<string[]>('/cards/types');
   },
 
   async fuzzyMatch(

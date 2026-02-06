@@ -32,17 +32,21 @@ export class SearchBuilderService {
       });
     }
 
-    // Oracle text search (partial, case-insensitive)
-    if (criteria.oracleText) {
-      queryBuilder.andWhere('LOWER(card.oracle_text) LIKE LOWER(:oracleText)', {
-        oracleText: `%${criteria.oracleText}%`,
+    // Oracle text search (partial, case-insensitive) - multiple terms are AND'd
+    if (criteria.oracleText && criteria.oracleText.length > 0) {
+      criteria.oracleText.forEach((text, i) => {
+        queryBuilder.andWhere(`LOWER(card.oracle_text) LIKE LOWER(:oracleText${i})`, {
+          [`oracleText${i}`]: `%${text}%`,
+        });
       });
     }
 
-    // Type line search (partial, case-insensitive)
-    if (criteria.typeLine) {
-      queryBuilder.andWhere('LOWER(card.type_line) LIKE LOWER(:typeLine)', {
-        typeLine: `%${criteria.typeLine}%`,
+    // Type line search (partial, case-insensitive) - multiple terms are AND'd
+    if (criteria.typeLine && criteria.typeLine.length > 0) {
+      criteria.typeLine.forEach((text, i) => {
+        queryBuilder.andWhere(`LOWER(card.type_line) LIKE LOWER(:typeLine${i})`, {
+          [`typeLine${i}`]: `%${text}%`,
+        });
       });
     }
 

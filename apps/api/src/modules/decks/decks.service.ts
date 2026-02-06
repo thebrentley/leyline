@@ -15,6 +15,7 @@ import {
   type VersionCard,
 } from "../../entities/deck-version.entity";
 import { CollectionCard } from "../../entities/collection-card.entity";
+import { ColorTag } from "../../entities/color-tag.entity";
 import { CardsService } from "../cards/cards.service";
 import { AuthService } from "../auth/auth.service";
 
@@ -58,6 +59,8 @@ export class DecksService {
     private deckVersionRepository: Repository<DeckVersion>,
     @InjectRepository(CollectionCard)
     private collectionRepository: Repository<CollectionCard>,
+    @InjectRepository(ColorTag)
+    private colorTagRepository: Repository<ColorTag>,
     private cardsService: CardsService,
     @Inject(forwardRef(() => AuthService))
     private authService: AuthService,
@@ -87,7 +90,6 @@ export class DecksService {
       name,
       format: null,
       description: null,
-      colorTags: [],
       lastSyncedAt: null,
       syncStatus: "synced", // No sync needed for manual decks
     });
@@ -193,7 +195,7 @@ export class DecksService {
   async getDeck(deckId: string, userId: string): Promise<Deck> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ["cards", "cards.card"],
+      relations: ["cards", "cards.card", "cards.colorTagEntity", "colorTags"],
     });
 
     if (!deck) {
@@ -274,7 +276,8 @@ export class DecksService {
         quantity: deckCard.quantity,
         setCode: deckCard.card?.setCode,
         collectorNumber: deckCard.card?.collectorNumber,
-        colorTag: deckCard.colorTag,
+        colorTag: deckCard.colorTagEntity?.color ?? undefined,
+        colorTagId: deckCard.colorTagId ?? undefined,
         isCommander: deckCard.isCommander,
         categories: deckCard.categories,
         imageUrl: deckCard.card?.imageNormal,
@@ -314,7 +317,11 @@ export class DecksService {
       name: deck.name,
       format: deck.format,
       description: deck.description,
-      colorTags: deck.colorTags,
+      colorTags: (deck.colorTags || []).map((t) => ({
+        id: t.id,
+        name: t.name,
+        color: t.color,
+      })),
       colorIdentity,
       lastSyncedAt: deck.lastSyncedAt,
       syncStatus: deck.syncStatus,
@@ -501,7 +508,7 @@ export class DecksService {
   async updateCardTag(
     deckId: string,
     cardName: string,
-    tag: string | null,
+    tagId: string | null,
     userId: string,
   ): Promise<{ success: boolean }> {
     const deck = await this.deckRepository.findOne({
@@ -521,7 +528,7 @@ export class DecksService {
       throw new NotFoundException(`Card "${cardName}" not found in deck`);
     }
 
-    deckCard.colorTag = tag;
+    deckCard.colorTagId = tagId;
     await this.deckCardRepository.save(deckCard);
 
     return { success: true };
@@ -945,6 +952,14 @@ export class DecksService {
   }
 
   /**
+   * Helper to return serialized color tags for a deck
+   */
+  private async getSerializedColorTags(deckId: string) {
+    const tags = await this.colorTagRepository.find({ where: { deckId } });
+    return tags.map((t) => ({ id: t.id, name: t.name, color: t.color }));
+  }
+
+  /**
    * Add a new color tag to a deck
    */
   async addColorTag(
@@ -962,16 +977,20 @@ export class DecksService {
     }
 
     // Check if tag already exists
-    if (
-      deck.colorTags.some((t) => t.name.toLowerCase() === name.toLowerCase())
-    ) {
+    const existing = await this.colorTagRepository.findOne({
+      where: { deckId, name },
+    });
+    if (existing) {
       throw new BadRequestException(`Tag "${name}" already exists`);
     }
 
-    deck.colorTags.push({ name, color });
-    await this.deckRepository.save(deck);
+    const tag = this.colorTagRepository.create({ deckId, name, color });
+    await this.colorTagRepository.save(tag);
 
-    return { success: true, colorTags: deck.colorTags };
+    return {
+      success: true,
+      colorTags: await this.getSerializedColorTags(deckId),
+    };
   }
 
   /**
@@ -979,44 +998,35 @@ export class DecksService {
    */
   async updateColorTag(
     deckId: string,
-    oldName: string,
+    tagId: string,
     newName: string,
     newColor: string,
     userId: string,
   ): Promise<{ success: boolean; colorTags: any[] }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ["cards"],
     });
 
     if (!deck) {
       throw new NotFoundException("Deck not found");
     }
 
-    const tagIndex = deck.colorTags.findIndex(
-      (t) => t.name.toLowerCase() === oldName.toLowerCase(),
-    );
+    const tag = await this.colorTagRepository.findOne({
+      where: { id: tagId, deckId },
+    });
 
-    if (tagIndex === -1) {
-      throw new NotFoundException(`Tag "${oldName}" not found`);
+    if (!tag) {
+      throw new NotFoundException("Tag not found");
     }
 
-    // Update tag
-    deck.colorTags[tagIndex] = { name: newName, color: newColor };
+    tag.name = newName;
+    tag.color = newColor;
+    await this.colorTagRepository.save(tag);
 
-    // Update all cards using this tag if name changed
-    if (oldName !== newName) {
-      for (const card of deck.cards) {
-        if (card.colorTag === oldName) {
-          card.colorTag = newName;
-          await this.deckCardRepository.save(card);
-        }
-      }
-    }
-
-    await this.deckRepository.save(deck);
-
-    return { success: true, colorTags: deck.colorTags };
+    return {
+      success: true,
+      colorTags: await this.getSerializedColorTags(deckId),
+    };
   }
 
   /**
@@ -1024,40 +1034,32 @@ export class DecksService {
    */
   async deleteColorTag(
     deckId: string,
-    tagName: string,
+    tagId: string,
     userId: string,
   ): Promise<{ success: boolean; colorTags: any[] }> {
     const deck = await this.deckRepository.findOne({
       where: { id: deckId, userId },
-      relations: ["cards"],
     });
 
     if (!deck) {
       throw new NotFoundException("Deck not found");
     }
 
-    const tagIndex = deck.colorTags.findIndex(
-      (t) => t.name.toLowerCase() === tagName.toLowerCase(),
-    );
+    const tag = await this.colorTagRepository.findOne({
+      where: { id: tagId, deckId },
+    });
 
-    if (tagIndex === -1) {
-      throw new NotFoundException(`Tag "${tagName}" not found`);
+    if (!tag) {
+      throw new NotFoundException("Tag not found");
     }
 
-    // Remove tag
-    deck.colorTags.splice(tagIndex, 1);
+    // ON DELETE SET NULL handles nullifying deck_cards.color_tag_id
+    await this.colorTagRepository.remove(tag);
 
-    // Unassign from all cards using this tag
-    for (const card of deck.cards) {
-      if (card.colorTag === tagName) {
-        card.colorTag = null;
-        await this.deckCardRepository.save(card);
-      }
-    }
-
-    await this.deckRepository.save(deck);
-
-    return { success: true, colorTags: deck.colorTags };
+    return {
+      success: true,
+      colorTags: await this.getSerializedColorTags(deckId),
+    };
   }
 
   /**
@@ -1120,7 +1122,6 @@ export class DecksService {
       throw new NotFoundException("Deck not found on Archidekt");
     }
 
-    // Find or create deck
     // Extract color tags from card labels
     // Archidekt stores color tags in the 'label' field as ',#hexcolor'
     const colorTagSet = new Set<string>();
@@ -1134,12 +1135,6 @@ export class DecksService {
       }
     }
 
-    // Build colorTags array from unique colors found
-    const colorTags = Array.from(colorTagSet).map((color) => ({
-      name: color,
-      color: color,
-    }));
-
     let deck = await this.deckRepository.findOne({
       where: { archidektId, userId },
     });
@@ -1151,21 +1146,32 @@ export class DecksService {
         name: archidektDeck.name,
         format: archidektDeck.format?.name || null,
         description: archidektDeck.description || null,
-        colorTags,
         lastSyncedAt: new Date(),
       });
     } else {
       deck.name = archidektDeck.name;
       deck.format = archidektDeck.format?.name || null;
       deck.description = archidektDeck.description || null;
-      deck.colorTags = colorTags;
       deck.lastSyncedAt = new Date();
     }
 
     await this.deckRepository.save(deck);
 
-    // Delete existing cards
+    // Delete existing cards and color tags
     await this.deckCardRepository.delete({ deckId: deck.id });
+    await this.colorTagRepository.delete({ deckId: deck.id });
+
+    // Create color tag entities and build lookup map
+    const colorToTagId = new Map<string, string>();
+    for (const color of colorTagSet) {
+      const tag = this.colorTagRepository.create({
+        deckId: deck.id,
+        name: color,
+        color: color,
+      });
+      const saved = await this.colorTagRepository.save(tag);
+      colorToTagId.set(color, saved.id);
+    }
 
     // Extract set code and collector number from Archidekt cards
     const cardIdentifiers = archidektDeck.cards.map((c) => ({
@@ -1202,12 +1208,13 @@ export class DecksService {
         );
 
         // Extract color tag from label field (format: ',#656565')
-        let cardColorTag: string | null = null;
+        let cardColorTagId: string | null = null;
         const label = (archCard as any).label;
         if (label && typeof label === "string") {
           const match = label.match(/#[0-9A-Fa-f]{6}/);
           if (match) {
-            cardColorTag = match[0].toUpperCase();
+            cardColorTagId =
+              colorToTagId.get(match[0].toUpperCase()) ?? null;
           }
         }
 
@@ -1216,7 +1223,7 @@ export class DecksService {
             deckId: deck!.id,
             scryfallId,
             quantity: archCard.quantity,
-            colorTag: cardColorTag,
+            colorTagId: cardColorTagId,
             categories: archCard.categories,
             isCommander,
           }),
@@ -1405,7 +1412,13 @@ export class DecksService {
       name: c.card?.name || "Unknown",
       scryfallId: c.scryfallId,
       quantity: c.quantity,
-      colorTag: c.colorTag,
+      colorTag: c.colorTagEntity
+        ? {
+            id: c.colorTagEntity.id,
+            name: c.colorTagEntity.name,
+            color: c.colorTagEntity.color,
+          }
+        : null,
       isCommander: c.isCommander,
       categories: c.categories,
     }));
@@ -1417,7 +1430,11 @@ export class DecksService {
         description || `${changeType} - ${new Date().toLocaleDateString()}`,
       changeType,
       cards,
-      colorTags: deck.colorTags,
+      colorTags: (deck.colorTags || []).map((t) => ({
+        id: t.id,
+        name: t.name,
+        color: t.color,
+      })),
       cardCount: cards.reduce((sum, c) => sum + c.quantity, 0),
     });
 
@@ -1473,8 +1490,22 @@ export class DecksService {
       `Before revert to v${version.versionNumber}`,
     );
 
-    // Remove all current cards
+    // Remove all current cards and color tags
     await this.deckCardRepository.delete({ deckId: deck.id });
+    await this.colorTagRepository.delete({ deckId: deck.id });
+
+    // Restore color tags from version snapshot
+    const tagIdMap = new Map<string, string>(); // old ID or color -> new tag ID
+    for (const vTag of version.colorTags) {
+      const newTag = this.colorTagRepository.create({
+        deckId: deck.id,
+        name: vTag.name,
+        color: vTag.color,
+      });
+      const saved = await this.colorTagRepository.save(newTag);
+      if (vTag.id) tagIdMap.set(vTag.id, saved.id);
+      tagIdMap.set(vTag.color, saved.id); // fallback by color
+    }
 
     // Restore cards from version
     for (const vCard of version.cards) {
@@ -1487,21 +1518,32 @@ export class DecksService {
         continue;
       }
 
+      // Resolve the color tag ID from the version snapshot
+      let colorTagId: string | null = null;
+      if (vCard.colorTag) {
+        if (typeof vCard.colorTag === "object" && vCard.colorTag.id) {
+          // New format: { id, name, color }
+          colorTagId =
+            tagIdMap.get(vCard.colorTag.id) ??
+            tagIdMap.get(vCard.colorTag.color) ??
+            null;
+        } else if (typeof vCard.colorTag === "string") {
+          // Old format: hex color string
+          colorTagId = tagIdMap.get(vCard.colorTag) ?? null;
+        }
+      }
+
       const deckCard = this.deckCardRepository.create({
         deckId: deck.id,
         scryfallId: vCard.scryfallId,
         quantity: vCard.quantity,
-        colorTag: vCard.colorTag,
+        colorTagId,
         isCommander: vCard.isCommander,
         categories: vCard.categories,
       });
 
       await this.deckCardRepository.save(deckCard);
     }
-
-    // Restore color tags
-    deck.colorTags = version.colorTags;
-    await this.deckRepository.save(deck);
 
     // Create a new version for the reverted state
     await this.createVersion(

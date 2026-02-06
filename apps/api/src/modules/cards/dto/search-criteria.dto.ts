@@ -11,7 +11,7 @@ export type ColorOperator = '=' | ':' | '<' | '>' | '<=' | '>=';
 export interface SearchCriteria {
   // Text searches (partial match, case-insensitive)
   name?: string;
-  oracleText?: string;
+  oracleText?: string[]; // Multiple o: terms are AND'd together
 
   // Array filters (color matching)
   // NOTE: colorIdentity is used by default for c: keyword (user decision)
@@ -30,7 +30,7 @@ export interface SearchCriteria {
   priceUsd?: { value: number; operator: ComparisonOperator };
 
   // Exact/partial text matches
-  typeLine?: string; // Partial match: "creature", "instant", "legendary"
+  typeLine?: string[]; // Multiple t: terms are AND'd together
   rarity?: string[]; // ['rare', 'mythic', 'common', 'uncommon']
   setCode?: string[]; // ['neo', 'mkm', 'otj']
   collectorNumber?: string;

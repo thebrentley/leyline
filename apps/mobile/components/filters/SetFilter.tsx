@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   LayoutChangeEvent,
@@ -11,35 +11,40 @@ import { useColorScheme } from 'nativewind';
 import { ChevronDown, ChevronUp, X } from 'lucide-react-native';
 import { cardsApi } from '~/lib/api';
 
-interface TypeFilterProps {
+interface SetOption {
+  setCode: string;
+  setName: string;
+}
+
+interface SetFilterProps {
   values: string[];
   onChange: (values: string[]) => void;
 }
 
-export function TypeFilter({ values, onChange }: TypeFilterProps) {
+export function SetFilter({ values, onChange }: SetFilterProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const [types, setTypes] = useState<string[]>([]);
+  const [sets, setSets] = useState<SetOption[]>([]);
   const [inputText, setInputText] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [inputHeight, setInputHeight] = useState(44);
 
-  const loadTypes = useCallback(async () => {
+  const loadSets = useCallback(async () => {
     if (loaded) return;
-    const result = await cardsApi.getTypes();
+    const result = await cardsApi.getSets();
     if (result.data) {
-      setTypes(result.data);
+      setSets(result.data);
       setLoaded(true);
     }
   }, [loaded]);
 
   const handleFocus = useCallback(() => {
-    loadTypes();
+    loadSets();
     setDropdownOpen(true);
     setInputText('');
-  }, [loadTypes]);
+  }, [loadSets]);
 
   const handleBlur = useCallback(() => {
     setTimeout(() => {
@@ -53,27 +58,26 @@ export function TypeFilter({ values, onChange }: TypeFilterProps) {
       setInputText(text);
       if (!dropdownOpen) {
         setDropdownOpen(true);
-        loadTypes();
+        loadSets();
       }
     },
-    [dropdownOpen, loadTypes],
+    [dropdownOpen, loadSets],
   );
 
   const handleToggle = useCallback(
-    (type: string) => {
-      const lower = type.toLowerCase();
-      if (values.includes(lower)) {
-        onChange(values.filter((v) => v !== lower));
+    (set: SetOption) => {
+      if (values.includes(set.setCode)) {
+        onChange(values.filter((v) => v !== set.setCode));
       } else {
-        onChange([...values, lower]);
+        onChange([...values, set.setCode]);
       }
     },
     [values, onChange],
   );
 
   const handleRemove = useCallback(
-    (type: string) => {
-      onChange(values.filter((v) => v !== type));
+    (code: string) => {
+      onChange(values.filter((v) => v !== code));
     },
     [values, onChange],
   );
@@ -88,21 +92,26 @@ export function TypeFilter({ values, onChange }: TypeFilterProps) {
     setInputHeight(e.nativeEvent.layout.height);
   }, []);
 
-  const getDisplayName = useCallback(
-    (type: string) => {
-      const match = types.find((t) => t.toLowerCase() === type);
-      return match ?? type.charAt(0).toUpperCase() + type.slice(1);
+  // Get display name for a set code
+  const getSetName = useCallback(
+    (code: string) => {
+      const match = sets.find((s) => s.setCode === code);
+      return match?.setName ?? code.toUpperCase();
     },
-    [types],
+    [sets],
   );
 
   const filtered = useMemo(() => {
-    if (!inputText.trim()) return types;
+    if (!inputText.trim()) return sets;
     const query = inputText.toLowerCase();
-    return types.filter((t) => t.toLowerCase().includes(query));
-  }, [types, inputText]);
+    return sets.filter(
+      (s) =>
+        s.setName.toLowerCase().includes(query) ||
+        s.setCode.toLowerCase().includes(query),
+    );
+  }, [sets, inputText]);
 
-  const displayedTypes = filtered.slice(0, 50);
+  const displayedSets = filtered.slice(0, 50);
 
   return (
     <View className="gap-2" style={{ zIndex: 10, overflow: 'visible' }}>
@@ -111,20 +120,20 @@ export function TypeFilter({ values, onChange }: TypeFilterProps) {
           isDark ? 'text-slate-300' : 'text-slate-700'
         }`}
       >
-        Card Type
+        Set / Edition
       </Text>
 
-      {/* Selected type chips */}
+      {/* Selected set chips */}
       {values.length > 0 && (
         <View className="flex-row flex-wrap gap-1.5">
-          {values.map((type) => (
+          {values.map((code) => (
             <Pressable
-              key={type}
-              onPress={() => handleRemove(type)}
+              key={code}
+              onPress={() => handleRemove(code)}
               className="flex-row items-center gap-1 px-2.5 py-1.5 rounded-full bg-purple-500"
             >
               <Text className="text-xs text-white font-medium" numberOfLines={1}>
-                {getDisplayName(type)}
+                {getSetName(code)} ({code.toUpperCase()})
               </Text>
               <X size={12} color="#fff" />
             </Pressable>
@@ -150,7 +159,7 @@ export function TypeFilter({ values, onChange }: TypeFilterProps) {
 
       <View style={{ overflow: 'visible' }}>
         {/* Dropdown - absolutely positioned above the input */}
-        {dropdownOpen && displayedTypes.length > 0 && (
+        {dropdownOpen && displayedSets.length > 0 && (
           <View
             style={{
               position: 'absolute',
@@ -172,12 +181,12 @@ export function TypeFilter({ values, onChange }: TypeFilterProps) {
             }}
           >
             <FlatList
-              data={displayedTypes}
-              keyExtractor={(item) => item}
+              data={displayedSets}
+              keyExtractor={(item) => item.setCode}
               keyboardShouldPersistTaps="handled"
               nestedScrollEnabled
               renderItem={({ item }) => {
-                const isSelected = values.includes(item.toLowerCase());
+                const isSelected = values.includes(item.setCode);
                 return (
                   <Pressable
                     onPress={() => handleToggle(item)}
@@ -189,18 +198,31 @@ export function TypeFilter({ values, onChange }: TypeFilterProps) {
                       borderBottomColor: isDark ? '#1e293b' : '#f1f5f9',
                     }}
                   >
-                    <Text
-                      className={`text-sm ${
-                        isSelected
-                          ? 'text-purple-400 font-medium'
-                          : isDark
-                          ? 'text-slate-200'
-                          : 'text-slate-800'
-                      }`}
-                      numberOfLines={1}
-                    >
-                      {item}
-                    </Text>
+                    <View className="flex-row items-center justify-between">
+                      <Text
+                        className={`flex-1 text-sm ${
+                          isSelected
+                            ? 'text-purple-400 font-medium'
+                            : isDark
+                            ? 'text-slate-200'
+                            : 'text-slate-800'
+                        }`}
+                        numberOfLines={1}
+                      >
+                        {item.setName}
+                      </Text>
+                      <Text
+                        className={`text-xs ml-2 ${
+                          isSelected
+                            ? 'text-purple-400'
+                            : isDark
+                            ? 'text-slate-500'
+                            : 'text-slate-400'
+                        }`}
+                      >
+                        {item.setCode.toUpperCase()}
+                      </Text>
+                    </View>
                   </Pressable>
                 );
               }}
@@ -224,7 +246,7 @@ export function TypeFilter({ values, onChange }: TypeFilterProps) {
             onChangeText={handleTextChange}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            placeholder={values.length > 0 ? 'Add another type...' : 'Search types...'}
+            placeholder={values.length > 0 ? 'Add another set...' : 'Search sets...'}
             placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
             className={`flex-1 ${isDark ? 'text-white' : 'text-slate-900'}`}
             autoCapitalize="none"
@@ -238,13 +260,13 @@ export function TypeFilter({ values, onChange }: TypeFilterProps) {
         </View>
 
         {/* No results message */}
-        {dropdownOpen && loaded && displayedTypes.length === 0 && inputText.trim().length > 0 && (
+        {dropdownOpen && loaded && displayedSets.length === 0 && inputText.trim().length > 0 && (
           <Text
             className={`text-xs text-center py-2 ${
               isDark ? 'text-slate-500' : 'text-slate-400'
             }`}
           >
-            No types found matching "{inputText}"
+            No sets found matching "{inputText}"
           </Text>
         )}
       </View>

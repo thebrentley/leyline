@@ -37,6 +37,16 @@ class FuzzyMatchDto {
 export class CardsController {
   constructor(private cardsService: CardsService) {}
 
+  @Get('types')
+  async getTypes() {
+    return this.cardsService.getTypes();
+  }
+
+  @Get('sets')
+  async getSets() {
+    return this.cardsService.getSets();
+  }
+
   @Get('search')
   async search(
     @Query('q') query: string,

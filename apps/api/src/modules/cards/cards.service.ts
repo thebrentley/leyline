@@ -203,6 +203,51 @@ export class CardsService {
   }
 
   /**
+   * Get distinct sets from the database
+   */
+  async getSets(): Promise<Array<{ setCode: string; setName: string }>> {
+    const results = await this.cardRepository
+      .createQueryBuilder('card')
+      .select('card.setCode', 'setCode')
+      .addSelect('MAX(card.setName)', 'setName')
+      .groupBy('card.setCode')
+      .orderBy('MAX(card.setName)', 'ASC')
+      .getRawMany();
+
+    return results.map((r) => ({
+      setCode: r.setCode,
+      setName: r.setName,
+    }));
+  }
+
+  /**
+   * Get distinct type words from all card type lines
+   */
+  async getTypes(): Promise<string[]> {
+    const results = await this.cardRepository
+      .createQueryBuilder('card')
+      .select('DISTINCT card.type_line', 'typeLine')
+      .where('card.type_line IS NOT NULL')
+      .getRawMany();
+
+    const typeSet = new Set<string>();
+    const lettersOnly = /^[a-zA-Z]+$/;
+
+    for (const row of results) {
+      const line: string = row.typeLine || '';
+      for (const word of line.split(/\s+/)) {
+        if (word && lettersOnly.test(word)) {
+          typeSet.add(word);
+        }
+      }
+    }
+
+    return Array.from(typeSet).sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase()),
+    );
+  }
+
+  /**
    * Autocomplete card names
    */
   async autocomplete(query: string): Promise<string[]> {

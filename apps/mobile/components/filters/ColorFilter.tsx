@@ -1,6 +1,8 @@
 import { Pressable, Text, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
+type ColorMode = 'color' | 'identity';
+
 interface ColorFilterProps {
   selectedColors: string[];
   onColorsChange: (colors: string[]) => void;
@@ -8,6 +10,8 @@ interface ColorFilterProps {
   onMulticolorChange?: (multicolor: boolean) => void;
   colorless?: boolean;
   onColorlessChange?: (colorless: boolean) => void;
+  colorMode?: ColorMode;
+  onColorModeChange?: (mode: ColorMode) => void;
 }
 
 const COLORS = [
@@ -25,6 +29,8 @@ export function ColorFilter({
   onMulticolorChange,
   colorless = false,
   onColorlessChange,
+  colorMode = 'color',
+  onColorModeChange,
 }: ColorFilterProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -39,6 +45,65 @@ export function ColorFilter({
 
   return (
     <View className="gap-4">
+      {/* Color / Color Identity Toggle */}
+      {onColorModeChange && (
+        <View>
+          <Text
+            className={`text-sm font-medium mb-2 ${
+              isDark ? 'text-slate-300' : 'text-slate-700'
+            }`}
+          >
+            Match By
+          </Text>
+          <View className="flex-row">
+            <Pressable
+              onPress={() => onColorModeChange('color')}
+              className={`flex-1 py-2 rounded-l-lg border ${
+                colorMode === 'color'
+                  ? 'bg-purple-500 border-purple-500'
+                  : isDark
+                  ? 'bg-slate-800 border-slate-700'
+                  : 'bg-slate-100 border-slate-300'
+              }`}
+            >
+              <Text
+                className={`text-center text-sm font-medium ${
+                  colorMode === 'color'
+                    ? 'text-white'
+                    : isDark
+                    ? 'text-slate-300'
+                    : 'text-slate-700'
+                }`}
+              >
+                Color
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onColorModeChange('identity')}
+              className={`flex-1 py-2 rounded-r-lg border ${
+                colorMode === 'identity'
+                  ? 'bg-purple-500 border-purple-500'
+                  : isDark
+                  ? 'bg-slate-800 border-slate-700'
+                  : 'bg-slate-100 border-slate-300'
+              }`}
+            >
+              <Text
+                className={`text-center text-sm font-medium ${
+                  colorMode === 'identity'
+                    ? 'text-white'
+                    : isDark
+                    ? 'text-slate-300'
+                    : 'text-slate-700'
+                }`}
+              >
+                Color Identity
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       {/* Color Pills */}
       <View>
         <Text
@@ -165,3 +230,5 @@ export function ColorFilter({
     </View>
   );
 }
+
+export type { ColorMode };

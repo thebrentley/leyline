@@ -82,8 +82,18 @@ const MANA_COLORS: Record<string, string> = {
   G: "#00733E",
 };
 
+// View mode options
+type ViewMode = "list" | "grid" | "stacks-text" | "stacks-cards";
+
+const VIEW_MODE_OPTIONS: { value: ViewMode; label: string; desktopOnly?: boolean }[] = [
+  { value: "list", label: "List" },
+  { value: "grid", label: "Grid" },
+  { value: "stacks-text", label: "Stacks (text)", desktopOnly: true },
+  { value: "stacks-cards", label: "Stacks (cards)", desktopOnly: true },
+];
+
 // Group by options
-type GroupBy = "category" | "cardType" | "color" | "cmc" | "rarity";
+type GroupBy = "category" | "cardType" | "color" | "cmc" | "rarity" | "colorTag";
 
 const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: "category", label: "Category" },
@@ -91,6 +101,7 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: "color", label: "Color" },
   { value: "cmc", label: "Mana Value" },
   { value: "rarity", label: "Rarity" },
+  { value: "colorTag", label: "Color Tag" },
 ];
 
 const GROUP_COLORS: Record<GroupBy, Record<string, string>> = {
@@ -135,6 +146,7 @@ const GROUP_COLORS: Record<GroupBy, Record<string, string>> = {
     Rare: "#eab308",
     Mythic: "#ea580c",
   },
+  colorTag: {},
 };
 
 // Basic land names
@@ -480,6 +492,152 @@ function CardGridItem({
   );
 }
 
+function StacksTextItem({
+  card,
+  isDark,
+  onPress,
+  onLongPress,
+  onRightClick,
+  onHover,
+}: {
+  card: DeckCard;
+  isDark: boolean;
+  onPress?: () => void;
+  onLongPress?: () => void;
+  onRightClick?: (position: { x: number; y: number }) => void;
+  onHover?: (card: DeckCard | null) => void;
+}) {
+  const handleContextMenu = (e: any) => {
+    if (onRightClick) {
+      e.preventDefault();
+      onRightClick({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
+      // @ts-ignore
+      onContextMenu={handleContextMenu}
+      // @ts-ignore
+      onMouseEnter={() => onHover?.(card)}
+      className={`flex-row items-center justify-between py-1 px-2 rounded ${
+        isDark
+          ? "lg:hover:bg-slate-800/50"
+          : "lg:hover:bg-slate-100"
+      }`}
+    >
+      <View className="flex-row items-center gap-1 flex-1 min-w-0">
+        <Text
+          className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}
+        >
+          {card.quantity}
+        </Text>
+        <Text
+          className={`text-sm ${isDark ? "text-white" : "text-slate-900"}`}
+          numberOfLines={1}
+        >
+          {card.name}
+        </Text>
+      </View>
+      {card.isLinkedToCollection ? (
+        <Link size={12} color="#7C3AED" />
+      ) : card.inCollection && card.hasAvailableCollectionCard ? (
+        <Library size={12} color={isDark ? "#94a3b8" : "#64748b"} />
+      ) : card.inCollectionDifferentPrint && card.hasAvailableCollectionCard ? (
+        <AlertCircle size={12} color="#f59e0b" />
+      ) : null}
+    </Pressable>
+  );
+}
+
+function StacksCardItem({
+  card,
+  isDark,
+  isLast,
+  onPress,
+  onLongPress,
+  onRightClick,
+  onHover,
+}: {
+  card: DeckCard;
+  isDark: boolean;
+  isLast?: boolean;
+  onPress?: () => void;
+  onLongPress?: () => void;
+  onRightClick?: (position: { x: number; y: number }) => void;
+  onHover?: (card: DeckCard | null) => void;
+}) {
+  const imageUri = card.imageUrl || card.imageSmall;
+
+  const handleContextMenu = (e: any) => {
+    if (onRightClick) {
+      e.preventDefault();
+      onRightClick({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
+      // @ts-ignore
+      onContextMenu={handleContextMenu}
+      // @ts-ignore
+      onMouseEnter={() => onHover?.(card)}
+      style={!isLast ? { height: 30, overflow: "hidden" as any } : undefined}
+    >
+      <View className="relative">
+        {imageUri ? (
+          <Image
+            source={{ uri: imageUri }}
+            className="aspect-[488/680] w-full rounded-lg"
+            resizeMode="contain"
+          />
+        ) : (
+          <View
+            className={`aspect-[488/680] w-full items-center justify-center rounded-lg ${
+              isDark ? "bg-slate-800" : "bg-slate-200"
+            }`}
+          >
+            <Text
+              className={`text-xs text-center px-1 ${
+                isDark ? "text-slate-500" : "text-slate-400"
+              }`}
+              numberOfLines={2}
+            >
+              {card.name}
+            </Text>
+          </View>
+        )}
+        {card.quantity > 1 && (
+          <View className="absolute top-1 right-1 bg-black/70 rounded-full px-1.5 py-0.5">
+            <Text className="text-xs font-bold text-white">
+              {card.quantity}x
+            </Text>
+          </View>
+        )}
+        {card.colorTag && (
+          <View
+            className="absolute top-0 left-0"
+            style={{
+              width: 0,
+              height: 0,
+              borderTopWidth: 20,
+              borderRightWidth: 20,
+              borderTopColor: card.colorTag,
+              borderRightColor: "transparent",
+            }}
+          />
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
 interface CardSection {
   title: string;
   data: DeckCard[];
@@ -496,7 +654,7 @@ export default function DeckDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [error, setError] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(["Commander", "Mainboard", "Sideboard"]),
@@ -507,8 +665,23 @@ export default function DeckDetailScreen() {
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
   const [selectedCard, setSelectedCard] = useState<DeckCard | null>(null);
   const [cardModalVisible, setCardModalVisible] = useState(false);
-  const [groupBy, setGroupBy] = useState<GroupBy>("category");
+  const [groupBy, setGroupBy] = useState<GroupBy>(() => {
+    try {
+      const saved = localStorage.getItem("deck_group_by");
+      if (saved && GROUP_BY_OPTIONS.some((o) => o.value === saved)) {
+        return saved as GroupBy;
+      }
+    } catch {}
+    return "category";
+  });
   const [groupByMenuVisible, setGroupByMenuVisible] = useState(false);
+  const groupByButtonRef = useRef<View>(null);
+  const [groupByMenuPosition, setGroupByMenuPosition] = useState({ top: 0, left: 0 });
+  const [viewModeMenuVisible, setViewModeMenuVisible] = useState(false);
+  const viewModeButtonRef = useRef<View>(null);
+  const [viewModeMenuPosition, setViewModeMenuPosition] = useState({ top: 0, left: 0 });
+  const [hoveredCard, setHoveredCard] = useState<DeckCard | null>(null);
+  const [stacksContainerWidth, setStacksContainerWidth] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchVisible, setSearchVisible] = useState(false);
   const [scryfallSearchVisible, setScryfallSearchVisible] = useState(false);
@@ -733,7 +906,7 @@ export default function DeckDetailScreen() {
     loadDeck();
 
     // Load saved view mode preference
-    cache.get<"list" | "grid">(CACHE_KEYS.VIEW_MODE).then((mode) => {
+    cache.get<ViewMode>(CACHE_KEYS.VIEW_MODE).then((mode) => {
       if (mode) setViewMode(mode);
     });
   }, [loadDeck]);
@@ -755,9 +928,9 @@ export default function DeckDetailScreen() {
     checkArchidektConnection();
   }, []);
 
-  const toggleViewMode = () => {
-    const newMode = viewMode === "list" ? "grid" : "list";
+  const changeViewMode = (newMode: ViewMode) => {
     setViewMode(newMode);
+    setHoveredCard(null);
     cache.set(CACHE_KEYS.VIEW_MODE, newMode, 60 * 24 * 30);
   };
 
@@ -832,6 +1005,11 @@ export default function DeckDetailScreen() {
         case "rarity":
           const rarity = card.rarity?.toLowerCase() || "common";
           return rarity.charAt(0).toUpperCase() + rarity.slice(1);
+
+        case "colorTag":
+          if (!card.colorTagId || !deck) return "Untagged";
+          const tag = deck.colorTags.find((t) => t.id === card.colorTagId);
+          return tag ? tag.name : "Untagged";
 
         default:
           return "Other";
@@ -955,9 +1133,13 @@ export default function DeckDetailScreen() {
         result.push({ title: "Sideboard", data: nonBasicCards.sideboard });
       }
     } else {
-      // Group all cards by the selected criteria (excluding basic lands)
+      // Always keep commanders in their own group
+      if (nonBasicCards.commanders.length > 0) {
+        result.push({ title: "Commander", data: nonBasicCards.commanders });
+      }
+
+      // Group remaining cards by the selected criteria (excluding basic lands)
       const allCards = [
-        ...nonBasicCards.commanders,
         ...nonBasicCards.mainboard,
         ...nonBasicCards.sideboard,
       ];
@@ -982,6 +1164,11 @@ export default function DeckDetailScreen() {
           const rarityOrder = ["Common", "Uncommon", "Rare", "Mythic"];
           return rarityOrder.indexOf(a) - rarityOrder.indexOf(b);
         }
+        // Sort "Untagged" to end for color tag grouping
+        if (groupBy === "colorTag") {
+          if (a === "Untagged") return 1;
+          if (b === "Untagged") return -1;
+        }
         return a.localeCompare(b);
       });
 
@@ -998,9 +1185,13 @@ export default function DeckDetailScreen() {
   // Get color for a group based on groupBy type
   const getGroupColor = useCallback(
     (groupName: string): string => {
+      if (groupBy === "colorTag") {
+        const tag = deck?.colorTags.find((t) => t.name === groupName);
+        return tag?.color || "#64748b";
+      }
       return GROUP_COLORS[groupBy]?.[groupName] || "#64748b";
     },
-    [groupBy],
+    [groupBy, deck?.colorTags],
   );
 
   // Filter sections based on search query
@@ -1024,6 +1215,100 @@ export default function DeckDetailScreen() {
 
     return result;
   }, [sections, searchQuery]);
+
+  // Sections for stacks view: include basic lands as a column
+  const stacksSections = useMemo(() => {
+    const result = [...filteredSections];
+    if (basicLands.length > 0) {
+      const landsData = searchQuery.trim()
+        ? basicLands.filter((c) => c.name.toLowerCase().includes(searchQuery.toLowerCase().trim()))
+        : basicLands;
+      if (landsData.length > 0) {
+        result.push({ title: "Basic Lands", data: landsData });
+      }
+    }
+    return result;
+  }, [filteredSections, basicLands, searchQuery]);
+
+  // Pack stacks sections into columns, allowing small groups to share a column
+  const stacksColumns = useMemo(() => {
+    if (stacksSections.length === 0) return [] as { sections: CardSection[] }[];
+
+    const COLUMN_WIDTH = viewMode === "stacks-text" ? 220 : 200;
+    const COLUMN_TOTAL_WIDTH = COLUMN_WIDTH + 8; // mx-1 = 4px each side
+    const HORIZONTAL_PADDING = 16; // paddingHorizontal: 8 each side
+
+    // Determine how many columns fit in the available space
+    const maxColumns =
+      stacksContainerWidth > 0
+        ? Math.max(1, Math.floor((stacksContainerWidth - HORIZONTAL_PADDING) / COLUMN_TOTAL_WIDTH))
+        : stacksSections.length;
+    const numColumns = Math.min(stacksSections.length, maxColumns);
+
+    // If every section fits in its own column, no packing needed
+    if (numColumns >= stacksSections.length) {
+      // Commander first, then the rest in original order
+      const commanderIdx = stacksSections.findIndex((s) => s.title === "Commander");
+      const ordered: CardSection[] = [];
+      if (commanderIdx >= 0) ordered.push(stacksSections[commanderIdx]);
+      for (let i = 0; i < stacksSections.length; i++) {
+        if (i !== commanderIdx) ordered.push(stacksSections[i]);
+      }
+      return ordered.map((s) => ({ sections: [s] }));
+    }
+
+    // Need to pack — calculate heights for greedy shortest-column placement
+    const CARD_IMAGE_HEIGHT = 279; // 200px width * 680/488 aspect ratio
+    const CARD_OVERLAP_HEIGHT = 30;
+    const TEXT_ITEM_HEIGHT = 26;
+    const HEADER_HEIGHT = 28;
+    const SECTION_GAP = 16;
+
+    const getSectionHeight = (section: CardSection): number => {
+      const n = section.data.length;
+      if (n === 0) return HEADER_HEIGHT;
+      if (viewMode === "stacks-cards") {
+        return HEADER_HEIGHT + (n - 1) * CARD_OVERLAP_HEIGHT + CARD_IMAGE_HEIGHT;
+      }
+      return HEADER_HEIGHT + n * TEXT_ITEM_HEIGHT;
+    };
+
+    const sectionHeights = stacksSections.map(getSectionHeight);
+
+    // Pre-create the target number of columns
+    const columns: { sections: CardSection[]; totalHeight: number }[] = [];
+    for (let i = 0; i < numColumns; i++) {
+      columns.push({ sections: [], totalHeight: 0 });
+    }
+
+    // Commander always goes into column 0
+    const commanderIdx = stacksSections.findIndex((s) => s.title === "Commander");
+    if (commanderIdx >= 0) {
+      columns[0].sections.push(stacksSections[commanderIdx]);
+      columns[0].totalHeight = sectionHeights[commanderIdx];
+    }
+
+    // Place remaining sections into the shortest column
+    for (let i = 0; i < stacksSections.length; i++) {
+      if (i === commanderIdx) continue;
+
+      let shortestIdx = 0;
+      let shortestHeight = columns[0].totalHeight;
+      for (let c = 1; c < columns.length; c++) {
+        if (columns[c].totalHeight < shortestHeight) {
+          shortestHeight = columns[c].totalHeight;
+          shortestIdx = c;
+        }
+      }
+
+      const gap = columns[shortestIdx].sections.length > 0 ? SECTION_GAP : 0;
+      columns[shortestIdx].sections.push(stacksSections[i]);
+      columns[shortestIdx].totalHeight += gap + sectionHeights[i];
+    }
+
+    // Filter out any empty columns
+    return columns.filter((c) => c.sections.length > 0);
+  }, [stacksSections, viewMode, stacksContainerWidth]);
 
   // Expand all matching groups when searching
   useEffect(() => {
@@ -1080,8 +1365,14 @@ export default function DeckDetailScreen() {
   // Right-click to open context menu (desktop)
   const handleCardRightClick = useCallback(
     (card: DeckCard, position: { x: number; y: number }) => {
+      const { width: screenW, height: screenH } = Dimensions.get("window");
+      const menuW = 280; // maxWidth of context menu
+      const menuH = 350; // approximate max height of context menu
       setActionSheetCard(card);
-      setContextMenuPosition(position);
+      setContextMenuPosition({
+        x: Math.max(8, Math.min(position.x, screenW - menuW - 8)),
+        y: Math.max(8, Math.min(position.y, screenH - menuH - 8)),
+      });
     },
     [],
   );
@@ -1155,7 +1446,7 @@ export default function DeckDetailScreen() {
   );
 
   const handleSetColorTag = useCallback(
-    async (tag: string | null) => {
+    async (tagId: string | null) => {
       if (!actionSheetCard || !deck) return;
       const cardName = actionSheetCard.name;
       const deckId = deck.id;
@@ -1168,7 +1459,7 @@ export default function DeckDetailScreen() {
 
       setActionLoading(true);
       try {
-        const result = await decksApi.updateCardTag(deckId, cardName, tag);
+        const result = await decksApi.updateCardTag(deckId, cardName, tagId);
         if (result.error) {
           showToast.error(result.error);
         } else {
@@ -1186,7 +1477,7 @@ export default function DeckDetailScreen() {
   );
 
   const handleHeaderSetColorTag = useCallback(
-    async (tag: string | null) => {
+    async (tagId: string | null) => {
       if (!selectedCard || !deck) return;
       const cardName = selectedCard.name;
       const deckId = deck.id;
@@ -1194,18 +1485,29 @@ export default function DeckDetailScreen() {
       setHeaderColorTagDropdownOpen(false);
 
       // Optimistically update the selected card immediately
+      const tagColor = tagId
+        ? deck.colorTags?.find((t) => t.id === tagId)?.color
+        : undefined;
       setSelectedCard((prev) =>
-        prev ? { ...prev, colorTag: tag ?? undefined } : null,
+        prev
+          ? { ...prev, colorTagId: tagId ?? undefined, colorTag: tagColor }
+          : null,
       );
 
       setActionLoading(true);
       try {
-        const result = await decksApi.updateCardTag(deckId, cardName, tag);
+        const result = await decksApi.updateCardTag(deckId, cardName, tagId);
         if (result.error) {
           showToast.error(result.error);
           // Revert on error
           setSelectedCard((prev) =>
-            prev ? { ...prev, colorTag: selectedCard.colorTag } : null,
+            prev
+              ? {
+                  ...prev,
+                  colorTagId: selectedCard.colorTagId,
+                  colorTag: selectedCard.colorTag,
+                }
+              : null,
           );
         } else {
           await cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
@@ -1215,7 +1517,13 @@ export default function DeckDetailScreen() {
         showToast.error("Failed to update color tag");
         // Revert on error
         setSelectedCard((prev) =>
-          prev ? { ...prev, colorTag: selectedCard.colorTag } : null,
+          prev
+            ? {
+                ...prev,
+                colorTagId: selectedCard.colorTagId,
+                colorTag: selectedCard.colorTag,
+              }
+            : null,
         );
       } finally {
         setActionLoading(false);
@@ -1645,9 +1953,19 @@ export default function DeckDetailScreen() {
       >
         <View className="flex-row items-center gap-2 lg:gap-3">
           {/* Group By Button with Desktop Dropdown */}
-          <View className="relative">
+          <View ref={groupByButtonRef} className="relative">
             <Pressable
-              onPress={() => setGroupByMenuVisible(true)}
+              onPress={() => {
+                groupByButtonRef.current?.measure((x, y, width, height, pageX, pageY) => {
+                  const screenW = Dimensions.get("window").width;
+                  const menuW = 200;
+                  setGroupByMenuPosition({
+                    top: pageY + height + 4,
+                    left: Math.max(8, Math.min(pageX, screenW - menuW - 8)),
+                  });
+                  setGroupByMenuVisible(true);
+                });
+              }}
               className={`flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg ${
                 isDark
                   ? "bg-slate-800 lg:hover:bg-slate-700"
@@ -1663,67 +1981,6 @@ export default function DeckDetailScreen() {
               </Text>
             </Pressable>
 
-            {/* Desktop Dropdown */}
-            {isDesktop && groupByMenuVisible && (
-              <>
-                {/* Backdrop to close on outside click */}
-                <Pressable
-                  className="fixed inset-0 z-40"
-                  onPress={() => setGroupByMenuVisible(false)}
-                />
-                <View
-                  className={`absolute left-0 top-full mt-1 w-[200px] rounded-xl border shadow-xl z-50 ${
-                    isDark
-                      ? "border-slate-700 bg-slate-800"
-                      : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <Text
-                    className={`px-4 py-3 text-sm font-semibold border-b ${
-                      isDark
-                        ? "text-slate-300 border-slate-700"
-                        : "text-slate-700 border-slate-200"
-                    }`}
-                  >
-                    Group Cards By
-                  </Text>
-                  {GROUP_BY_OPTIONS.map((option) => (
-                    <Pressable
-                      key={option.value}
-                      onPress={() => {
-                        setGroupBy(option.value);
-                        setGroupByMenuVisible(false);
-                        if (deck) {
-                          const allTitles = new Set<string>();
-                          if (option.value === "category") {
-                            allTitles.add("Commander");
-                            allTitles.add("Mainboard");
-                            allTitles.add("Sideboard");
-                          } else {
-                            Object.keys(
-                              GROUP_COLORS[option.value] || {},
-                            ).forEach((k) => allTitles.add(k));
-                          }
-                          setExpandedSections(allTitles);
-                        }
-                      }}
-                      className={`flex-row items-center justify-between px-4 py-3 ${
-                        isDark ? "hover:bg-slate-700" : "hover:bg-slate-100"
-                      }`}
-                    >
-                      <Text
-                        className={isDark ? "text-white" : "text-slate-900"}
-                      >
-                        {option.label}
-                      </Text>
-                      {groupBy === option.value && (
-                        <Check size={18} color="#7C3AED" />
-                      )}
-                    </Pressable>
-                  ))}
-                </View>
-              </>
-            )}
           </View>
 
           {/* Search Toggle */}
@@ -1806,39 +2063,40 @@ export default function DeckDetailScreen() {
             </Text>
           </Pressable>
 
-          {/* View Mode Toggle */}
-          <Pressable
-            onPress={toggleViewMode}
-            className={`flex-row items-center gap-1.5 p-2 lg:px-4 lg:py-2 rounded-lg ${
-              isDark
-                ? "bg-slate-800 lg:hover:bg-slate-700"
-                : "bg-white border border-slate-200 lg:hover:bg-slate-50"
-            }`}
-          >
-            {viewMode === "list" ? (
-              <>
-                <Grid3X3 size={14} color={isDark ? "#94a3b8" : "#64748b"} />
-                {isDesktop && (
-                  <Text
-                    className={`text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
-                  >
-                    Grid
-                  </Text>
-                )}
-              </>
-            ) : (
-              <>
+          {/* View Mode Dropdown */}
+          <View ref={viewModeButtonRef} className="relative">
+            <Pressable
+              onPress={() => {
+                viewModeButtonRef.current?.measure((x, y, width, height, pageX, pageY) => {
+                  const screenW = Dimensions.get("window").width;
+                  const menuW = 200;
+                  setViewModeMenuPosition({
+                    top: pageY + height + 4,
+                    left: Math.max(8, Math.min(pageX, screenW - menuW - 8)),
+                  });
+                  setViewModeMenuVisible(true);
+                });
+              }}
+              className={`flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg ${
+                isDark
+                  ? "bg-slate-800 lg:hover:bg-slate-700"
+                  : "bg-white border border-slate-200 lg:hover:bg-slate-50"
+              }`}
+            >
+              {viewMode === "list" ? (
                 <List size={14} color={isDark ? "#94a3b8" : "#64748b"} />
-                {isDesktop && (
-                  <Text
-                    className={`text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
-                  >
-                    List
-                  </Text>
-                )}
-              </>
-            )}
-          </Pressable>
+              ) : viewMode === "grid" ? (
+                <Grid3X3 size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+              ) : (
+                <Layers size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+              )}
+              <Text
+                className={`text-xs lg:text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
+              >
+                {VIEW_MODE_OPTIONS.find((o) => o.value === viewMode)?.label || "View"}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -1960,6 +2218,7 @@ export default function DeckDetailScreen() {
           )}
         </View>
       ) : filteredSections.length === 0 && searchQuery.trim() ? (
+        /* No search results */
         <View className="flex-1 items-center justify-center px-6">
           <Search size={48} color={isDark ? "#475569" : "#cbd5e1"} />
           <Text
@@ -1984,6 +2243,123 @@ export default function DeckDetailScreen() {
               Clear search
             </Text>
           </Pressable>
+        </View>
+      ) : viewMode.startsWith("stacks") ? (
+        /* Stacks View */
+        <View className="flex-1 flex-row">
+          {/* Card Preview Panel */}
+          <View
+            className="px-4 py-4 items-center"
+            style={{ width: 280 }}
+          >
+            {hoveredCard ? (
+              <>
+                <Image
+                  source={{ uri: hoveredCard.imageUrl || hoveredCard.imageSmall || "" }}
+                  className="rounded-xl"
+                  style={{ width: 250, height: 349 }}
+                  resizeMode="contain"
+                />
+                {hoveredCard.priceUsd != null && (
+                  <Text
+                    className={`mt-2 text-sm font-medium ${
+                      isDark ? "text-slate-300" : "text-slate-700"
+                    }`}
+                  >
+                    ${Number(hoveredCard.priceUsd).toFixed(2)}
+                  </Text>
+                )}
+              </>
+            ) : (
+              <View
+                className={`items-center justify-center rounded-xl ${
+                  isDark ? "bg-slate-800/50" : "bg-slate-100"
+                }`}
+                style={{ width: 250, height: 349 }}
+              >
+                <Text
+                  className={`text-sm text-center px-4 ${
+                    isDark ? "text-slate-500" : "text-slate-400"
+                  }`}
+                >
+                  Hover over a card to preview
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Stacks Columns */}
+          <ScrollView
+            className="flex-1"
+            onLayout={(e) => setStacksContainerWidth(e.nativeEvent.layout.width)}
+          >
+            <ScrollView
+              horizontal
+              contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 12, alignItems: "flex-start", flexGrow: 1, justifyContent: "flex-end" }}
+            >
+              {stacksColumns.map((column) => (
+                <View
+                  key={column.sections.map((s) => s.title).join("-")}
+                  className="mx-1"
+                  style={{ width: viewMode === "stacks-text" ? 220 : 200 }}
+                >
+                  {column.sections.map((section, secIdx) => (
+                    <View key={section.title} style={secIdx > 0 ? { marginTop: 16 } : undefined}>
+                      {/* Section Header */}
+                      <View className="flex-row items-center gap-1.5 px-2 mb-2">
+                        {groupBy !== "category" && (
+                          <View
+                            className="w-3 h-3 rounded-sm"
+                            style={{ backgroundColor: getGroupColor(section.title) }}
+                          />
+                        )}
+                        <Text
+                          className={`text-sm font-bold ${
+                            isDark ? "text-white" : "text-slate-900"
+                          }`}
+                        >
+                          {section.title}
+                        </Text>
+                        <Text
+                          className={`text-sm ${
+                            isDark ? "text-slate-500" : "text-slate-400"
+                          }`}
+                        >
+                          ({section.data.reduce((sum, c) => sum + c.quantity, 0)})
+                        </Text>
+                      </View>
+
+                      {/* Section Cards */}
+                      {viewMode === "stacks-text"
+                        ? section.data.map((card, index) => (
+                            <StacksTextItem
+                              key={`${card.name}-${index}`}
+                              card={card}
+                              isDark={isDark}
+                              onPress={() => handleCardPress(card)}
+                              onLongPress={() => handleCardLongPress(card)}
+                              onRightClick={(pos) => handleCardRightClick(card, pos)}
+                              onHover={setHoveredCard}
+                            />
+                          ))
+                        : section.data.map((card, index) => (
+                            <StacksCardItem
+                              key={`${card.name}-${index}`}
+                              card={card}
+                              isDark={isDark}
+                              isLast={index === section.data.length - 1}
+                              onPress={() => handleCardPress(card)}
+                              onLongPress={() => handleCardLongPress(card)}
+                              onRightClick={(pos) => handleCardRightClick(card, pos)}
+                              onHover={setHoveredCard}
+                            />
+                          ))}
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </ScrollView>
+          </ScrollView>
         </View>
       ) : (
         <SectionList
@@ -2297,26 +2673,80 @@ export default function DeckDetailScreen() {
         </Pressable>
       </Modal>
 
-      {/* Group By Menu Modal - Mobile only */}
+      {/* View Mode Menu Modal */}
       <Modal
-        visible={!isDesktop && groupByMenuVisible}
+        visible={viewModeMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewModeMenuVisible(false)}
+      >
+        <Pressable className="flex-1" onPress={() => setViewModeMenuVisible(false)}>
+          <View
+            style={{
+              position: "absolute",
+              top: viewModeMenuPosition.top,
+              left: viewModeMenuPosition.left,
+            }}
+            className={`min-w-[200px] rounded-xl border shadow-xl ${
+              isDark
+                ? "border-slate-700 bg-slate-800"
+                : "border-slate-200 bg-white"
+            }`}
+          >
+            <Text
+              className={`px-4 py-3 text-sm font-semibold border-b ${
+                isDark
+                  ? "text-slate-300 border-slate-700"
+                  : "text-slate-700 border-slate-200"
+              }`}
+            >
+              View Mode
+            </Text>
+            {VIEW_MODE_OPTIONS
+              .filter((option) => !option.desktopOnly || isDesktop)
+              .map((option) => (
+                <Pressable
+                  key={option.value}
+                  onPress={() => {
+                    changeViewMode(option.value);
+                    setViewModeMenuVisible(false);
+                  }}
+                  className={`flex-row items-center justify-between px-4 py-3 ${
+                    isDark ? "active:bg-slate-700" : "active:bg-slate-100"
+                  }`}
+                >
+                  <Text className={isDark ? "text-white" : "text-slate-900"}>
+                    {option.label}
+                  </Text>
+                  {viewMode === option.value && (
+                    <Check size={18} color="#7C3AED" />
+                  )}
+                </Pressable>
+              ))}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Group By Menu Modal */}
+      <Modal
+        visible={groupByMenuVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setGroupByMenuVisible(false)}
       >
-        <Pressable
-          className="flex-1 bg-black/50"
-          onPress={() => setGroupByMenuVisible(false)}
-        >
-          <View className="flex-1 justify-center items-center px-8">
-            <View
-              className={`w-full max-w-[280px] rounded-xl border shadow-xl ${
-                isDark
-                  ? "border-slate-700 bg-slate-800"
-                  : "border-slate-200 bg-white"
-              }`}
-              onStartShouldSetResponder={() => true}
-            >
+        <Pressable className="flex-1" onPress={() => setGroupByMenuVisible(false)}>
+          <View
+            style={{
+              position: "absolute",
+              top: groupByMenuPosition.top,
+              left: groupByMenuPosition.left,
+            }}
+            className={`min-w-[200px] rounded-xl border shadow-xl ${
+              isDark
+                ? "border-slate-700 bg-slate-800"
+                : "border-slate-200 bg-white"
+            }`}
+          >
               <Text
                 className={`px-4 py-3 text-sm font-semibold border-b ${
                   isDark
@@ -2331,6 +2761,9 @@ export default function DeckDetailScreen() {
                   key={option.value}
                   onPress={() => {
                     setGroupBy(option.value);
+                    try {
+                      localStorage.setItem("deck_group_by", option.value);
+                    } catch {}
                     setGroupByMenuVisible(false);
                     // Expand all groups when changing grouping
                     if (deck) {
@@ -2361,7 +2794,6 @@ export default function DeckDetailScreen() {
                 </Pressable>
               ))}
             </View>
-          </View>
         </Pressable>
       </Modal>
 
@@ -2412,7 +2844,8 @@ export default function DeckDetailScreen() {
                   className="flex-row items-center gap-2"
                   style={{ zIndex: 50 }}
                 >
-                  {/* Color Tag Chip with Dropdown */}
+                  {/* Color Tag Chip with Dropdown - hidden for basic lands */}
+                  {!(selectedCard && isBasicLand(selectedCard.name)) && (
                   <View
                     style={{
                       position: "relative" as any,
@@ -2426,19 +2859,19 @@ export default function DeckDetailScreen() {
                         )
                       }
                       className={`flex-row items-center gap-1.5 rounded-full px-3 py-1 mr-2 ${
-                        selectedCard?.colorTag
+                        selectedCard?.colorTagId
                           ? ""
                           : isDark
                             ? "bg-slate-700"
                             : "bg-slate-100"
                       }`}
                       style={
-                        selectedCard?.colorTag
+                        selectedCard?.colorTagId
                           ? { backgroundColor: `${selectedCard.colorTag}20` }
                           : undefined
                       }
                     >
-                      {selectedCard?.colorTag ? (
+                      {selectedCard?.colorTagId ? (
                         <>
                           <View
                             className="w-3 h-3 rounded-full"
@@ -2449,7 +2882,7 @@ export default function DeckDetailScreen() {
                             style={{ color: selectedCard.colorTag }}
                           >
                             {deck?.colorTags?.find(
-                              (t) => t.color === selectedCard.colorTag,
+                              (t) => t.id === selectedCard.colorTagId,
                             )?.name || "Tagged"}
                           </Text>
                         </>
@@ -2521,7 +2954,7 @@ export default function DeckDetailScreen() {
                             >
                               No Tag
                             </Text>
-                            {!selectedCard?.colorTag && (
+                            {!selectedCard?.colorTagId && (
                               <Check size={14} color="#7C3AED" />
                             )}
                           </Pressable>
@@ -2529,8 +2962,8 @@ export default function DeckDetailScreen() {
                           {/* Color tag options */}
                           {deck?.colorTags?.map((tag) => (
                             <Pressable
-                              key={tag.name}
-                              onPress={() => handleHeaderSetColorTag(tag.color)}
+                              key={tag.id}
+                              onPress={() => handleHeaderSetColorTag(tag.id)}
                               disabled={actionLoading}
                               className={`flex-row items-center gap-2 px-3 py-2 ${
                                 isDark
@@ -2547,7 +2980,7 @@ export default function DeckDetailScreen() {
                               >
                                 {tag.name}
                               </Text>
-                              {selectedCard?.colorTag === tag.color && (
+                              {selectedCard?.colorTagId === tag.id && (
                                 <Check size={14} color="#7C3AED" />
                               )}
                             </Pressable>
@@ -2556,6 +2989,7 @@ export default function DeckDetailScreen() {
                       </>
                     )}
                   </View>
+                  )}
                   <Pressable
                     onPress={handlePrevCard}
                     disabled={selectedCardIndex <= 0}
@@ -2799,6 +3233,60 @@ export default function DeckDetailScreen() {
                       </View>
 
                       {/* Action Buttons */}
+                      {selectedCard && isBasicLand(selectedCard.name) ? (
+                        /* Basic Land: quantity control only */
+                        <View
+                          className={`rounded-xl p-4 ${isDark ? "bg-slate-800" : "bg-slate-50"}`}
+                        >
+                          <Text
+                            className={`text-xs uppercase tracking-wide mb-3 ${isDark ? "text-slate-500" : "text-slate-600"}`}
+                          >
+                            Quantity
+                          </Text>
+                          <View className="flex-row items-center justify-center gap-4">
+                            <Pressable
+                              onPress={() => {
+                                setSelectedCard(prev => prev ? { ...prev, quantity: prev.quantity - 1 } : null);
+                                handleLandQuantityChange(selectedCard.name, -1);
+                              }}
+                              disabled={selectedCard.quantity <= 0}
+                              className={`h-10 w-10 rounded-full items-center justify-center ${
+                                selectedCard.quantity <= 0
+                                  ? "opacity-30"
+                                  : isDark
+                                    ? "bg-slate-700 active:bg-slate-600"
+                                    : "bg-slate-200 active:bg-slate-300"
+                              }`}
+                            >
+                              <Minus
+                                size={20}
+                                color={isDark ? "#94a3b8" : "#64748b"}
+                              />
+                            </Pressable>
+                            <Text
+                              className={`text-2xl font-bold min-w-[40px] text-center ${isDark ? "text-white" : "text-slate-900"}`}
+                            >
+                              {selectedCard.quantity}
+                            </Text>
+                            <Pressable
+                              onPress={() => {
+                                setSelectedCard(prev => prev ? { ...prev, quantity: prev.quantity + 1 } : null);
+                                handleLandQuantityChange(selectedCard.name, 1);
+                              }}
+                              className={`h-10 w-10 rounded-full items-center justify-center ${
+                                isDark
+                                  ? "bg-slate-700 active:bg-slate-600"
+                                  : "bg-slate-200 active:bg-slate-300"
+                              }`}
+                            >
+                              <Plus
+                                size={20}
+                                color={isDark ? "#94a3b8" : "#64748b"}
+                              />
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : (
                       <View className="gap-2">
                         {/* Set as Commander */}
                         <Button
@@ -2833,8 +3321,7 @@ export default function DeckDetailScreen() {
                           onPress={() => {
                             setCardModalVisible(false);
                             setActionSheetCard(selectedCard);
-                            setTimeout(() => handleShowEditions(), 100);
-                            setTimeout(() => setActionSheetVisible(true), 100);
+                            setEditionPickerModalVisible(true);
                           }}
                           variant="secondary"
                           className="p-3"
@@ -2949,6 +3436,7 @@ export default function DeckDetailScreen() {
                           </View>
                         </Button>
                       </View>
+                      )}
                     </View>
                   </View>
                 )}
@@ -3225,7 +3713,7 @@ export default function DeckDetailScreen() {
                       <View className="flex-row items-center gap-3 w-full">
                         <Palette size={20} color="#94a3b8" />
                         <Text className="text-white flex-1">Set Color Tag</Text>
-                        {selectedCard?.colorTag && (
+                        {selectedCard?.colorTagId && (
                           <View
                             className="h-4 w-4 rounded-full"
                             style={{ backgroundColor: selectedCard.colorTag }}
@@ -3239,8 +3727,7 @@ export default function DeckDetailScreen() {
                       onPress={() => {
                         setCardModalVisible(false);
                         setActionSheetCard(selectedCard);
-                        setTimeout(() => handleShowEditions(), 100);
-                        setTimeout(() => setActionSheetVisible(true), 100);
+                        setEditionPickerModalVisible(true);
                       }}
                       variant="secondary"
                       className="p-4"
@@ -3522,14 +4009,14 @@ export default function DeckDetailScreen() {
                   <Text className={isDark ? "text-white" : "text-slate-900"}>
                     No Tag
                   </Text>
-                  {!actionSheetCard?.colorTag && (
+                  {!actionSheetCard?.colorTagId && (
                     <Check size={18} color="#7C3AED" />
                   )}
                 </Pressable>
                 {deck?.colorTags?.map((tag) => (
                   <Pressable
-                    key={tag.name}
-                    onPress={() => handleSetColorTag(tag.color)}
+                    key={tag.id}
+                    onPress={() => handleSetColorTag(tag.id)}
                     disabled={actionLoading}
                     className={`flex-row items-center gap-3 p-4 border-b ${
                       isDark
@@ -3546,14 +4033,64 @@ export default function DeckDetailScreen() {
                     >
                       {tag.name}
                     </Text>
-                    {actionSheetCard?.colorTag === tag.color && (
+                    {actionSheetCard?.colorTagId === tag.id && (
                       <Check size={18} color="#7C3AED" />
                     )}
                   </Pressable>
                 ))}
               </View>
+            ) : actionSheetCard && isBasicLand(actionSheetCard.name) ? (
+              /* Basic Land: quantity control only */
+              <View className="py-4 px-4">
+                <Text
+                  className={`text-xs uppercase tracking-wide mb-3 text-center ${isDark ? "text-slate-500" : "text-slate-600"}`}
+                >
+                  Quantity
+                </Text>
+                <View className="flex-row items-center justify-center gap-6">
+                  <Pressable
+                    onPress={() => {
+                      setActionSheetCard(prev => prev ? { ...prev, quantity: prev.quantity - 1 } : null);
+                      handleLandQuantityChange(actionSheetCard.name, -1);
+                    }}
+                    disabled={actionSheetCard.quantity <= 0}
+                    className={`h-12 w-12 rounded-full items-center justify-center ${
+                      actionSheetCard.quantity <= 0
+                        ? "opacity-30"
+                        : isDark
+                          ? "bg-slate-700 active:bg-slate-600"
+                          : "bg-slate-200 active:bg-slate-300"
+                    }`}
+                  >
+                    <Minus
+                      size={24}
+                      color={isDark ? "#94a3b8" : "#64748b"}
+                    />
+                  </Pressable>
+                  <Text
+                    className={`text-3xl font-bold min-w-[48px] text-center ${isDark ? "text-white" : "text-slate-900"}`}
+                  >
+                    {actionSheetCard.quantity}
+                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      setActionSheetCard(prev => prev ? { ...prev, quantity: prev.quantity + 1 } : null);
+                      handleLandQuantityChange(actionSheetCard.name, 1);
+                    }}
+                    className={`h-12 w-12 rounded-full items-center justify-center ${
+                      isDark
+                        ? "bg-slate-700 active:bg-slate-600"
+                        : "bg-slate-200 active:bg-slate-300"
+                    }`}
+                  >
+                    <Plus
+                      size={24}
+                      color={isDark ? "#94a3b8" : "#64748b"}
+                    />
+                  </Pressable>
+                </View>
+              </View>
             ) : (
-              /* Main Actions */
               <View className="py-2">
                 {/* Set as Commander */}
                 <Pressable
@@ -3593,7 +4130,7 @@ export default function DeckDetailScreen() {
                   >
                     Set Color Tag
                   </Text>
-                  {actionSheetCard?.colorTag && (
+                  {actionSheetCard?.colorTagId && (
                     <View
                       className="h-4 w-4 rounded-full"
                       style={{ backgroundColor: actionSheetCard.colorTag }}
@@ -3767,6 +4304,46 @@ export default function DeckDetailScreen() {
               </Text>
             </View>
 
+            {isBasicLand(actionSheetCard.name) ? (
+              /* Basic Land: quantity control only */
+              <View className="flex-row items-center justify-center gap-3 px-3 py-3">
+                <Pressable
+                  onPress={() => {
+                    setActionSheetCard(prev => prev ? { ...prev, quantity: prev.quantity - 1 } : null);
+                    handleLandQuantityChange(actionSheetCard.name, -1);
+                  }}
+                  disabled={actionSheetCard.quantity <= 0}
+                  className={`h-8 w-8 rounded-full items-center justify-center ${
+                    actionSheetCard.quantity <= 0
+                      ? "opacity-30"
+                      : isDark
+                        ? "bg-slate-700 hover:bg-slate-600"
+                        : "bg-slate-200 hover:bg-slate-300"
+                  }`}
+                >
+                  <Minus size={16} color={isDark ? "#94a3b8" : "#64748b"} />
+                </Pressable>
+                <Text
+                  className={`text-lg font-bold min-w-[32px] text-center ${isDark ? "text-white" : "text-slate-900"}`}
+                >
+                  {actionSheetCard.quantity}
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    setActionSheetCard(prev => prev ? { ...prev, quantity: prev.quantity + 1 } : null);
+                    handleLandQuantityChange(actionSheetCard.name, 1);
+                  }}
+                  className={`h-8 w-8 rounded-full items-center justify-center ${
+                    isDark
+                      ? "bg-slate-700 hover:bg-slate-600"
+                      : "bg-slate-200 hover:bg-slate-300"
+                  }`}
+                >
+                  <Plus size={16} color={isDark ? "#94a3b8" : "#64748b"} />
+                </Pressable>
+              </View>
+            ) : (
+            <>
             {/* Set as Commander */}
             <Pressable
               onPress={() => handleSetCommander()}
@@ -3816,7 +4393,7 @@ export default function DeckDetailScreen() {
                 >
                   Set Color Tag
                 </Text>
-                {actionSheetCard.colorTag && (
+                {actionSheetCard.colorTagId && (
                   <View
                     className="h-3 w-3 rounded-full mr-1"
                     style={{ backgroundColor: actionSheetCard.colorTag }}
@@ -3828,7 +4405,7 @@ export default function DeckDetailScreen() {
                 />
               </View>
 
-              {/* Color Tag Submenu - positioned to the right */}
+              {/* Color Tag Submenu - positioned to the right, or left if near edge */}
               {colorTagSubmenuOpen && (
                 <View
                   className={`rounded-lg shadow-xl border ${
@@ -3838,7 +4415,9 @@ export default function DeckDetailScreen() {
                   }`}
                   style={{
                     position: "absolute" as any,
-                    left: "100%",
+                    ...(contextMenuPosition && contextMenuPosition.x + 280 + 160 > Dimensions.get("window").width
+                      ? { right: "100%" }
+                      : { left: "100%" }),
                     top: 0,
                     minWidth: 160,
                     zIndex: 52,
@@ -3858,7 +4437,7 @@ export default function DeckDetailScreen() {
                     >
                       No Tag
                     </Text>
-                    {!actionSheetCard.colorTag && (
+                    {!actionSheetCard.colorTagId && (
                       <Check size={14} color="#7C3AED" />
                     )}
                   </Pressable>
@@ -3866,8 +4445,8 @@ export default function DeckDetailScreen() {
                   {/* Color tag options */}
                   {deck?.colorTags?.map((tag) => (
                     <Pressable
-                      key={tag.name}
-                      onPress={() => handleSetColorTag(tag.color)}
+                      key={tag.id}
+                      onPress={() => handleSetColorTag(tag.id)}
                       disabled={actionLoading}
                       className={`flex-row items-center gap-2 px-3 py-2 ${
                         isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
@@ -3882,7 +4461,7 @@ export default function DeckDetailScreen() {
                       >
                         {tag.name}
                       </Text>
-                      {actionSheetCard.colorTag === tag.color && (
+                      {actionSheetCard.colorTagId === tag.id && (
                         <Check size={14} color="#7C3AED" />
                       )}
                     </Pressable>
@@ -3979,6 +4558,8 @@ export default function DeckDetailScreen() {
               <X size={16} color="#ef4444" />
               <Text className="text-sm text-red-500">Remove from Deck</Text>
             </Pressable>
+            </>
+            )}
           </View>
         </Pressable>
       )}
@@ -4046,8 +4627,8 @@ export default function DeckDetailScreen() {
           onClose={() => setColorTagManagerVisible(false)}
           onTagsChanged={(colorTags) => {
             setDeck((prev) => (prev ? { ...prev, colorTags } : null));
-            // Clear cache to ensure fresh data on next load
-            cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
+            // Refetch to pick up any card changes (e.g. ON DELETE SET NULL)
+            loadDeck(true);
           }}
           isDark={isDark}
         />

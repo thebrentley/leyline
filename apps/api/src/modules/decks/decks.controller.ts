@@ -132,10 +132,10 @@ export class DecksController {
   @Patch(':id/cards/tag')
   async updateCardTag(
     @Param('id') id: string,
-    @Body() body: { cardName: string; tag: string | null },
+    @Body() body: { cardName: string; tagId: string | null },
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.decksService.updateCardTag(id, body.cardName, body.tag, user.userId);
+    return this.decksService.updateCardTag(id, body.cardName, body.tagId, user.userId);
   }
 
   @Patch(':id/cards/commander')
@@ -198,23 +198,23 @@ export class DecksController {
     return this.decksService.addColorTag(id, body.name, body.color, user.userId);
   }
 
-  @Patch(':id/color-tags/:tagName')
+  @Patch(':id/color-tags/:tagId')
   async updateColorTag(
     @Param('id') id: string,
-    @Param('tagName') tagName: string,
+    @Param('tagId') tagId: string,
     @Body() body: { name: string; color: string },
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.decksService.updateColorTag(id, decodeURIComponent(tagName), body.name, body.color, user.userId);
+    return this.decksService.updateColorTag(id, tagId, body.name, body.color, user.userId);
   }
 
-  @Delete(':id/color-tags/:tagName')
+  @Delete(':id/color-tags/:tagId')
   async deleteColorTag(
     @Param('id') id: string,
-    @Param('tagName') tagName: string,
+    @Param('tagId') tagId: string,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.decksService.deleteColorTag(id, decodeURIComponent(tagName), user.userId);
+    return this.decksService.deleteColorTag(id, tagId, user.userId);
   }
 
   // ==================== Version History ====================

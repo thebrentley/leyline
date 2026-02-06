@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { Deck } from './deck.entity';
 import { Card } from './card.entity';
+import { ColorTag } from './color-tag.entity';
 
 @Entity('deck_cards')
 @Index(['deckId', 'scryfallId'], { unique: true })
@@ -24,8 +25,12 @@ export class DeckCard {
   @Column({ type: 'int' })
   quantity: number;
 
-  @Column({ name: 'color_tag', type: 'varchar', nullable: true })
-  colorTag: string | null;
+  @Column({ name: 'color_tag_id', type: 'uuid', nullable: true })
+  colorTagId: string | null;
+
+  @ManyToOne(() => ColorTag, (tag) => tag.cards, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'color_tag_id' })
+  colorTagEntity: ColorTag | null;
 
   @Column({ type: 'text', array: true, default: [] })
   categories: string[]; // mainboard, sideboard, commander
