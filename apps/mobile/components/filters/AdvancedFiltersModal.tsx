@@ -14,7 +14,7 @@ export interface SearchFilters {
   rarities: string[];
   minMv?: number;
   maxMv?: number;
-  cardType: string;
+  cardTypes: string[];
 }
 
 interface AdvancedFiltersModalProps {
@@ -45,7 +45,7 @@ export function AdvancedFiltersModal({
     filters.rarities.length > 0 ||
     filters.minMv !== undefined ||
     filters.maxMv !== undefined ||
-    filters.cardType.length > 0;
+    filters.cardTypes.length > 0;
 
   return (
     <Modal
@@ -82,7 +82,7 @@ export function AdvancedFiltersModal({
                     filters.rarities.length,
                     filters.minMv !== undefined ? 1 : 0,
                     filters.maxMv !== undefined ? 1 : 0,
-                    filters.cardType ? 1 : 0,
+                    filters.cardTypes.length,
                   ].reduce((a, b) => a + b, 0)}
                 </Text>
               </View>
@@ -151,8 +151,8 @@ export function AdvancedFiltersModal({
 
           {/* Type Filter */}
           <TypeFilter
-            value={filters.cardType}
-            onChange={(cardType) => onFiltersChange({ ...filters, cardType })}
+            values={filters.cardTypes}
+            onChange={(cardTypes) => onFiltersChange({ ...filters, cardTypes })}
           />
         </ScrollView>
 

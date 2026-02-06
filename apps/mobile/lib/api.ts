@@ -671,6 +671,14 @@ export const cardsApi = {
     );
   },
 
+  async getSets(): Promise<ApiResponse<Array<{ setCode: string; setName: string }>>> {
+    return request<Array<{ setCode: string; setName: string }>>('/cards/sets');
+  },
+
+  async getTypes(): Promise<ApiResponse<string[]>> {
+    return request<string[]>('/cards/types');
+  },
+
   async fuzzyMatch(
     cardName: string,
     options?: {

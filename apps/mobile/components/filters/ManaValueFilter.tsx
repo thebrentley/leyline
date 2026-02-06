@@ -7,6 +7,7 @@ interface ManaValueFilterProps {
   maxValue?: number;
   onMinChange: (value?: number) => void;
   onMaxChange: (value?: number) => void;
+  onRangeChange?: (min?: number, max?: number) => void;
 }
 
 export function ManaValueFilter({
@@ -14,6 +15,7 @@ export function ManaValueFilter({
   maxValue,
   onMinChange,
   onMaxChange,
+  onRangeChange,
 }: ManaValueFilterProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -78,9 +80,9 @@ export function ManaValueFilter({
         Mana Value (CMC)
       </Text>
 
-      <View className="flex-row items-center gap-4">
+      <View className="gap-3">
         {/* Min Value */}
-        <View className="flex-1">
+        <View>
           <Text
             className={`text-xs mb-1 ${
               isDark ? 'text-slate-400' : 'text-slate-500'
@@ -120,15 +122,8 @@ export function ManaValueFilter({
           </View>
         </View>
 
-        {/* Separator */}
-        <Text
-          className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}
-        >
-          to
-        </Text>
-
         {/* Max Value */}
-        <View className="flex-1">
+        <View>
           <Text
             className={`text-xs mb-1 ${
               isDark ? 'text-slate-400' : 'text-slate-500'
@@ -173,8 +168,12 @@ export function ManaValueFilter({
       <View className="flex-row flex-wrap gap-2 mt-2">
         <Pressable
           onPress={() => {
-            onMinChange(undefined);
-            onMaxChange(3);
+            if (onRangeChange) {
+              onRangeChange(undefined, 3);
+            } else {
+              onMinChange(undefined);
+              onMaxChange(3);
+            }
           }}
           className={`px-3 py-1.5 rounded-full ${
             isDark ? 'bg-slate-800' : 'bg-slate-200'
@@ -190,8 +189,12 @@ export function ManaValueFilter({
         </Pressable>
         <Pressable
           onPress={() => {
-            onMinChange(4);
-            onMaxChange(6);
+            if (onRangeChange) {
+              onRangeChange(4, 6);
+            } else {
+              onMinChange(4);
+              onMaxChange(6);
+            }
           }}
           className={`px-3 py-1.5 rounded-full ${
             isDark ? 'bg-slate-800' : 'bg-slate-200'
@@ -207,8 +210,12 @@ export function ManaValueFilter({
         </Pressable>
         <Pressable
           onPress={() => {
-            onMinChange(7);
-            onMaxChange(undefined);
+            if (onRangeChange) {
+              onRangeChange(7, undefined);
+            } else {
+              onMinChange(7);
+              onMaxChange(undefined);
+            }
           }}
           className={`px-3 py-1.5 rounded-full ${
             isDark ? 'bg-slate-800' : 'bg-slate-200'

@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle, Plus, RotateCcw, Search, X } from "lucide-react-native";
+import { ArrowLeft, CheckCircle, Plus, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -17,6 +17,12 @@ import { cardsApi, type CardSearchResult } from "~/lib/api";
 import { showToast } from "~/lib/toast";
 import { useResponsive } from "~/hooks/useResponsive";
 import { useSearchState } from "~/hooks/useSearchState";
+import { AdvancedSearchPanel } from "~/components/filters/AdvancedSearchPanel";
+import {
+  type AdvancedSearchFilters,
+  EMPTY_ADVANCED_FILTERS,
+  parseQueryToFilters,
+} from "~/lib/buildSearchQuery";
 
 interface ScryfallSearchProps {
   visible: boolean;
@@ -71,6 +77,10 @@ export function ScryfallSearch({
   // Card detail modal state
   const [detailCard, setDetailCard] = useState<CardSearchResult | null>(null);
   const [addingCardId, setAddingCardId] = useState<string | null>(null);
+
+  // Advanced search state
+  const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedSearchFilters>({ ...EMPTY_ADVANCED_FILTERS });
 
   const searchCards = useCallback(
     async (searchQuery: string, pageNum = 1) => {
@@ -237,6 +247,23 @@ export function ScryfallSearch({
     setDetailCard(null);
   }, []);
 
+  const handleOpenAdvancedSearch = useCallback(() => {
+    Keyboard.dismiss();
+    // Parse the current query into filters so the UI reflects what's in the input
+    const parsed = parseQueryToFilters(query);
+    setAdvancedFilters(parsed);
+    setAdvancedSearchOpen(true);
+  }, [query]);
+
+  const handleCloseAdvancedSearch = useCallback(() => {
+    setAdvancedSearchOpen(false);
+  }, []);
+
+  const handleAdvancedSearchApply = useCallback((builtQuery: string) => {
+    setAdvancedSearchOpen(false);
+    setQuery(builtQuery);
+  }, []);
+
   const handleClose = useCallback(() => {
     setQuery("");
     setResults([]);
@@ -244,6 +271,8 @@ export function ScryfallSearch({
     setHasMore(false);
     setSelectedCardName(null);
     setEditions([]);
+    setAdvancedSearchOpen(false);
+    setAdvancedFilters({ ...EMPTY_ADVANCED_FILTERS });
     onClose();
   }, [onClose]);
 
@@ -283,73 +312,103 @@ export function ScryfallSearch({
             isDark ? "border-slate-800" : "border-slate-200"
           }`}
         >
-          <View
-            className={`flex-row items-center gap-2 px-3 py-2 rounded-lg ${
-              isDark ? "bg-slate-900" : "bg-slate-100"
-            }`}
-          >
-            <Search size={20} color={isDark ? "#94a3b8" : "#64748b"} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              onFocus={() => {
-                if (selectedCardName) {
-                  handleBackToSearch();
-                }
-              }}
-              placeholder={placeholder}
-              placeholderTextColor={isDark ? "#64748b" : "#94a3b8"}
-              className={`flex-1 ${isDark ? "text-white" : "text-slate-900"}`}
-              autoFocus={!selectedCardName}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {query.length > 0 && (
-              <Pressable onPress={() => setQuery("")}>
-                <X size={18} color={isDark ? "#64748b" : "#94a3b8"} />
-              </Pressable>
-            )}
+          <View className="flex-row items-center gap-2">
+            <View
+              className={`flex-row items-center gap-2 px-3 py-2 rounded-lg flex-1 ${
+                isDark ? "bg-slate-900" : "bg-slate-100"
+              } ${advancedSearchOpen ? "opacity-50" : ""}`}
+            >
+              <Search size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                onFocus={() => {
+                  if (selectedCardName) {
+                    handleBackToSearch();
+                  }
+                }}
+                placeholder={placeholder}
+                placeholderTextColor={isDark ? "#64748b" : "#94a3b8"}
+                className={`flex-1 ${isDark ? "text-white" : "text-slate-900"}`}
+                autoFocus={!selectedCardName && !advancedSearchOpen}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!advancedSearchOpen}
+              />
+              {query.length > 0 && !advancedSearchOpen && (
+                <Pressable onPress={() => setQuery("")}>
+                  <X size={18} color={isDark ? "#64748b" : "#94a3b8"} />
+                </Pressable>
+              )}
+            </View>
+
+            {/* Advanced Search Toggle */}
+            <Pressable
+              onPress={advancedSearchOpen ? handleCloseAdvancedSearch : handleOpenAdvancedSearch}
+              className={`p-2.5 rounded-lg ${
+                advancedSearchOpen
+                  ? "bg-purple-500"
+                  : isDark
+                  ? "bg-slate-800"
+                  : "bg-slate-200"
+              }`}
+            >
+              <SlidersHorizontal
+                size={20}
+                color={advancedSearchOpen ? "#fff" : isDark ? "#94a3b8" : "#64748b"}
+              />
+            </Pressable>
           </View>
 
           {/* Search hints and result count */}
-          <View className="mt-2 flex-row items-center justify-between">
-            {query.trim().length > 0 && query.trim().length < 2 && !selectedCardName ? (
-              <Text
-                className={`text-xs ${
-                  isDark ? "text-slate-500" : "text-slate-400"
-                }`}
-              >
-                Type at least 2 characters to search
-              </Text>
-            ) : totalCards > 0 && !selectedCardName ? (
-              <Text
-                className={`text-xs ${
-                  isDark ? "text-slate-400" : "text-slate-500"
-                }`}
-              >
-                {totalCards} card{totalCards !== 1 ? 's' : ''} found
-              </Text>
-            ) : (
-              <View />
-            )}
-
-            {/* Resume last search button */}
-            {hasSavedSearch && !query && !selectedCardName && (
-              <Pressable
-                onPress={() => setQuery(savedQuery)}
-                className="flex-row items-center gap-1 px-2 py-1 rounded"
-              >
-                <RotateCcw size={14} color="#7C3AED" />
-                <Text className="text-xs text-purple-500 font-medium">
-                  Resume last search
+          {!advancedSearchOpen && (
+            <View className="mt-2 flex-row items-center justify-between">
+              {query.trim().length > 0 && query.trim().length < 2 && !selectedCardName ? (
+                <Text
+                  className={`text-xs ${
+                    isDark ? "text-slate-500" : "text-slate-400"
+                  }`}
+                >
+                  Type at least 2 characters to search
                 </Text>
-              </Pressable>
-            )}
-          </View>
+              ) : totalCards > 0 && !selectedCardName ? (
+                <Text
+                  className={`text-xs ${
+                    isDark ? "text-slate-400" : "text-slate-500"
+                  }`}
+                >
+                  {totalCards} card{totalCards !== 1 ? 's' : ''} found
+                </Text>
+              ) : (
+                <View />
+              )}
+
+              {/* Resume last search button */}
+              {hasSavedSearch && !query && !selectedCardName && (
+                <Pressable
+                  onPress={() => setQuery(savedQuery)}
+                  className="flex-row items-center gap-1 px-2 py-1 rounded"
+                >
+                  <RotateCcw size={14} color="#7C3AED" />
+                  <Text className="text-xs text-purple-500 font-medium">
+                    Resume last search
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          )}
         </View>
 
-        {/* Edition Selection View */}
-        {selectedCardName ? (
+        {/* Advanced Search Panel */}
+        {advancedSearchOpen ? (
+          <AdvancedSearchPanel
+            filters={advancedFilters}
+            onFiltersChange={setAdvancedFilters}
+            onApply={handleAdvancedSearchApply}
+            onClose={handleCloseAdvancedSearch}
+          />
+        ) : /* Edition Selection View */
+        selectedCardName ? (
           <>
             <View
               className={`px-4 py-3 border-b ${

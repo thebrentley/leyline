@@ -58,12 +58,14 @@ export class SearchParserService {
 
           case 't':
           case 'type':
-            criteria.typeLine = value;
+            criteria.typeLine = criteria.typeLine || [];
+            criteria.typeLine.push(value.replace(/"/g, ''));
             break;
 
           case 'o':
           case 'oracle':
-            criteria.oracleText = value.replace(/"/g, ''); // Remove quotes
+            criteria.oracleText = criteria.oracleText || [];
+            criteria.oracleText.push(value.replace(/"/g, '')); // Remove quotes
             break;
 
           case 'mv':
