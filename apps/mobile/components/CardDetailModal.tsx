@@ -1,4 +1,4 @@
-import { Bot, Loader2, Send, Sparkles, User, X } from "lucide-react-native";
+import { Bot, Send, Sparkles, User, X } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -164,6 +164,7 @@ interface CardDetailModalProps {
     oracleText?: string;
     cmc?: number;
   } | null;
+  loading?: boolean;
   onAddToCollection?: () => void;
   changeContext?: ChangeContext;
 }
@@ -215,6 +216,7 @@ export function CardDetailModal({
   visible,
   onClose,
   card,
+  loading,
   onAddToCollection,
   changeContext,
 }: CardDetailModalProps) {
@@ -354,20 +356,18 @@ export function CardDetailModal({
     }
   };
 
-  // Fetch initial justification when modal opens with a change context
+  // Reset sub-chat state when modal closes
   useEffect(() => {
     if (!visible || !changeContext) {
       setSubChatMessages([]);
       setStreamingContent("");
       setSubChatError(null);
-      return;
     }
+  }, [visible, changeContext]);
 
-    // Wait until enhanced card data is loaded (with oracle text)
-    if (!enhancedCard) return;
-
-    // Only fetch if we don't already have messages (first open)
-    if (subChatMessages.length > 0) return;
+  // Start explanation on demand
+  const startExplanation = () => {
+    if (!changeContext || !enhancedCard || subChatLoading) return;
 
     const { change, deckName } = changeContext;
     const actionText = change.action === "add"
@@ -376,7 +376,6 @@ export function CardDetailModal({
         ? `removing ${change.quantity}x ${change.cardName}`
         : `swapping ${change.cardName} for ${change.targetCardName}`;
 
-    // Build card details for context - use enhancedCard which has oracle text
     const cardDetails = [
       `Card: ${enhancedCard.name}`,
       enhancedCard.manaCost ? `Mana Cost: ${enhancedCard.manaCost}` : null,
@@ -393,7 +392,7 @@ ${cardDetails}
 Explain in 2-3 sentences why this card specifically fits (or doesn't fit) the deck's strategy. Focus on how the card's abilities synergize with the commander and the deck's game plan.`;
 
     sendSubChatMessage(initialPrompt);
-  }, [visible, changeContext, enhancedCard]);
+  };
 
   // Cleanup on unmount
   useEffect(() => {
@@ -405,7 +404,47 @@ Explain in 2-3 sentences why this card specifically fits (or doesn't fit) the de
     };
   }, []);
 
-  if (!card) return null;
+  if (!card) {
+    if (!visible || !loading) return null;
+
+    // Show loading state while card data is being fetched
+    const LoadingModal = isDesktop ? (
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+        <Pressable onPress={onClose} className="flex-1 items-center justify-center bg-black/60">
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            className={`rounded-xl overflow-hidden shadow-2xl ${isDark ? "bg-slate-900" : "bg-white"}`}
+            style={{ maxWidth: 500, width: "95%", minHeight: 300 }}
+          >
+            <View className="flex-1 items-center justify-center py-20">
+              <ActivityIndicator size="large" color="#7C3AED" />
+              <Text className={`mt-4 text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                Loading card...
+              </Text>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    ) : (
+      <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+        <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+          <View className="flex-row items-center justify-end px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+            <Pressable onPress={onClose} className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}>
+              <X size={24} color={isDark ? "#94a3b8" : "#64748b"} />
+            </Pressable>
+          </View>
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator size="large" color="#7C3AED" />
+            <Text className={`mt-4 text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              Loading card...
+            </Text>
+          </View>
+        </View>
+      </Modal>
+    );
+
+    return LoadingModal;
+  }
 
   const imageUrl = "imageUrl" in card ? card.imageUrl : undefined;
   const name = card.name;
@@ -449,102 +488,126 @@ Explain in 2-3 sentences why this card specifically fits (or doesn't fit) the de
           </View>
         </View>
 
-        {/* Chat messages - flex-1 to fill available space */}
-        <ScrollView
-          className="flex-1"
-          contentContainerStyle={{ padding: 16 }}
-          keyboardShouldPersistTaps="handled"
-          removeClippedSubviews={false}
-          scrollEventThrottle={16}
-        >
-          {/* Only show assistant messages in the chat (hide the auto-generated user prompt) */}
-          {subChatMessages
-            .filter((msg, idx) => !(idx === 0 && msg.role === "user"))
-            .map((msg) => (
-              <View
-                key={msg.id}
-                className={`mb-3 ${msg.role === "user" ? "items-end" : "items-start"}`}
-              >
-                <View
-                  className={`max-w-[90%] rounded-xl px-4 py-3 ${
-                    msg.role === "user"
-                      ? "bg-purple-600"
-                      : isDark
-                        ? "bg-slate-800"
-                        : "bg-slate-100"
-                  }`}
-                >
-                  {msg.role === "assistant" && (
+        {/* Explain button or chat messages */}
+        {subChatMessages.length === 0 && !subChatLoading && !streamingContent ? (
+          <View className="flex-1 items-center justify-center p-6">
+            <Pressable
+              onPress={startExplanation}
+              disabled={!enhancedCard}
+              className={`flex-row items-center gap-2 px-5 py-3 rounded-xl ${
+                enhancedCard ? "bg-purple-600 active:bg-purple-700" : isDark ? "bg-slate-800" : "bg-slate-200"
+              }`}
+            >
+              {!enhancedCard ? (
+                <ActivityIndicator size="small" color="#7C3AED" />
+              ) : (
+                <Sparkles size={16} color="white" />
+              )}
+              <Text className={`text-sm font-semibold ${enhancedCard ? "text-white" : isDark ? "text-slate-500" : "text-slate-400"}`}>
+                Explain
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            {/* Chat messages - flex-1 to fill available space */}
+            <ScrollView
+              className="flex-1"
+              contentContainerStyle={{ padding: 16 }}
+              keyboardShouldPersistTaps="handled"
+              removeClippedSubviews={false}
+              scrollEventThrottle={16}
+            >
+              {/* Only show assistant messages in the chat (hide the auto-generated user prompt) */}
+              {subChatMessages
+                .filter((msg, idx) => !(idx === 0 && msg.role === "user"))
+                .map((msg) => (
+                  <View
+                    key={msg.id}
+                    className={`mb-3 ${msg.role === "user" ? "items-end" : "items-start"}`}
+                  >
+                    <View
+                      className={`max-w-[90%] rounded-xl px-4 py-3 ${
+                        msg.role === "user"
+                          ? "bg-purple-600"
+                          : isDark
+                            ? "bg-slate-800"
+                            : "bg-slate-100"
+                      }`}
+                    >
+                      {msg.role === "assistant" && (
+                        <View className="flex-row items-center gap-1.5 mb-2">
+                          <Bot size={12} color="#7C3AED" />
+                          <Text className="text-xs text-purple-400 font-medium">Advisor</Text>
+                        </View>
+                      )}
+                      {msg.role === "user" && (
+                        <View className="flex-row items-center gap-1.5 mb-2 justify-end">
+                          <Text className="text-xs text-purple-200 font-medium">You</Text>
+                          <User size={12} color="#e9d5ff" />
+                        </View>
+                      )}
+                      <Text
+                        className={`text-sm leading-relaxed ${
+                          msg.role === "user"
+                            ? "text-white"
+                            : isDark
+                              ? "text-slate-300"
+                              : "text-slate-700"
+                        }`}
+                      >
+                        {msg.content}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+
+              {/* Streaming content */}
+              {streamingContent && (
+                <View className="mb-3 items-start">
+                  <View className={`max-w-[90%] rounded-xl px-4 py-3 ${isDark ? "bg-slate-800" : "bg-slate-100"}`}>
                     <View className="flex-row items-center gap-1.5 mb-2">
                       <Bot size={12} color="#7C3AED" />
                       <Text className="text-xs text-purple-400 font-medium">Advisor</Text>
                     </View>
-                  )}
-                  {msg.role === "user" && (
-                    <View className="flex-row items-center gap-1.5 mb-2 justify-end">
-                      <Text className="text-xs text-purple-200 font-medium">You</Text>
-                      <User size={12} color="#e9d5ff" />
-                    </View>
-                  )}
-                  <Text
-                    className={`text-sm leading-relaxed ${
-                      msg.role === "user"
-                        ? "text-white"
-                        : isDark
-                          ? "text-slate-300"
-                          : "text-slate-700"
-                    }`}
-                  >
-                    {msg.content}
-                  </Text>
+                    <Text className={`text-sm leading-relaxed ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                      {streamingContent}
+                      <Text className="text-purple-400">▊</Text>
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            ))}
+              )}
 
-          {/* Streaming content */}
-          {streamingContent && (
-            <View className="mb-3 items-start">
-              <View className={`max-w-[90%] rounded-xl px-4 py-3 ${isDark ? "bg-slate-800" : "bg-slate-100"}`}>
-                <View className="flex-row items-center gap-1.5 mb-2">
-                  <Bot size={12} color="#7C3AED" />
-                  <Text className="text-xs text-purple-400 font-medium">Advisor</Text>
+              {/* Loading indicator for initial load */}
+              {subChatLoading && !streamingContent && subChatMessages.length <= 1 && (
+                <View className={`rounded-xl px-4 py-4 ${isDark ? "bg-slate-800" : "bg-slate-100"}`}>
+                  <View className="flex-row items-center gap-2">
+                    <ActivityIndicator size="small" color="#7C3AED" />
+                    <Text className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                      Analyzing this change...
+                    </Text>
+                  </View>
                 </View>
-                <Text className={`text-sm leading-relaxed ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                  {streamingContent}
-                  <Text className="text-purple-400">▊</Text>
-                </Text>
-              </View>
-            </View>
-          )}
+              )}
 
-          {/* Loading indicator for initial load */}
-          {subChatLoading && !streamingContent && subChatMessages.length <= 1 && (
-            <View className={`rounded-xl px-4 py-4 ${isDark ? "bg-slate-800" : "bg-slate-100"}`}>
-              <View className="flex-row items-center gap-2">
-                <ActivityIndicator size="small" color="#7C3AED" />
-                <Text className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                  Analyzing this change...
-                </Text>
-              </View>
-            </View>
-          )}
+              {/* Error */}
+              {subChatError && (
+                <View className="rounded-xl px-4 py-3 bg-red-500/10">
+                  <Text className="text-sm text-red-400">{subChatError}</Text>
+                </View>
+              )}
+            </ScrollView>
 
-          {/* Error */}
-          {subChatError && (
-            <View className="rounded-xl px-4 py-3 bg-red-500/10">
-              <Text className="text-sm text-red-400">{subChatError}</Text>
+            {/* Input area - fixed at bottom */}
+            <View className={`flex-row items-center gap-2 p-3 border-t ${isDark ? "border-slate-700" : "border-slate-200"}`}>
+              <SubChatInput
+                onSend={sendSubChatMessage}
+                loading={subChatLoading}
+                isDark={isDark}
+              />
             </View>
-          )}
-        </ScrollView>
-
-        {/* Input area - fixed at bottom */}
-        <View className={`flex-row items-center gap-2 p-3 border-t ${isDark ? "border-slate-700" : "border-slate-200"}`}>
-          <SubChatInput
-            onSend={sendSubChatMessage}
-            loading={subChatLoading}
-            isDark={isDark}
-          />
-        </View>
+          </>
+        )}
       </View>
     );
   };
@@ -582,94 +645,115 @@ Explain in 2-3 sentences why this card specifically fits (or doesn't fit) the de
           </View>
         </View>
 
-        {/* Chat messages */}
-        <View className={`rounded-xl overflow-hidden ${isDark ? "bg-slate-800/50" : "bg-purple-50/50"}`}>
-          <ScrollView
-            className="max-h-64"
-            contentContainerStyle={{ padding: 12 }}
-            keyboardShouldPersistTaps="handled"
-            removeClippedSubviews={false}
-            scrollEventThrottle={16}
-          >
-            {/* Only show assistant messages in the chat (hide the auto-generated user prompt) */}
-            {subChatMessages
-              .filter((msg, idx) => !(idx === 0 && msg.role === "user"))
-              .map((msg) => (
-                <View
-                  key={msg.id}
-                  className={`mb-2 ${msg.role === "user" ? "items-end" : "items-start"}`}
-                >
+        {/* Explain button or chat */}
+        {subChatMessages.length === 0 && !subChatLoading && !streamingContent ? (
+          <View className="items-start py-2">
+            <Pressable
+              onPress={startExplanation}
+              disabled={!enhancedCard}
+              className={`flex-row items-center gap-2 px-4 py-2.5 rounded-xl ${
+                enhancedCard ? "bg-purple-600 active:bg-purple-700" : isDark ? "bg-slate-800" : "bg-slate-200"
+              }`}
+            >
+              {!enhancedCard ? (
+                <ActivityIndicator size="small" color="#7C3AED" />
+              ) : (
+                <Sparkles size={14} color="white" />
+              )}
+              <Text className={`text-sm font-semibold ${enhancedCard ? "text-white" : isDark ? "text-slate-500" : "text-slate-400"}`}>
+                Explain
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View className={`rounded-xl overflow-hidden ${isDark ? "bg-slate-800/50" : "bg-purple-50/50"}`}>
+            <ScrollView
+              className="max-h-64"
+              contentContainerStyle={{ padding: 12 }}
+              keyboardShouldPersistTaps="handled"
+              removeClippedSubviews={false}
+              scrollEventThrottle={16}
+            >
+              {/* Only show assistant messages in the chat (hide the auto-generated user prompt) */}
+              {subChatMessages
+                .filter((msg, idx) => !(idx === 0 && msg.role === "user"))
+                .map((msg) => (
                   <View
-                    className={`max-w-[85%] rounded-lg px-3 py-2 ${
-                      msg.role === "user"
-                        ? "bg-purple-600"
-                        : isDark
-                          ? "bg-slate-700"
-                          : "bg-white"
-                    }`}
+                    key={msg.id}
+                    className={`mb-2 ${msg.role === "user" ? "items-end" : "items-start"}`}
                   >
-                    {msg.role === "assistant" && (
-                      <View className="flex-row items-center gap-1 mb-1">
-                        <Bot size={10} color="#7C3AED" />
-                        <Text className="text-[10px] text-purple-400">Advisor</Text>
-                      </View>
-                    )}
-                    <Text
-                      className={`text-sm leading-relaxed ${
+                    <View
+                      className={`max-w-[85%] rounded-lg px-3 py-2 ${
                         msg.role === "user"
-                          ? "text-white"
+                          ? "bg-purple-600"
                           : isDark
-                            ? "text-slate-300"
-                            : "text-slate-700"
+                            ? "bg-slate-700"
+                            : "bg-white"
                       }`}
                     >
-                      {msg.content}
+                      {msg.role === "assistant" && (
+                        <View className="flex-row items-center gap-1 mb-1">
+                          <Bot size={10} color="#7C3AED" />
+                          <Text className="text-[10px] text-purple-400">Advisor</Text>
+                        </View>
+                      )}
+                      <Text
+                        className={`text-sm leading-relaxed ${
+                          msg.role === "user"
+                            ? "text-white"
+                            : isDark
+                              ? "text-slate-300"
+                              : "text-slate-700"
+                        }`}
+                      >
+                        {msg.content}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+
+              {/* Streaming content */}
+              {streamingContent && (
+                <View className="mb-2 items-start">
+                  <View className={`max-w-[85%] rounded-lg px-3 py-2 ${isDark ? "bg-slate-700" : "bg-white"}`}>
+                    <View className="flex-row items-center gap-1 mb-1">
+                      <Bot size={10} color="#7C3AED" />
+                      <Text className="text-[10px] text-purple-400">Advisor</Text>
+                    </View>
+                    <Text className={`text-sm leading-relaxed ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                      {streamingContent}
+                      <Text className="text-purple-400">▊</Text>
                     </Text>
                   </View>
                 </View>
-              ))}
+              )}
 
-            {/* Streaming content */}
-            {streamingContent && (
-              <View className="mb-2 items-start">
-                <View className={`max-w-[85%] rounded-lg px-3 py-2 ${isDark ? "bg-slate-700" : "bg-white"}`}>
-                  <View className="flex-row items-center gap-1 mb-1">
-                    <Bot size={10} color="#7C3AED" />
-                    <Text className="text-[10px] text-purple-400">Advisor</Text>
-                  </View>
-                  <Text className={`text-sm leading-relaxed ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                    {streamingContent}
-                    <Text className="text-purple-400">▊</Text>
+              {/* Loading indicator for initial load */}
+              {subChatLoading && !streamingContent && subChatMessages.length <= 1 && (
+                <View className="flex-row items-center gap-2 py-2">
+                  <ActivityIndicator size="small" color="#7C3AED" />
+                  <Text className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                    Analyzing...
                   </Text>
                 </View>
-              </View>
-            )}
+              )}
 
-            {/* Loading indicator for initial load */}
-            {subChatLoading && !streamingContent && subChatMessages.length <= 1 && (
-              <View className="flex-row items-center gap-2 py-2">
-                <ActivityIndicator size="small" color="#7C3AED" />
-                <Text className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                  Analyzing...
-                </Text>
-              </View>
-            )}
+              {/* Error */}
+              {subChatError && (
+                <Text className="text-sm text-red-400 py-2">{subChatError}</Text>
+              )}
+            </ScrollView>
 
-            {/* Error */}
-            {subChatError && (
-              <Text className="text-sm text-red-400 py-2">{subChatError}</Text>
-            )}
-          </ScrollView>
-
-          {/* Input area */}
-          <View className={`flex-row items-center gap-2 p-2 border-t ${isDark ? "border-slate-700" : "border-purple-100"}`}>
-            <SubChatInputCompact
-              onSend={sendSubChatMessage}
-              loading={subChatLoading}
-              isDark={isDark}
-            />
+            {/* Input area */}
+            <View className={`flex-row items-center gap-2 p-2 border-t ${isDark ? "border-slate-700" : "border-purple-100"}`}>
+              <SubChatInputCompact
+                onSend={sendSubChatMessage}
+                loading={subChatLoading}
+                isDark={isDark}
+              />
+            </View>
           </View>
-        </View>
+        )}
       </View>
     );
   };

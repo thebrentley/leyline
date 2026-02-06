@@ -777,6 +777,7 @@ export function AdvisorSidePanel({
           setSelectedChangeContext(undefined);
         }}
         card={selectedCard}
+        loading={loadingCard}
         changeContext={selectedChangeContext}
       />
 
