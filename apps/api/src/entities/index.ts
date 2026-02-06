@@ -6,3 +6,4 @@ export { DeckVersion } from './deck-version.entity';
 export { CollectionCard } from './collection-card.entity';
 export { ChatSession } from './chat-session.entity';
 export { Setting, SETTING_KEYS } from './setting.entity';
+export { ColorTag } from './color-tag.entity';

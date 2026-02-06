@@ -5,6 +5,7 @@ import axios from 'axios';
 import { Deck, DeckSyncStatus } from '../../entities/deck.entity';
 import { DeckCard } from '../../entities/deck-card.entity';
 import { DeckVersion, type VersionCard } from '../../entities/deck-version.entity';
+import { ColorTag } from '../../entities/color-tag.entity';
 import { CardsService } from '../cards/cards.service';
 import { EventsGateway } from '../events/events.gateway';
 import { AuthService } from '../auth/auth.service';
@@ -56,6 +57,8 @@ export class SyncQueueService implements OnModuleDestroy {
     private deckCardRepository: Repository<DeckCard>,
     @InjectRepository(DeckVersion)
     private deckVersionRepository: Repository<DeckVersion>,
+    @InjectRepository(ColorTag)
+    private colorTagRepository: Repository<ColorTag>,
     private cardsService: CardsService,
     private eventsGateway: EventsGateway,
     @Inject(forwardRef(() => AuthService))
@@ -243,13 +246,7 @@ export class SyncQueueService implements OnModuleDestroy {
         }
       }
 
-      // Build colorTags array from unique colors found
-      const colorTags = Array.from(colorTagSet).map(color => ({
-        name: color,
-        color: color,
-      }));
-
-      console.log('[SyncQueue] Extracted color tags:', colorTags);
+      console.log('[SyncQueue] Extracted color tags:', Array.from(colorTagSet));
 
       // 10% - Fetched deck info
       this.eventsGateway.emitDeckSyncStatus(job.userId, job.deckId, 'syncing', null, 10);
@@ -259,11 +256,23 @@ export class SyncQueueService implements OnModuleDestroy {
         name: archidektDeck.name,
         format: archidektDeck.format?.name || null,
         description: archidektDeck.description || null,
-        colorTags,
       });
 
-      // Delete existing cards
+      // Delete existing cards and color tags
       await this.deckCardRepository.delete({ deckId: job.deckId });
+      await this.colorTagRepository.delete({ deckId: job.deckId });
+
+      // Create color tag entities and build lookup map
+      const colorToTagId = new Map<string, string>();
+      for (const color of colorTagSet) {
+        const tag = this.colorTagRepository.create({
+          deckId: job.deckId,
+          name: color,
+          color: color,
+        });
+        const saved = await this.colorTagRepository.save(tag);
+        colorToTagId.set(color, saved.id);
+      }
 
       // 20% - Ready to fetch cards
       this.eventsGateway.emitDeckSyncStatus(job.userId, job.deckId, 'syncing', null, 20);
@@ -305,12 +314,12 @@ export class SyncQueueService implements OnModuleDestroy {
           );
 
           // Extract color tag from label field (format: ',#656565')
-          let cardColorTag: string | null = null;
+          let cardColorTagId: string | null = null;
           const label = (archCard as any).label;
           if (label && typeof label === 'string') {
             const match = label.match(/#[0-9A-Fa-f]{6}/);
             if (match) {
-              cardColorTag = match[0].toUpperCase();
+              cardColorTagId = colorToTagId.get(match[0].toUpperCase()) ?? null;
             }
           }
 
@@ -319,7 +328,7 @@ export class SyncQueueService implements OnModuleDestroy {
               deckId: job.deckId,
               scryfallId,
               quantity: archCard.quantity,
-              colorTag: cardColorTag,
+              colorTagId: cardColorTagId,
               categories: archCard.categories,
               isCommander,
             }),
@@ -493,7 +502,7 @@ export class SyncQueueService implements OnModuleDestroy {
     try {
       const deck = await this.deckRepository.findOne({
         where: { id: deckId },
-        relations: ['cards', 'cards.card'],
+        relations: ['cards', 'cards.card', 'cards.colorTagEntity', 'colorTags'],
       });
 
       if (!deck) return;
@@ -510,7 +519,9 @@ export class SyncQueueService implements OnModuleDestroy {
         name: c.card?.name || 'Unknown',
         scryfallId: c.scryfallId,
         quantity: c.quantity,
-        colorTag: c.colorTag,
+        colorTag: c.colorTagEntity
+          ? { id: c.colorTagEntity.id, name: c.colorTagEntity.name, color: c.colorTagEntity.color }
+          : null,
         isCommander: c.isCommander,
         categories: c.categories,
       }));
@@ -521,7 +532,11 @@ export class SyncQueueService implements OnModuleDestroy {
         description: `Sync from Archidekt`,
         changeType: 'sync',
         cards,
-        colorTags: deck.colorTags,
+        colorTags: (deck.colorTags || []).map((t) => ({
+          id: t.id,
+          name: t.name,
+          color: t.color,
+        })),
         cardCount: cards.reduce((sum, c) => sum + c.quantity, 0),
       });
 

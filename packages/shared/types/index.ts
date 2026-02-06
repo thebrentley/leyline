@@ -71,6 +71,7 @@ export interface CardFace {
 // =====================
 
 export interface ColorTag {
+  id: string;
   name: string;
   color: string;
 }
@@ -91,7 +92,7 @@ export interface DeckCard {
   deckId: string;
   scryfallId: string;
   quantity: number;
-  colorTag: string | null;
+  colorTagId: string | null;
   categories: string[];
   isCommander: boolean;
   card?: Card;

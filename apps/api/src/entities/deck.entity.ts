@@ -11,11 +11,7 @@ import {
 import { User } from './user.entity';
 import { DeckCard } from './deck-card.entity';
 import { ChatSession } from './chat-session.entity';
-
-export interface ColorTag {
-  name: string;
-  color: string;
-}
+import { ColorTag } from './color-tag.entity';
 
 export type DeckSyncStatus = 'waiting' | 'syncing' | 'synced' | 'error';
 
@@ -48,7 +44,7 @@ export class Deck {
   @Column({ name: 'sync_error', type: 'text', nullable: true })
   syncError: string | null;
 
-  @Column({ name: 'color_tags', type: 'jsonb', default: [] })
+  @OneToMany(() => ColorTag, (tag) => tag.deck, { cascade: true })
   colorTags: ColorTag[];
 
   @CreateDateColumn({ name: 'created_at' })

@@ -8,11 +8,18 @@ import {
 } from 'typeorm';
 import { Deck } from './deck.entity';
 
+export interface VersionColorTag {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface VersionCard {
   name: string;
   scryfallId: string;
   quantity: number;
-  colorTag: string | null;
+  // New format: { id, name, color } object; old format: string (hex) or null
+  colorTag: VersionColorTag | string | null;
   isCommander: boolean;
   categories: string[];
 }
@@ -38,7 +45,7 @@ export class DeckVersion {
   cards: VersionCard[];
 
   @Column({ name: 'color_tags', type: 'jsonb', default: [] })
-  colorTags: Array<{ name: string; color: string }>;
+  colorTags: VersionColorTag[];
 
   @Column({ name: 'card_count', type: 'int' })
   cardCount: number;

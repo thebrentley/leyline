@@ -60,7 +60,7 @@ export function ColorTagManager({
   isDark,
 }: ColorTagManagerProps) {
   const [tags, setTags] = useState<ColorTag[]>([]);
-  const [editingTag, setEditingTag] = useState<string | null>(null);
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState("#3B82F6");
   const [isAdding, setIsAdding] = useState(false);
@@ -69,9 +69,10 @@ export function ColorTagManager({
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{
     visible: boolean;
+    tagId: string;
     tagName: string;
     cardsUsingTag: number;
-  }>({ visible: false, tagName: "", cardsUsingTag: 0 });
+  }>({ visible: false, tagId: "", tagName: "", cardsUsingTag: 0 });
 
   // Combine all cards from deck
   const allCards = useMemo(() => [
@@ -83,13 +84,13 @@ export function ColorTagManager({
   useEffect(() => {
     if (visible) {
       setTags([...(deck.colorTags || [])]);
-      setEditingTag(null);
+      setEditingTagId(null);
       setIsAdding(false);
     }
   }, [visible, deck.colorTags]);
 
-  const getCardCount = (tagName: string) => {
-    return allCards.filter((c) => c.colorTag === tagName).length;
+  const getCardCount = (tagId: string) => {
+    return allCards.filter((c) => c.colorTagId === tagId).length;
   };
 
   const handleAddTag = async () => {
@@ -118,7 +119,7 @@ export function ColorTagManager({
     }
   };
 
-  const handleUpdateTag = async (oldName: string) => {
+  const handleUpdateTag = async (tagId: string) => {
     if (!editName.trim()) {
       showToast.error("Tag name is required");
       return;
@@ -126,13 +127,13 @@ export function ColorTagManager({
 
     setSaving(true);
     try {
-      const result = await decksApi.updateColorTag(deck.id, oldName, editName.trim(), editColor);
+      const result = await decksApi.updateColorTag(deck.id, tagId, editName.trim(), editColor);
       if (result.error) {
         showToast.error(result.error);
       } else if (result.data) {
         setTags(result.data.colorTags);
         onTagsChanged(result.data.colorTags);
-        setEditingTag(null);
+        setEditingTagId(null);
         showToast.success("Tag updated successfully");
       }
     } catch (err) {
@@ -142,18 +143,18 @@ export function ColorTagManager({
     }
   };
 
-  const handleDeleteTag = (tagName: string) => {
-    const cardsUsingTag = getCardCount(tagName);
-    setConfirmDelete({ visible: true, tagName, cardsUsingTag });
+  const handleDeleteTag = (tagId: string, tagName: string) => {
+    const cardsUsingTag = getCardCount(tagId);
+    setConfirmDelete({ visible: true, tagId, tagName, cardsUsingTag });
   };
 
   const confirmDeleteTag = async () => {
-    const { tagName } = confirmDelete;
-    setConfirmDelete({ visible: false, tagName: "", cardsUsingTag: 0 });
+    const { tagId } = confirmDelete;
+    setConfirmDelete({ visible: false, tagId: "", tagName: "", cardsUsingTag: 0 });
 
     setSaving(true);
     try {
-      const result = await decksApi.deleteColorTag(deck.id, tagName);
+      const result = await decksApi.deleteColorTag(deck.id, tagId);
       if (result.error) {
         showToast.error(result.error);
       } else if (result.data) {
@@ -169,19 +170,19 @@ export function ColorTagManager({
   };
 
   const startEditing = (tag: ColorTag) => {
-    setEditingTag(tag.name);
+    setEditingTagId(tag.id);
     setEditName(tag.name);
     setEditColor(tag.color);
     setIsAdding(false);
   };
 
   const cancelEditing = () => {
-    setEditingTag(null);
+    setEditingTagId(null);
   };
 
   const startAdding = () => {
     setIsAdding(true);
-    setEditingTag(null);
+    setEditingTagId(null);
     setNewName("");
     setNewColor("#3B82F6");
   };
@@ -224,16 +225,16 @@ export function ColorTagManager({
           {/* Existing Tags */}
           {tags.map((tag) => (
             <View
-              key={tag.name}
+              key={tag.id}
               className={`rounded-xl mb-3 ${
-                editingTag === tag.name
+                editingTagId === tag.id
                   ? "border-2 border-purple-500"
                   : isDark
                     ? "bg-slate-900"
                     : "bg-slate-50"
-              } ${editingTag === tag.name ? (isDark ? "bg-slate-900" : "bg-slate-50") : ""}`}
+              } ${editingTagId === tag.id ? (isDark ? "bg-slate-900" : "bg-slate-50") : ""}`}
             >
-              {editingTag === tag.name ? (
+              {editingTagId === tag.id ? (
                 // Edit mode
                 <View className="p-4">
                   <View className="flex-row gap-3 mb-4">
@@ -278,7 +279,7 @@ export function ColorTagManager({
                       <Text className={isDark ? "text-white" : "text-slate-900"}>Cancel</Text>
                     </Pressable>
                     <Pressable
-                      onPress={() => handleUpdateTag(tag.name)}
+                      onPress={() => handleUpdateTag(tag.id)}
                       disabled={saving || !editName.trim()}
                       className="px-4 py-2 rounded-lg bg-purple-500 flex-row items-center gap-2"
                     >
@@ -303,7 +304,7 @@ export function ColorTagManager({
                       {tag.name}
                     </Text>
                     <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-                      {getCardCount(tag.name)} card{getCardCount(tag.name) !== 1 ? "s" : ""}
+                      {getCardCount(tag.id)} card{getCardCount(tag.id) !== 1 ? "s" : ""}
                     </Text>
                   </View>
                   <View className="flex-row gap-1">
@@ -315,7 +316,7 @@ export function ColorTagManager({
                       <Pencil size={18} color={isDark ? "#94a3b8" : "#64748b"} />
                     </Pressable>
                     <Pressable
-                      onPress={() => handleDeleteTag(tag.name)}
+                      onPress={() => handleDeleteTag(tag.id, tag.name)}
                       disabled={saving}
                       className={`p-2 rounded-lg ${isDark ? "active:bg-slate-700" : "active:bg-slate-200"}`}
                     >
@@ -388,7 +389,7 @@ export function ColorTagManager({
           ) : (
             <Pressable
               onPress={startAdding}
-              disabled={saving || editingTag !== null}
+              disabled={saving || editingTagId !== null}
               className={`flex-row items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed ${
                 isDark ? "border-slate-700" : "border-slate-300"
               }`}
@@ -437,7 +438,7 @@ export function ColorTagManager({
         cancelText="Cancel"
         destructive
         onConfirm={confirmDeleteTag}
-        onCancel={() => setConfirmDelete({ visible: false, tagName: "", cardsUsingTag: 0 })}
+        onCancel={() => setConfirmDelete({ visible: false, tagId: "", tagName: "", cardsUsingTag: 0 })}
       />
     </Modal>
   );

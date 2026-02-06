@@ -82,7 +82,7 @@ const MANA_COLORS: Record<string, string> = {
 };
 
 // Group by options
-type GroupBy = "category" | "cardType" | "color" | "cmc" | "rarity";
+type GroupBy = "category" | "cardType" | "color" | "cmc" | "rarity" | "colorTag";
 
 const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: "category", label: "Category" },
@@ -90,6 +90,7 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: "color", label: "Color" },
   { value: "cmc", label: "Mana Value" },
   { value: "rarity", label: "Rarity" },
+  { value: "colorTag", label: "Color Tag" },
 ];
 
 const GROUP_COLORS: Record<GroupBy, Record<string, string>> = {
@@ -134,6 +135,7 @@ const GROUP_COLORS: Record<GroupBy, Record<string, string>> = {
     Rare: "#eab308",
     Mythic: "#ea580c",
   },
+  colorTag: {},
 };
 
 // Basic land names
@@ -508,6 +510,8 @@ export default function DeckDetailScreen() {
   const [cardModalVisible, setCardModalVisible] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>("category");
   const [groupByMenuVisible, setGroupByMenuVisible] = useState(false);
+  const groupByButtonRef = useRef<View>(null);
+  const [groupByMenuPosition, setGroupByMenuPosition] = useState({ top: 0, left: 0 });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchVisible, setSearchVisible] = useState(false);
   const [scryfallSearchVisible, setScryfallSearchVisible] = useState(false);
@@ -832,6 +836,11 @@ export default function DeckDetailScreen() {
           const rarity = card.rarity?.toLowerCase() || "common";
           return rarity.charAt(0).toUpperCase() + rarity.slice(1);
 
+        case "colorTag":
+          if (!card.colorTagId || !deck) return "Untagged";
+          const tag = deck.colorTags.find((t) => t.id === card.colorTagId);
+          return tag ? tag.name : "Untagged";
+
         default:
           return "Other";
       }
@@ -981,6 +990,11 @@ export default function DeckDetailScreen() {
           const rarityOrder = ["Common", "Uncommon", "Rare", "Mythic"];
           return rarityOrder.indexOf(a) - rarityOrder.indexOf(b);
         }
+        // Sort "Untagged" to end for color tag grouping
+        if (groupBy === "colorTag") {
+          if (a === "Untagged") return 1;
+          if (b === "Untagged") return -1;
+        }
         return a.localeCompare(b);
       });
 
@@ -997,9 +1011,13 @@ export default function DeckDetailScreen() {
   // Get color for a group based on groupBy type
   const getGroupColor = useCallback(
     (groupName: string): string => {
+      if (groupBy === "colorTag") {
+        const tag = deck?.colorTags.find((t) => t.name === groupName);
+        return tag?.color || "#64748b";
+      }
       return GROUP_COLORS[groupBy]?.[groupName] || "#64748b";
     },
-    [groupBy],
+    [groupBy, deck?.colorTags],
   );
 
   // Filter sections based on search query
@@ -1154,7 +1172,7 @@ export default function DeckDetailScreen() {
   );
 
   const handleSetColorTag = useCallback(
-    async (tag: string | null) => {
+    async (tagId: string | null) => {
       if (!actionSheetCard || !deck) return;
       const cardName = actionSheetCard.name;
       const deckId = deck.id;
@@ -1167,7 +1185,7 @@ export default function DeckDetailScreen() {
 
       setActionLoading(true);
       try {
-        const result = await decksApi.updateCardTag(deckId, cardName, tag);
+        const result = await decksApi.updateCardTag(deckId, cardName, tagId);
         if (result.error) {
           showToast.error(result.error);
         } else {
@@ -1185,7 +1203,7 @@ export default function DeckDetailScreen() {
   );
 
   const handleHeaderSetColorTag = useCallback(
-    async (tag: string | null) => {
+    async (tagId: string | null) => {
       if (!selectedCard || !deck) return;
       const cardName = selectedCard.name;
       const deckId = deck.id;
@@ -1193,18 +1211,29 @@ export default function DeckDetailScreen() {
       setHeaderColorTagDropdownOpen(false);
 
       // Optimistically update the selected card immediately
+      const tagColor = tagId
+        ? deck.colorTags?.find((t) => t.id === tagId)?.color
+        : undefined;
       setSelectedCard((prev) =>
-        prev ? { ...prev, colorTag: tag ?? undefined } : null,
+        prev
+          ? { ...prev, colorTagId: tagId ?? undefined, colorTag: tagColor }
+          : null,
       );
 
       setActionLoading(true);
       try {
-        const result = await decksApi.updateCardTag(deckId, cardName, tag);
+        const result = await decksApi.updateCardTag(deckId, cardName, tagId);
         if (result.error) {
           showToast.error(result.error);
           // Revert on error
           setSelectedCard((prev) =>
-            prev ? { ...prev, colorTag: selectedCard.colorTag } : null,
+            prev
+              ? {
+                  ...prev,
+                  colorTagId: selectedCard.colorTagId,
+                  colorTag: selectedCard.colorTag,
+                }
+              : null,
           );
         } else {
           await cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
@@ -1214,7 +1243,13 @@ export default function DeckDetailScreen() {
         showToast.error("Failed to update color tag");
         // Revert on error
         setSelectedCard((prev) =>
-          prev ? { ...prev, colorTag: selectedCard.colorTag } : null,
+          prev
+            ? {
+                ...prev,
+                colorTagId: selectedCard.colorTagId,
+                colorTag: selectedCard.colorTag,
+              }
+            : null,
         );
       } finally {
         setActionLoading(false);
@@ -1644,9 +1679,14 @@ export default function DeckDetailScreen() {
       >
         <View className="flex-row items-center gap-2 lg:gap-3">
           {/* Group By Button with Desktop Dropdown */}
-          <View className="relative">
+          <View ref={groupByButtonRef} className="relative">
             <Pressable
-              onPress={() => setGroupByMenuVisible(true)}
+              onPress={() => {
+                groupByButtonRef.current?.measure((x, y, width, height, pageX, pageY) => {
+                  setGroupByMenuPosition({ top: pageY + height + 4, left: pageX });
+                  setGroupByMenuVisible(true);
+                });
+              }}
               className={`flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg ${
                 isDark
                   ? "bg-slate-800 lg:hover:bg-slate-700"
@@ -1662,67 +1702,6 @@ export default function DeckDetailScreen() {
               </Text>
             </Pressable>
 
-            {/* Desktop Dropdown */}
-            {isDesktop && groupByMenuVisible && (
-              <>
-                {/* Backdrop to close on outside click */}
-                <Pressable
-                  className="fixed inset-0 z-40"
-                  onPress={() => setGroupByMenuVisible(false)}
-                />
-                <View
-                  className={`absolute left-0 top-full mt-1 w-[200px] rounded-xl border shadow-xl z-50 ${
-                    isDark
-                      ? "border-slate-700 bg-slate-800"
-                      : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <Text
-                    className={`px-4 py-3 text-sm font-semibold border-b ${
-                      isDark
-                        ? "text-slate-300 border-slate-700"
-                        : "text-slate-700 border-slate-200"
-                    }`}
-                  >
-                    Group Cards By
-                  </Text>
-                  {GROUP_BY_OPTIONS.map((option) => (
-                    <Pressable
-                      key={option.value}
-                      onPress={() => {
-                        setGroupBy(option.value);
-                        setGroupByMenuVisible(false);
-                        if (deck) {
-                          const allTitles = new Set<string>();
-                          if (option.value === "category") {
-                            allTitles.add("Commander");
-                            allTitles.add("Mainboard");
-                            allTitles.add("Sideboard");
-                          } else {
-                            Object.keys(
-                              GROUP_COLORS[option.value] || {},
-                            ).forEach((k) => allTitles.add(k));
-                          }
-                          setExpandedSections(allTitles);
-                        }
-                      }}
-                      className={`flex-row items-center justify-between px-4 py-3 ${
-                        isDark ? "hover:bg-slate-700" : "hover:bg-slate-100"
-                      }`}
-                    >
-                      <Text
-                        className={isDark ? "text-white" : "text-slate-900"}
-                      >
-                        {option.label}
-                      </Text>
-                      {groupBy === option.value && (
-                        <Check size={18} color="#7C3AED" />
-                      )}
-                    </Pressable>
-                  ))}
-                </View>
-              </>
-            )}
           </View>
 
           {/* Search Toggle */}
@@ -2281,26 +2260,26 @@ export default function DeckDetailScreen() {
         </Pressable>
       </Modal>
 
-      {/* Group By Menu Modal - Mobile only */}
+      {/* Group By Menu Modal */}
       <Modal
-        visible={!isDesktop && groupByMenuVisible}
+        visible={groupByMenuVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setGroupByMenuVisible(false)}
       >
-        <Pressable
-          className="flex-1 bg-black/50"
-          onPress={() => setGroupByMenuVisible(false)}
-        >
-          <View className="flex-1 justify-center items-center px-8">
-            <View
-              className={`w-full max-w-[280px] rounded-xl border shadow-xl ${
-                isDark
-                  ? "border-slate-700 bg-slate-800"
-                  : "border-slate-200 bg-white"
-              }`}
-              onStartShouldSetResponder={() => true}
-            >
+        <Pressable className="flex-1" onPress={() => setGroupByMenuVisible(false)}>
+          <View
+            style={{
+              position: "absolute",
+              top: groupByMenuPosition.top,
+              left: groupByMenuPosition.left,
+            }}
+            className={`min-w-[200px] rounded-xl border shadow-xl ${
+              isDark
+                ? "border-slate-700 bg-slate-800"
+                : "border-slate-200 bg-white"
+            }`}
+          >
               <Text
                 className={`px-4 py-3 text-sm font-semibold border-b ${
                   isDark
@@ -2345,7 +2324,6 @@ export default function DeckDetailScreen() {
                 </Pressable>
               ))}
             </View>
-          </View>
         </Pressable>
       </Modal>
 
@@ -2410,19 +2388,19 @@ export default function DeckDetailScreen() {
                         )
                       }
                       className={`flex-row items-center gap-1.5 rounded-full px-3 py-1 mr-2 ${
-                        selectedCard?.colorTag
+                        selectedCard?.colorTagId
                           ? ""
                           : isDark
                             ? "bg-slate-700"
                             : "bg-slate-100"
                       }`}
                       style={
-                        selectedCard?.colorTag
+                        selectedCard?.colorTagId
                           ? { backgroundColor: `${selectedCard.colorTag}20` }
                           : undefined
                       }
                     >
-                      {selectedCard?.colorTag ? (
+                      {selectedCard?.colorTagId ? (
                         <>
                           <View
                             className="w-3 h-3 rounded-full"
@@ -2433,7 +2411,7 @@ export default function DeckDetailScreen() {
                             style={{ color: selectedCard.colorTag }}
                           >
                             {deck?.colorTags?.find(
-                              (t) => t.color === selectedCard.colorTag,
+                              (t) => t.id === selectedCard.colorTagId,
                             )?.name || "Tagged"}
                           </Text>
                         </>
@@ -2505,7 +2483,7 @@ export default function DeckDetailScreen() {
                             >
                               No Tag
                             </Text>
-                            {!selectedCard?.colorTag && (
+                            {!selectedCard?.colorTagId && (
                               <Check size={14} color="#7C3AED" />
                             )}
                           </Pressable>
@@ -2513,8 +2491,8 @@ export default function DeckDetailScreen() {
                           {/* Color tag options */}
                           {deck?.colorTags?.map((tag) => (
                             <Pressable
-                              key={tag.name}
-                              onPress={() => handleHeaderSetColorTag(tag.color)}
+                              key={tag.id}
+                              onPress={() => handleHeaderSetColorTag(tag.id)}
                               disabled={actionLoading}
                               className={`flex-row items-center gap-2 px-3 py-2 ${
                                 isDark
@@ -2531,7 +2509,7 @@ export default function DeckDetailScreen() {
                               >
                                 {tag.name}
                               </Text>
-                              {selectedCard?.colorTag === tag.color && (
+                              {selectedCard?.colorTagId === tag.id && (
                                 <Check size={14} color="#7C3AED" />
                               )}
                             </Pressable>
@@ -3209,7 +3187,7 @@ export default function DeckDetailScreen() {
                       <View className="flex-row items-center gap-3 w-full">
                         <Palette size={20} color="#94a3b8" />
                         <Text className="text-white flex-1">Set Color Tag</Text>
-                        {selectedCard?.colorTag && (
+                        {selectedCard?.colorTagId && (
                           <View
                             className="h-4 w-4 rounded-full"
                             style={{ backgroundColor: selectedCard.colorTag }}
@@ -3506,14 +3484,14 @@ export default function DeckDetailScreen() {
                   <Text className={isDark ? "text-white" : "text-slate-900"}>
                     No Tag
                   </Text>
-                  {!actionSheetCard?.colorTag && (
+                  {!actionSheetCard?.colorTagId && (
                     <Check size={18} color="#7C3AED" />
                   )}
                 </Pressable>
                 {deck?.colorTags?.map((tag) => (
                   <Pressable
-                    key={tag.name}
-                    onPress={() => handleSetColorTag(tag.color)}
+                    key={tag.id}
+                    onPress={() => handleSetColorTag(tag.id)}
                     disabled={actionLoading}
                     className={`flex-row items-center gap-3 p-4 border-b ${
                       isDark
@@ -3530,7 +3508,7 @@ export default function DeckDetailScreen() {
                     >
                       {tag.name}
                     </Text>
-                    {actionSheetCard?.colorTag === tag.color && (
+                    {actionSheetCard?.colorTagId === tag.id && (
                       <Check size={18} color="#7C3AED" />
                     )}
                   </Pressable>
@@ -3577,7 +3555,7 @@ export default function DeckDetailScreen() {
                   >
                     Set Color Tag
                   </Text>
-                  {actionSheetCard?.colorTag && (
+                  {actionSheetCard?.colorTagId && (
                     <View
                       className="h-4 w-4 rounded-full"
                       style={{ backgroundColor: actionSheetCard.colorTag }}
@@ -3800,7 +3778,7 @@ export default function DeckDetailScreen() {
                 >
                   Set Color Tag
                 </Text>
-                {actionSheetCard.colorTag && (
+                {actionSheetCard.colorTagId && (
                   <View
                     className="h-3 w-3 rounded-full mr-1"
                     style={{ backgroundColor: actionSheetCard.colorTag }}
@@ -3842,7 +3820,7 @@ export default function DeckDetailScreen() {
                     >
                       No Tag
                     </Text>
-                    {!actionSheetCard.colorTag && (
+                    {!actionSheetCard.colorTagId && (
                       <Check size={14} color="#7C3AED" />
                     )}
                   </Pressable>
@@ -3850,8 +3828,8 @@ export default function DeckDetailScreen() {
                   {/* Color tag options */}
                   {deck?.colorTags?.map((tag) => (
                     <Pressable
-                      key={tag.name}
-                      onPress={() => handleSetColorTag(tag.color)}
+                      key={tag.id}
+                      onPress={() => handleSetColorTag(tag.id)}
                       disabled={actionLoading}
                       className={`flex-row items-center gap-2 px-3 py-2 ${
                         isDark ? "hover:bg-slate-700" : "hover:bg-slate-50"
@@ -3866,7 +3844,7 @@ export default function DeckDetailScreen() {
                       >
                         {tag.name}
                       </Text>
-                      {actionSheetCard.colorTag === tag.color && (
+                      {actionSheetCard.colorTagId === tag.id && (
                         <Check size={14} color="#7C3AED" />
                       )}
                     </Pressable>
@@ -4030,8 +4008,8 @@ export default function DeckDetailScreen() {
           onClose={() => setColorTagManagerVisible(false)}
           onTagsChanged={(colorTags) => {
             setDeck((prev) => (prev ? { ...prev, colorTags } : null));
-            // Clear cache to ensure fresh data on next load
-            cache.remove(CACHE_KEYS.DECK_DETAIL(id!));
+            // Refetch to pick up any card changes (e.g. ON DELETE SET NULL)
+            loadDeck(true);
           }}
           isDark={isDark}
         />

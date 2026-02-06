@@ -7,6 +7,7 @@ import {
   MakeArchidektIdNullable1738095600000,
   CreateSettingsTable1738200000000,
   AddCommanderAnalysis1738300000000,
+  ColorTagsToEntity1738400000000,
 } from './migrations';
 
 config();
@@ -18,6 +19,7 @@ export const migrations = [
   MakeArchidektIdNullable1738095600000,
   CreateSettingsTable1738200000000,
   AddCommanderAnalysis1738300000000,
+  ColorTagsToEntity1738400000000,
 ];
 
 export const AppDataSource = new DataSource({
