@@ -19,6 +19,7 @@ import type {
   ShuffleLibraryAction,
   RevealCardAction,
   LogMessageAction,
+  ExileUntilLeavesAction,
 } from './llm-spell-resolution.types';
 
 /**
@@ -47,6 +48,7 @@ export class ActionExecutorService {
     const context: ExecutionContext = {
       searchResults: [],
       targets: this.extractTargets(stackItem),
+      sourceCardId: stackItem.sourceCardId,
     };
 
     for (const action of actions) {
@@ -100,6 +102,8 @@ export class ActionExecutorService {
         return this.executeRevealCard(action, state, controller, context);
       case 'logMessage':
         return this.executeLogMessage(action, state, controller);
+      case 'exileUntilSourceLeaves':
+        return this.executeExileUntilSourceLeaves(action, state, controller, context);
       default:
         console.warn('[ActionExecutor] Unknown action type:', action);
         return [];
@@ -408,17 +412,63 @@ export class ActionExecutorService {
   }
 
   /**
-   * Resolve 'self' or 'opponent' to actual PlayerId
+   * Resolve 'self' or 'opponent' to actual PlayerId.
+   * The LLM should always use 'self'/'opponent' as relative references,
+   * but may sometimes return literal PlayerId values like 'player'.
+   * Unexpected values default to the controller since most spell effects
+   * affect the caster (e.g., "search YOUR library").
    */
   private resolvePlayer(
-    relative: 'self' | 'opponent',
+    relative: 'self' | 'opponent' | string,
     controller: PlayerId,
   ): PlayerId {
     if (relative === 'self') {
       return controller;
-    } else {
+    } else if (relative === 'opponent') {
       return controller === 'player' ? 'opponent' : 'player';
     }
+    // LLM returned an unexpected value (e.g., literal 'player' instead of 'self').
+    // Default to controller since most spell effects affect the caster.
+    console.warn(`[ActionExecutor] Unexpected player reference '${relative}', defaulting to controller '${controller}'`);
+    return controller;
+  }
+
+  /**
+   * Exile a permanent until the source card leaves the battlefield
+   */
+  private executeExileUntilSourceLeaves(
+    action: ExileUntilLeavesAction,
+    state: FullPlaytestGameState,
+    controller: PlayerId,
+    context: ExecutionContext,
+  ): Promise<PlaytestEvent[]> {
+    const cardId = this.resolveCardIdentifier(action.targetId, context);
+    if (!cardId) {
+      console.warn('[ActionExecutor] Could not resolve target for exileUntilSourceLeaves:', action.targetId);
+      return Promise.resolve([]);
+    }
+
+    const targetCard = state.cards[cardId];
+    if (!targetCard || targetCard.zone !== 'battlefield') {
+      console.warn('[ActionExecutor] Target not on battlefield for exileUntilSourceLeaves:', cardId);
+      return Promise.resolve([]);
+    }
+
+    const events: PlaytestEvent[] = [];
+    const actualController = this.resolvePlayer(action.controller, controller);
+
+    // Move the target to exile
+    events.push(...this.gameEngine.moveCard(state, cardId, 'exile', actualController));
+
+    // Register the linked exile so it returns when the source leaves
+    if (!state.linkedExiles) state.linkedExiles = [];
+    state.linkedExiles.push({
+      sourceCardId: context.sourceCardId,
+      exiledCardId: cardId,
+      returnZone: 'battlefield',
+    });
+
+    return Promise.resolve(events);
   }
 
   /**
@@ -470,4 +520,5 @@ export class ActionExecutorService {
 interface ExecutionContext {
   searchResults: string[]; // Card IDs from search actions
   targets: Array<{ type: string; id: string }>; // Targets from stack item
+  sourceCardId: string; // The card that created this spell/ability
 }

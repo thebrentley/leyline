@@ -217,9 +217,9 @@ export class GameLoopService {
       );
       this.emitEvents(state.deckId, events);
 
-      // If any life changes occurred, emit full game state for UI sync
-      const hasLifeChanges = events.some(e => e.type === "life:changed");
-      if (hasLifeChanges) {
+      // If any life or token changes occurred, emit full game state for UI sync
+      const needsFullSync = events.some(e => e.type === "life:changed" || e.type === "token:created");
+      if (needsFullSync) {
         this.emitEvent(state.deckId, {
           type: "gamestate:full",
           gameState: state,
@@ -294,11 +294,25 @@ export class GameLoopService {
 
       if (currentPlayer === null) {
         const events = this.gameEngine.advancePhase(state);
+
+        // Check for triggered abilities when entering a new step
+        if (state.step === "upkeep") {
+          const triggers = this.keywordService.checkUpkeepTriggers(state);
+          for (const trigger of triggers) {
+            events.push(...this.gameEngine.addToStack(state, trigger));
+          }
+        } else if (state.step === "end") {
+          const triggers = this.keywordService.checkEndStepTriggers(state);
+          for (const trigger of triggers) {
+            events.push(...this.gameEngine.addToStack(state, trigger));
+          }
+        }
+
         this.emitEvents(state.deckId, events);
 
-        // If any life changes occurred, emit full game state for UI sync
-        const hasLifeChanges = events.some(e => e.type === "life:changed");
-        if (hasLifeChanges) {
+        // If any life, token, or counter changes occurred, emit full game state for UI sync
+        const needsFullSync = events.some(e => e.type === "life:changed" || e.type === "token:created" || e.type === "card:counters");
+        if (needsFullSync) {
           this.emitEvent(state.deckId, {
             type: "gamestate:full",
             gameState: state,
@@ -309,53 +323,80 @@ export class GameLoopService {
         continue;
       }
 
-      this.emitEvent(state.deckId, {
-        type: "ai:thinking",
-        player: currentPlayer,
-        action: `${currentPlayer === "player" ? "Player" : "Opponent"} is considering options...`,
-      });
-
-      const availableActions = this.gameEngine.getAvailableActions(
-        state,
-        currentPlayer,
-      );
-
-      const decision = await this.aiOpponent.decideAction(
-        state,
-        currentPlayer,
-        availableActions,
-      );
-
-      // Track token usage from AI decision
-      this.accumulateTokenUsage(state, decision.tokenUsage);
-
-      this.emitEvent(state.deckId, {
-        type: "ai:decided",
-        player: currentPlayer,
-        action: decision.action,
-        reasoning: decision.reasoning,
-      });
-
-      this.addLogEntry(state, {
-        type: "ai",
-        player: currentPlayer,
-        message: `${currentPlayer === "player" ? "Player" : "Opponent"}: ${decision.reasoning}`,
-      });
-
-      const events = await this.processAction(
-        state,
-        currentPlayer,
-        decision.action,
-      );
-      this.emitEvents(state.deckId, events);
-
-      // If any life changes occurred, emit full game state for UI sync
-      const hasLifeChanges = events.some(e => e.type === "life:changed");
-      if (hasLifeChanges) {
+      try {
         this.emitEvent(state.deckId, {
-          type: "gamestate:full",
-          gameState: state,
+          type: "ai:thinking",
+          player: currentPlayer,
+          action: `${currentPlayer === "player" ? "Player" : "Opponent"} is considering options...`,
         });
+
+        const availableActions = this.gameEngine.getAvailableActions(
+          state,
+          currentPlayer,
+        );
+
+        const decision = await this.aiOpponent.decideAction(
+          state,
+          currentPlayer,
+          availableActions,
+        );
+
+        // Track token usage from AI decision
+        this.accumulateTokenUsage(state, decision.tokenUsage);
+
+        this.emitEvent(state.deckId, {
+          type: "ai:decided",
+          player: currentPlayer,
+          action: decision.action,
+          reasoning: decision.reasoning,
+        });
+
+        this.addLogEntry(state, {
+          type: "ai",
+          player: currentPlayer,
+          message: `${currentPlayer === "player" ? "Player" : "Opponent"}: ${decision.reasoning}`,
+        });
+
+        const events = await this.processAction(
+          state,
+          currentPlayer,
+          decision.action,
+        );
+        this.emitEvents(state.deckId, events);
+
+        // If any life or token changes occurred, emit full game state for UI sync
+        const needsFullSync = events.some(e => e.type === "life:changed" || e.type === "token:created" || e.type === "card:counters");
+        if (needsFullSync) {
+          this.emitEvent(state.deckId, {
+            type: "gamestate:full",
+            gameState: state,
+          });
+        }
+      } catch (iterationError) {
+        console.error(
+          `[GameLoop] Error during continued game iteration for deck ${state.deckId} (turn ${state.turnNumber}, phase ${state.phase}/${state.step}, player ${currentPlayer}):`,
+          iterationError,
+        );
+        this.logApiError(iterationError);
+
+        this.addLogEntry(state, {
+          type: "system",
+          player: "system",
+          message: `Error during processing: ${iterationError.message || "Unknown error"}. Attempting to recover...`,
+        });
+
+        try {
+          const recoveryEvents = await this.gameEngine.passPriority(state, currentPlayer);
+          this.emitEvents(state.deckId, recoveryEvents);
+          console.log(`[GameLoop] Recovered by passing priority for ${currentPlayer}`);
+        } catch (recoveryError) {
+          console.error(`[GameLoop] Recovery also failed for deck ${state.deckId}:`, recoveryError);
+          this.emitEvent(state.deckId, {
+            type: "game:error",
+            error: `Game error: ${iterationError.message || "Unknown error"}. Recovery failed.`,
+          });
+          break;
+        }
       }
 
       await this.delay(config.actionDelay);
@@ -507,11 +548,27 @@ export class GameLoopService {
       if (currentPlayer === null) {
         // No priority (untap/cleanup) - advance automatically
         const events = this.gameEngine.advancePhase(state);
+
+        // Check for triggered abilities when entering a new step
+        // (advancePhase mutates state.step, so cast to avoid TS narrowing)
+        const newStep = state.step as string;
+        if (newStep === "upkeep") {
+          const triggers = this.keywordService.checkUpkeepTriggers(state);
+          for (const trigger of triggers) {
+            events.push(...this.gameEngine.addToStack(state, trigger));
+          }
+        } else if (newStep === "end") {
+          const triggers = this.keywordService.checkEndStepTriggers(state);
+          for (const trigger of triggers) {
+            events.push(...this.gameEngine.addToStack(state, trigger));
+          }
+        }
+
         this.emitEvents(state.deckId, events);
 
-        // If any life changes occurred, emit full game state for UI sync
-        const hasLifeChanges = events.some(e => e.type === "life:changed");
-        if (hasLifeChanges) {
+        // If any life, token, or counter changes occurred, emit full game state for UI sync
+        const needsFullSync = events.some(e => e.type === "life:changed" || e.type === "token:created" || e.type === "card:counters");
+        if (needsFullSync) {
           this.emitEvent(state.deckId, {
             type: "gamestate:full",
             gameState: state,
@@ -522,59 +579,87 @@ export class GameLoopService {
         continue;
       }
 
-      // Emit thinking event
-      this.emitEvent(state.deckId, {
-        type: "ai:thinking",
-        player: currentPlayer,
-        action: `${currentPlayer === "player" ? "Player" : "Opponent"} is considering options...`,
-      });
-
-      // Get available actions for current player
-      const availableActions = this.gameEngine.getAvailableActions(
-        state,
-        currentPlayer,
-      );
-
-      // AI decides what to do
-      const decision = await this.aiOpponent.decideAction(
-        state,
-        currentPlayer,
-        availableActions,
-      );
-
-      // Track token usage from AI decision
-      this.accumulateTokenUsage(state, decision.tokenUsage);
-
-      // Emit decision with reasoning
-      this.emitEvent(state.deckId, {
-        type: "ai:decided",
-        player: currentPlayer,
-        action: decision.action,
-        reasoning: decision.reasoning,
-      });
-
-      // Add to game log
-      this.addLogEntry(state, {
-        type: "ai",
-        player: currentPlayer,
-        message: `${currentPlayer === "player" ? "Player" : "Opponent"}: ${decision.reasoning}`,
-      });
-
-      // Process the action
-      const events = await this.processAction(
-        state,
-        currentPlayer,
-        decision.action,
-      );
-      this.emitEvents(state.deckId, events);
-
-      // If any life changes occurred, emit full game state for UI sync
-      const hasLifeChanges = events.some(e => e.type === "life:changed");
-      if (hasLifeChanges) {
+      try {
+        // Emit thinking event
         this.emitEvent(state.deckId, {
-          type: "gamestate:full",
-          gameState: state,
+          type: "ai:thinking",
+          player: currentPlayer,
+          action: `${currentPlayer === "player" ? "Player" : "Opponent"} is considering options...`,
         });
+
+        // Get available actions for current player
+        const availableActions = this.gameEngine.getAvailableActions(
+          state,
+          currentPlayer,
+        );
+
+        // AI decides what to do
+        const decision = await this.aiOpponent.decideAction(
+          state,
+          currentPlayer,
+          availableActions,
+        );
+
+        // Track token usage from AI decision
+        this.accumulateTokenUsage(state, decision.tokenUsage);
+
+        // Emit decision with reasoning
+        this.emitEvent(state.deckId, {
+          type: "ai:decided",
+          player: currentPlayer,
+          action: decision.action,
+          reasoning: decision.reasoning,
+        });
+
+        // Add to game log
+        this.addLogEntry(state, {
+          type: "ai",
+          player: currentPlayer,
+          message: `${currentPlayer === "player" ? "Player" : "Opponent"}: ${decision.reasoning}`,
+        });
+
+        // Process the action
+        const events = await this.processAction(
+          state,
+          currentPlayer,
+          decision.action,
+        );
+        this.emitEvents(state.deckId, events);
+
+        // If any life, token, or counter changes occurred, emit full game state for UI sync
+        const needsFullSync = events.some(e => e.type === "life:changed" || e.type === "token:created" || e.type === "card:counters");
+        if (needsFullSync) {
+          this.emitEvent(state.deckId, {
+            type: "gamestate:full",
+            gameState: state,
+          });
+        }
+      } catch (iterationError) {
+        console.error(
+          `[GameLoop] Error during game iteration for deck ${state.deckId} (turn ${state.turnNumber}, phase ${state.phase}/${state.step}, player ${currentPlayer}):`,
+          iterationError,
+        );
+        this.logApiError(iterationError);
+
+        this.addLogEntry(state, {
+          type: "system",
+          player: "system",
+          message: `Error during processing: ${iterationError.message || "Unknown error"}. Attempting to recover...`,
+        });
+
+        // Try to recover by passing priority to advance the game
+        try {
+          const recoveryEvents = await this.gameEngine.passPriority(state, currentPlayer);
+          this.emitEvents(state.deckId, recoveryEvents);
+          console.log(`[GameLoop] Recovered by passing priority for ${currentPlayer}`);
+        } catch (recoveryError) {
+          console.error(`[GameLoop] Recovery also failed for deck ${state.deckId}:`, recoveryError);
+          this.emitEvent(state.deckId, {
+            type: "game:error",
+            error: `Game error: ${iterationError.message || "Unknown error"}. Recovery failed.`,
+          });
+          break;
+        }
       }
 
       // Small delay for UI to render
@@ -650,11 +735,19 @@ export class GameLoopService {
         });
 
         // AI decides keep or mulligan
-        const decision = await this.aiOpponent.decideMulligan(
-          state,
-          player,
-          playerState.mulliganCount,
-        );
+        let decision: { keep: boolean; reasoning: string; tokenUsage?: import("@decktutor/shared").TokenUsage };
+        try {
+          decision = await this.aiOpponent.decideMulligan(
+            state,
+            player,
+            playerState.mulliganCount,
+          );
+        } catch (mulliganError) {
+          console.error(`[GameLoop] Error during mulligan decision for ${player} in deck ${state.deckId}:`, mulliganError);
+          this.logApiError(mulliganError);
+          // Default to keeping on error
+          decision = { keep: true, reasoning: "Error during mulligan evaluation, keeping hand by default" };
+        }
 
         // Track token usage from mulligan decision
         this.accumulateTokenUsage(state, decision.tokenUsage);
@@ -767,7 +860,28 @@ export class GameLoopService {
     if (cardsToBottom <= 0) return;
 
     // AI decides which cards to bottom
-    const decision = await this.aiOpponent.decideBottomCards(state, player, cardsToBottom);
+    let decision: { cardIds: string[]; reasoning: string; tokenUsage?: import("@decktutor/shared").TokenUsage };
+    try {
+      decision = await this.aiOpponent.decideBottomCards(state, player, cardsToBottom);
+    } catch (bottomCardsError) {
+      console.error(`[GameLoop] Error during bottom cards decision for ${player} in deck ${state.deckId}:`, bottomCardsError);
+      this.logApiError(bottomCardsError);
+
+      // Fallback: bottom the highest CMC non-land cards
+      const hand = playerState.handOrder.map((id) => state.cards[id]);
+      const sortedHand = [...hand].sort((a, b) => {
+        // Keep lands
+        if (a.typeLine?.includes("Land") && !b.typeLine?.includes("Land")) return 1;
+        if (!a.typeLine?.includes("Land") && b.typeLine?.includes("Land")) return -1;
+        // Sort by CMC descending (higher CMC gets bottomed)
+        return b.cmc - a.cmc;
+      });
+
+      decision = {
+        cardIds: sortedHand.slice(0, cardsToBottom).map((c) => c.instanceId),
+        reasoning: "Error during bottom cards evaluation, bottoming highest CMC non-land cards by default",
+      };
+    }
 
     // Track token usage from bottom cards decision
     this.accumulateTokenUsage(state, decision.tokenUsage);
@@ -847,7 +961,7 @@ export class GameLoopService {
         break;
 
       case "play_land":
-        events.push(...this.gameEngine.playLand(state, player, action.cardId));
+        events.push(...this.gameEngine.playLand(state, player, action.cardId, action.faceIndex));
         break;
 
       case "cast_spell":
@@ -883,10 +997,18 @@ export class GameLoopService {
             events.push(...this.gameEngine.addToStack(state, trigger));
           }
         }
+
+        // Declaring attackers is a turn-based action; auto-pass priority
+        // so the defending player gets a chance to respond
+        events.push(...await this.gameEngine.passPriority(state, player));
         break;
 
       case "declare_blockers":
         events.push(...this.gameEngine.declareBlockers(state, action.blockers));
+
+        // Declaring blockers is a turn-based action; auto-pass priority
+        // so the game advances to combat damage after both players pass
+        events.push(...await this.gameEngine.passPriority(state, player));
         break;
 
       case "mulligan":
@@ -908,23 +1030,38 @@ export class GameLoopService {
       case "discard":
         events.push(...this.handleDiscard(state, player, action.cardId));
         break;
+
+      case "activate_ability": {
+        const abilityCard = state.cards[action.cardId];
+        if (abilityCard) {
+          const oracleTextLower = abilityCard.oracleText?.toLowerCase() || "";
+          // Fetch lands have special cost handling (sacrifice before stack)
+          if (
+            oracleTextLower.includes("sacrifice") &&
+            oracleTextLower.includes("search your library") &&
+            oracleTextLower.includes("basic land")
+          ) {
+            events.push(
+              ...this.gameEngine.activateFetchLand(state, player, action.cardId),
+            );
+          } else {
+            // General activated ability: parse costs, pay them, put on stack
+            events.push(
+              ...this.gameEngine.activateAbility(
+                state,
+                player,
+                action.cardId,
+                action.abilityIndex,
+              ),
+            );
+          }
+        }
+        break;
+      }
     }
 
     // Check state-based actions after every action
     events.push(...this.gameEngine.checkStateBasedActions(state));
-
-    // Check for triggered abilities based on phase
-    if (state.step === "upkeep") {
-      const triggers = this.keywordService.checkUpkeepTriggers(state);
-      for (const trigger of triggers) {
-        events.push(...this.gameEngine.addToStack(state, trigger));
-      }
-    } else if (state.step === "end") {
-      const triggers = this.keywordService.checkEndStepTriggers(state);
-      for (const trigger of triggers) {
-        events.push(...this.gameEngine.addToStack(state, trigger));
-      }
-    }
 
     return events;
   }
@@ -1051,6 +1188,28 @@ export class GameLoopService {
     for (let i = array.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [array[i], array[j]] = [array[j], array[i]];
+    }
+  }
+
+  /**
+   * Log detailed API error information (Anthropic errors, network errors, etc.)
+   */
+  private logApiError(error: any): void {
+    if (!error) return;
+
+    // Anthropic SDK errors have status and error properties
+    if (error.status) {
+      console.error(
+        `[GameLoop] API Error - Status: ${error.status}, Type: ${error.error?.type || "unknown"}, Message: ${error.error?.message || error.message}`,
+      );
+      if (error.headers) {
+        const retryAfter = error.headers["retry-after"];
+        if (retryAfter) {
+          console.error(`[GameLoop] API retry-after: ${retryAfter}s`);
+        }
+      }
+    } else if (error.code === "ECONNREFUSED" || error.code === "ETIMEDOUT" || error.code === "ENOTFOUND") {
+      console.error(`[GameLoop] Network Error - Code: ${error.code}, Message: ${error.message}`);
     }
   }
 

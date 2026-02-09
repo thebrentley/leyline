@@ -22,17 +22,20 @@ export type CardSize = keyof typeof CARD_SIZES;
 // UI State for the playtest view
 export interface PlaytestUIState {
   expandedHand: PlayerId | null;
+  expandedGraveyard: PlayerId | null;
   previewCardId: string | null;
   selectedCardId: string | null;
 }
 
 export type PlaytestUIAction =
   | { type: "SET_EXPANDED_HAND"; hand: PlayerId | null }
+  | { type: "SET_EXPANDED_GRAVEYARD"; graveyard: PlayerId | null }
   | { type: "SET_PREVIEW_CARD"; cardId: string | null }
   | { type: "SET_SELECTED_CARD"; cardId: string | null };
 
 export const initialPlaytestUIState: PlaytestUIState = {
   expandedHand: null,
+  expandedGraveyard: null,
   previewCardId: null,
   selectedCardId: null,
 };
@@ -43,7 +46,9 @@ export function playtestUIReducer(
 ): PlaytestUIState {
   switch (action.type) {
     case "SET_EXPANDED_HAND":
-      return { ...state, expandedHand: action.hand };
+      return { ...state, expandedHand: action.hand, expandedGraveyard: null };
+    case "SET_EXPANDED_GRAVEYARD":
+      return { ...state, expandedGraveyard: action.graveyard, expandedHand: null };
     case "SET_PREVIEW_CARD":
       return { ...state, previewCardId: action.cardId };
     case "SET_SELECTED_CARD":
@@ -115,6 +120,18 @@ export function deriveGameState(
       (c) => c.zone === "battlefield" && c.controller === playerId,
     );
 
+    // Debug: Log battlefield cards for player
+    if (playerId === "player") {
+      console.log(`[DEBUG] Player has ${battlefieldCards.length} cards on battlefield`);
+      const enchantments = battlefieldCards.filter(c =>
+        c.typeLine?.toLowerCase().includes('enchantment')
+      );
+      if (enchantments.length > 0) {
+        console.log(`[DEBUG] Enchantments found:`,
+          enchantments.map(e => `${e.name} (${e.typeLine}) - zone:${e.zone} controller:${e.controller}`));
+      }
+    }
+
     const creatures: ExtendedGameCard[] = [];
     const artifactsEnchantments: ExtendedGameCard[] = [];
     const lands: ExtendedGameCard[] = [];
@@ -130,6 +147,16 @@ export function deriveGameState(
       }
     });
 
+    // Debug: Log categorization results for player
+    if (playerId === "player") {
+      console.log(`[DEBUG] Player battlefield categorization:`,
+        `${creatures.length} creatures, ${artifactsEnchantments.length} artifacts/enchantments, ${lands.length} lands`);
+      if (artifactsEnchantments.length > 0) {
+        console.log(`[DEBUG] Artifacts/Enchantments:`,
+          artifactsEnchantments.map(c => c.name));
+      }
+    }
+
     // Get hand cards
     const hand = playerState.handOrder
       .map((id) => gameState.cards[id])
@@ -141,8 +168,9 @@ export function deriveGameState(
         ? gameState.cards[playerState.commandZone[0]] || null
         : null;
 
-    // Get graveyard cards
-    const graveyard = playerState.graveyardOrder
+    // Get graveyard cards (newest first — most recent card on top)
+    const graveyard = [...playerState.graveyardOrder]
+      .reverse()
       .map((id) => gameState.cards[id])
       .filter(Boolean);
 

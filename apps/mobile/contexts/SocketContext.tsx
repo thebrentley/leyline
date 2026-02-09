@@ -29,6 +29,7 @@ interface PlaytestMessageBase {
   type: string;
   deckId: string;
   timestamp: string;
+  seq: number;
 }
 
 interface PlaytestSessionStartedMessage extends PlaytestMessageBase {
@@ -137,6 +138,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const playtestLeftListenersRef = useRef<Set<(data: PlaytestLeftEvent) => void>>(
     new Set()
   );
+  // Ordered message delivery: don't enforce ordering until we see session:started
+  const orderingActiveRef = useRef<boolean>(false);
+  const nextExpectedSeqRef = useRef<number>(1);
+  const messageBufferRef = useRef<Map<number, PlaytestMessage>>(new Map());
+  const gapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!token || !user) {
@@ -180,10 +186,86 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       deckSyncListenersRef.current.forEach((listener) => listener(event));
     });
 
-    // Listen for playtest events
+    // Helper: deliver a message to all listeners
+    const deliver = (msg: PlaytestMessage) => {
+      playtestMessageListenersRef.current.forEach((listener) => listener(msg));
+    };
+
+    // Helper: drain contiguous buffered messages starting from `from`
+    const drainBuffer = (from: number): number => {
+      const buffer = messageBufferRef.current;
+      let next = from;
+      while (buffer.has(next)) {
+        deliver(buffer.get(next)!);
+        buffer.delete(next);
+        next++;
+      }
+      return next;
+    };
+
+    // Helper: skip gap and flush all buffered messages in seq order
+    const flushBufferSkippingGap = () => {
+      const buffer = messageBufferRef.current;
+      if (buffer.size === 0) return;
+
+      const sortedSeqs = Array.from(buffer.keys()).sort((a, b) => a - b);
+      const lowestSeq = sortedSeqs[0];
+      console.log("[Socket] Gap timeout: skipping from seq %d to %d (%d messages buffered)",
+        nextExpectedSeqRef.current, lowestSeq, buffer.size);
+
+      nextExpectedSeqRef.current = lowestSeq;
+      nextExpectedSeqRef.current = drainBuffer(lowestSeq);
+
+      if (gapTimeoutRef.current) {
+        clearTimeout(gapTimeoutRef.current);
+        gapTimeoutRef.current = null;
+      }
+    };
+
+    // Listen for playtest events — deliver to listeners in seq order
     socket.on("playtest:message", (message: PlaytestMessage) => {
-      console.log("[Socket] Playtest message:", message);
-      playtestMessageListenersRef.current.forEach((listener) => listener(message));
+      console.log("[Socket] Playtest message seq=%d type=%s", message.seq, message.type);
+
+      // session:started activates ordering and resets state
+      if (message.type === "session:started") {
+        orderingActiveRef.current = true;
+        nextExpectedSeqRef.current = message.seq;
+        messageBufferRef.current.clear();
+        if (gapTimeoutRef.current) {
+          clearTimeout(gapTimeoutRef.current);
+          gapTimeoutRef.current = null;
+        }
+      }
+
+      // Before first session:started, pass messages through without ordering
+      if (!orderingActiveRef.current) {
+        deliver(message);
+        return;
+      }
+
+      const expected = nextExpectedSeqRef.current;
+
+      if (message.seq === expected) {
+        // In order — deliver immediately, then flush any buffered follow-ups
+        deliver(message);
+        nextExpectedSeqRef.current = drainBuffer(expected + 1);
+
+        // Clear gap timeout since we caught up
+        if (gapTimeoutRef.current && messageBufferRef.current.size === 0) {
+          clearTimeout(gapTimeoutRef.current);
+          gapTimeoutRef.current = null;
+        }
+      } else if (message.seq > expected) {
+        // Arrived early — buffer it
+        console.log("[Socket] Buffering out-of-order message seq=%d (expected %d)", message.seq, expected);
+        messageBufferRef.current.set(message.seq, message);
+
+        // Start a gap timeout — if the missing message doesn't arrive in 2s, skip ahead
+        if (!gapTimeoutRef.current) {
+          gapTimeoutRef.current = setTimeout(flushBufferSkippingGap, 2000);
+        }
+      }
+      // seq < expected means duplicate — ignore
     });
 
     socket.on("playtest:joined", (data: PlaytestJoinedEvent) => {
@@ -202,6 +284,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       socket.disconnect();
       socketRef.current = null;
       setIsConnected(false);
+      if (gapTimeoutRef.current) {
+        clearTimeout(gapTimeoutRef.current);
+        gapTimeoutRef.current = null;
+      }
     };
   }, [token, user]);
 

@@ -20,9 +20,23 @@ import { SpellEffectsService } from "./spell-effects/spell-effects.service";
 import { LLMSpellResolutionService } from "./llm-spell-resolution.service";
 import { KeywordAbilitiesService } from "./keyword-abilities.service";
 import { TokensService } from "./tokens.service";
+import { SearchService } from "./search.service";
+import { LandSelectionService } from "./land-selection.service";
 
 // Re-export PlaytestEvent for use in spell effects
 export type { PlaytestEvent } from "@decktutor/shared";
+
+export interface ParsedActivatedAbility {
+  costText: string;       // Raw cost string, e.g. "{1}, {T}, Remove a page counter from Tome of Legends"
+  effectText: string;     // Raw effect string, e.g. "Draw a card."
+  costs: {
+    manaCost: string | null;    // e.g. "{1}" or "{2}{B}"
+    tapSelf: boolean;           // {T} in cost
+    removedCounters: { type: string; count: number } | null;
+    sacrificeSelf: boolean;
+    payLife: number | null;
+  };
+}
 
 @Injectable()
 export class GameEngineService {
@@ -35,7 +49,44 @@ export class GameEngineService {
     private keywordService: KeywordAbilitiesService,
     @Inject(forwardRef(() => TokensService))
     private tokensService: TokensService,
+    @Inject(forwardRef(() => SearchService))
+    private searchService: SearchService,
+    @Inject(forwardRef(() => LandSelectionService))
+    private landSelectionService: LandSelectionService,
   ) {}
+
+  // =====================
+  // MDFC (Modal Double-Faced Card) Helpers
+  // =====================
+
+  /**
+   * Switch an MDFC's active properties to a given face index.
+   * Updates name, typeLine, oracleText, manaCost, power, toughness, imageUrl, and keywords.
+   */
+  private switchToFace(card: ExtendedGameCard, faceIndex: number): void {
+    if (!card.cardFaces || faceIndex >= card.cardFaces.length) return;
+    const face = card.cardFaces[faceIndex];
+    card.activeFaceIndex = faceIndex;
+    card.name = face.name;
+    card.typeLine = face.typeLine;
+    card.oracleText = face.oracleText ?? null;
+    card.manaCost = face.manaCost ?? null;
+    card.power = face.power ?? null;
+    card.toughness = face.toughness ?? null;
+    card.imageUrl = face.imageUri ?? card.imageUrl;
+    card.keywords = this.keywordService.parseKeywords(face.oracleText ?? null, face.typeLine);
+  }
+
+  /**
+   * Revert an MDFC to its front face (index 0).
+   * Called when a card leaves the battlefield (MTG rule: DFCs revert to front face in other zones).
+   */
+  private revertToFrontFace(card: ExtendedGameCard): void {
+    if (card.layout === 'modal_dfc' && card.activeFaceIndex && card.activeFaceIndex !== 0) {
+      this.switchToFace(card, 0);
+    }
+  }
+
   // =====================
   // Turn/Phase Progression
   // =====================
@@ -554,6 +605,20 @@ export class GameEngineService {
         });
         return events;
       } else {
+        // Check for copy effects BEFORE entering the battlefield
+        const copyInfo = this.isCopyEffect(card);
+        if (copyInfo.isCopy) {
+          const copyTarget = this.selectCopyTarget(state, card, copyInfo.copyType!);
+          if (copyTarget) {
+            this.applyCopyEffect(card, copyTarget);
+            this.addLogEntry(state, events, {
+              type: 'play',
+              player: item.controller,
+              message: `${card.originalName} enters as a copy of ${copyTarget.name}`,
+            });
+          }
+        }
+
         // Normal permanent - move to battlefield
         events.push(
           ...this.moveCard(
@@ -628,6 +693,45 @@ export class GameEngineService {
           message: `${card.name} enters with a lore counter (Chapter I)`,
         });
       }
+
+      // Generic ETB counters - parse "enters with X counter(s) on it"
+      if (card.oracleText) {
+        const etbCounterPattern =
+          /enters(?:\s+the\s+battlefield)?\s+with\s+(?:a|an|(\d+)|one|two|three|four|five|six|seven|eight|nine|ten)\s+([\w/+-]+)\s+counters?\s+on\s+it/i;
+        const match = card.oracleText.match(etbCounterPattern);
+        if (match) {
+          const wordToNum: Record<string, number> = {
+            a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5,
+            six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+          };
+          const rawCount = match[1]; // numeric capture
+          const counterType = match[2].toLowerCase(); // e.g. "page", "+1/+1", "charge"
+          let count: number;
+          if (rawCount) {
+            count = parseInt(rawCount, 10);
+          } else {
+            // Extract the word that matched from the full match
+            const wordMatch = match[0].match(
+              /with\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten)\s/i,
+            );
+            count = wordMatch ? (wordToNum[wordMatch[1].toLowerCase()] || 1) : 1;
+          }
+          // Don't duplicate saga lore counters
+          if (!(this.isSaga(card) && counterType === "lore")) {
+            card.counters[counterType] = (card.counters[counterType] || 0) + count;
+            events.push({
+              type: "card:counters",
+              cardId: card.instanceId,
+              counters: { ...card.counters },
+            });
+            this.addLogEntry(state, events, {
+              type: "action",
+              player: item.controller,
+              message: `${card.name} enters with ${count} ${counterType} counter${count !== 1 ? "s" : ""}`,
+            });
+          }
+        }
+      }
     } else {
       // Instant or sorcery - execute effects, then move to graveyard
 
@@ -673,10 +777,23 @@ export class GameEngineService {
         }
       }
 
-      // Move to graveyard after resolution
-      events.push(
-        ...this.moveCard(state, card.instanceId, "graveyard", card.owner),
-      );
+      // Check if the spell exiles itself (e.g., "Exile Teferi's Protection")
+      const oracleText = card.oracleText?.toLowerCase() || "";
+      const cardNameLower = card.name.toLowerCase();
+      const exilesSelf =
+        oracleText.includes(`exile ${cardNameLower}`) ||
+        oracleText.includes("exile this spell");
+
+      if (exilesSelf) {
+        events.push(
+          ...this.moveCard(state, card.instanceId, "exile", card.owner),
+        );
+      } else {
+        // Move to graveyard after resolution
+        events.push(
+          ...this.moveCard(state, card.instanceId, "graveyard", card.owner),
+        );
+      }
     }
 
     this.addLogEntry(state, events, {
@@ -712,9 +829,17 @@ export class GameEngineService {
     const sourceCard = state.cards[item.sourceCardId];
 
     // Token creation effects: "create a [Token Name] token" or "create X [Token Name] tokens"
-    const createTokenMatch = abilityTextLower.match(/create\s+(?:a|an|(\d+))\s+([a-z\s]+?)\s+tokens?/);
+    // Supports both digit quantities ("2") and word quantities ("two", "three", etc.)
+    const createTokenMatch = abilityTextLower.match(/create\s+(?:a|an|(\w+))\s+([a-z\s]+?)\s+tokens?/);
     if (createTokenMatch) {
-      const quantity = createTokenMatch[1] ? parseInt(createTokenMatch[1], 10) : 1;
+      const wordToNumber: Record<string, number> = {
+        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+        'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+      };
+      const rawQuantity = createTokenMatch[1];
+      const quantity = rawQuantity
+        ? (wordToNumber[rawQuantity] || parseInt(rawQuantity, 10) || 1)
+        : 1;
       const tokenName = createTokenMatch[2].trim();
 
       // Map common token names to token IDs
@@ -724,9 +849,19 @@ export class GameEngineService {
         'clue': 'clue',
         'blood': 'blood',
         'gold': 'gold',
+        'shard': 'shard',
       };
 
-      const tokenId = tokenIdMap[tokenName];
+      // Try hardcoded map first, then fall back to DB lookup by name
+      let tokenId = tokenIdMap[tokenName];
+      if (!tokenId) {
+        const dbTokens = await this.tokensService.findTokensByName(
+          tokenName.charAt(0).toUpperCase() + tokenName.slice(1),
+        );
+        if (dbTokens.length > 0) {
+          tokenId = dbTokens[0].tokenId;
+        }
+      }
 
       if (tokenId) {
         try {
@@ -737,17 +872,12 @@ export class GameEngineService {
             quantity,
           );
 
-          for (const instanceId of tokenInstanceIds) {
-            const tokenCard = state.cards[instanceId];
-            events.push({
-              type: "card:moved",
-              cardId: instanceId,
-              cardName: tokenCard.name,
-              player: item.controller,
-              from: "stack",
-              to: "battlefield",
-            });
-          }
+          events.push({
+            type: 'token:created',
+            tokenIds: tokenInstanceIds,
+            tokenName: tokenName.charAt(0).toUpperCase() + tokenName.slice(1),
+            controller: item.controller,
+          });
 
           this.addLogEntry(state, events, {
             type: "ability",
@@ -790,6 +920,32 @@ export class GameEngineService {
         type: "ability",
         player: controller,
         message: `${controller === "player" ? "Player" : "Opponent"} gained ${amount} life from ${sourceCard?.name || "ability"}`,
+      });
+    }
+
+    // Draw card effects: "draw a card" or "draw X cards"
+    const drawMatch = abilityTextLower.match(/draw\s+(?:a|(\d+)|(\w+))\s+cards?/);
+    if (drawMatch) {
+      const wordToNumber: Record<string, number> = {
+        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+        'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+      };
+      const count = drawMatch[1]
+        ? parseInt(drawMatch[1], 10)
+        : drawMatch[2]
+          ? (wordToNumber[drawMatch[2]] || 1)
+          : 1;
+      const controller = item.controller;
+
+      for (let i = 0; i < count; i++) {
+        events.push(...this.drawCard(state, controller));
+        if (state.isGameOver) break;
+      }
+
+      this.addLogEntry(state, events, {
+        type: "ability",
+        player: controller,
+        message: `${controller === "player" ? "Player" : "Opponent"} drew ${count} card${count > 1 ? 's' : ''} from ${sourceCard?.name || "ability"}`,
       });
     }
 
@@ -838,13 +994,177 @@ export class GameEngineService {
       }
     }
 
-    // If no specific effect was parsed, log a generic message
-    if (events.length === 0) {
+    // Fetch land ability: search library for basic land(s), put onto battlefield tapped, shuffle
+    if (
+      abilityTextLower.includes("search your library") &&
+      abilityTextLower.includes("basic land") &&
+      abilityTextLower.includes("battlefield tapped")
+    ) {
+      const controller = item.controller;
+      const playerName = controller === "player" ? "Player" : "Opponent";
+
+      // Parse how many lands to fetch (e.g., "up to two basic land cards" → 2)
+      const countMatch = abilityTextLower.match(/up to (\w+) basic land/);
+      const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4 };
+      const fetchCount = countMatch
+        ? (wordToNum[countMatch[1]] || parseInt(countMatch[1]) || 1)
+        : 1;
+
+      // Check if lands must share a land type (e.g., Myriad Landscape)
+      const mustShareType = abilityTextLower.includes("share a land type");
+
+      // Search library for all basic lands
+      const basicLands = this.searchService.searchLibrary(
+        state,
+        controller,
+        { supertype: "Basic", type: "Land" },
+        0,
+      );
+
+      if (basicLands.length > 0) {
+        let landsToFetch: string[] = [];
+
+        if (fetchCount > 1 && mustShareType) {
+          // Group basic lands by their basic land type (Plains, Island, Swamp, Mountain, Forest)
+          const landsByType: Record<string, string[]> = {};
+          for (const landId of basicLands) {
+            const land = state.cards[landId];
+            if (!land) continue;
+            const basicType = this.getBasicLandType(land);
+            if (basicType) {
+              if (!landsByType[basicType]) landsByType[basicType] = [];
+              landsByType[basicType].push(landId);
+            }
+          }
+
+          // Pick the best land type: use selectBestLand to determine which type is most needed,
+          // then take up to fetchCount of that type
+          const bestLandId = await this.landSelectionService.selectBestLand(
+            state,
+            controller,
+            basicLands,
+          );
+          if (bestLandId) {
+            const bestType = this.getBasicLandType(state.cards[bestLandId]);
+            if (bestType && landsByType[bestType]) {
+              landsToFetch = landsByType[bestType].slice(0, fetchCount);
+            } else {
+              landsToFetch = [bestLandId];
+            }
+          }
+        } else if (fetchCount > 1) {
+          // Multiple lands, no shared type constraint
+          for (let i = 0; i < fetchCount && basicLands.length > 0; i++) {
+            const selectedId = await this.landSelectionService.selectBestLand(
+              state,
+              controller,
+              basicLands,
+            );
+            if (selectedId) {
+              landsToFetch.push(selectedId);
+              basicLands.splice(basicLands.indexOf(selectedId), 1);
+            }
+          }
+        } else {
+          // Single land fetch (most common case)
+          const selectedId = await this.landSelectionService.selectBestLand(
+            state,
+            controller,
+            basicLands,
+          );
+          if (selectedId) {
+            landsToFetch = [selectedId];
+          }
+        }
+
+        const fetchedNames: string[] = [];
+        for (const landId of landsToFetch) {
+          const land = state.cards[landId];
+          if (!land) continue;
+
+          // Move land from library to battlefield
+          events.push(
+            ...this.moveCard(state, landId, "battlefield", controller),
+          );
+
+          // Force the land to enter tapped
+          land.isTapped = true;
+          events.push({
+            type: "card:tapped",
+            cardId: landId,
+            cardName: land.name,
+            player: controller,
+            isTapped: true,
+          });
+
+          fetchedNames.push(land.name);
+        }
+
+        if (fetchedNames.length > 0) {
+          this.addLogEntry(state, events, {
+            type: "ability",
+            player: controller,
+            message: `${playerName} searches and puts ${fetchedNames.join(" and ")} onto the battlefield tapped`,
+          });
+        }
+      } else {
+        this.addLogEntry(state, events, {
+          type: "ability",
+          player: controller,
+          message: `${playerName} searches but finds no basic lands`,
+        });
+      }
+
+      // Shuffle library (always, even if no land found — per MTG rules)
+      const library = state[controller].libraryOrder;
+      for (let i = library.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [library[i], library[j]] = [library[j], library[i]];
+      }
+
+      events.push({
+        type: "zone:shuffled",
+        zone: "library",
+        player: controller,
+      });
+
       this.addLogEntry(state, events, {
         type: "ability",
-        player: item.controller,
-        message: `${item.controller === "player" ? "Player" : "Opponent"} resolved ability: ${item.abilityText}`,
+        player: controller,
+        message: `${playerName} shuffles their library`,
       });
+    }
+
+    // If no specific effect was parsed, try LLM resolution as fallback
+    if (events.length === 0 && item.abilityText) {
+      const sourceCardForLLM = state.cards[item.sourceCardId];
+      if (sourceCardForLLM) {
+        try {
+          const llmEvents = await this.llmSpellResolutionService.resolveSpell(
+            state,
+            item,
+            {
+              ...sourceCardForLLM,
+              oracleText: item.abilityText,
+            } as ExtendedGameCard,
+            item.controller,
+          );
+          events.push(...llmEvents);
+        } catch (error) {
+          console.error(`[resolveAbility] LLM fallback failed for: ${item.abilityText}`, error);
+          this.addLogEntry(state, events, {
+            type: "ability",
+            player: item.controller,
+            message: `${item.controller === "player" ? "Player" : "Opponent"} resolved ability: ${item.abilityText}`,
+          });
+        }
+      } else {
+        this.addLogEntry(state, events, {
+          type: "ability",
+          player: item.controller,
+          message: `${item.controller === "player" ? "Player" : "Opponent"} resolved ability: ${item.abilityText}`,
+        });
+      }
     }
 
     return events;
@@ -861,13 +1181,40 @@ export class GameEngineService {
   checkStateBasedActions(state: FullPlaytestGameState): PlaytestEvent[] {
     const events: PlaytestEvent[] = [];
     let sbaPerformed = true;
+    let iterationCount = 0;
+    const MAX_ITERATIONS = 100; // Safety limit to prevent infinite loops
 
     // Keep checking until no more SBAs are performed
     while (sbaPerformed) {
+      iterationCount++;
+
+      if (iterationCount > MAX_ITERATIONS) {
+        console.error(`[checkStateBasedActions] INFINITE LOOP DETECTED! Breaking after ${MAX_ITERATIONS} iterations`);
+        console.error(`[checkStateBasedActions] Game state:`, {
+          phase: state.phase,
+          step: state.step,
+          turnNumber: state.turnNumber,
+          activePlayer: state.activePlayer,
+          stackLength: state.stack.length,
+          battlefieldCards: Object.values(state.cards).filter(c => c.zone === 'battlefield').map(c => ({
+            name: c.name,
+            typeLine: c.typeLine,
+            counters: c.counters,
+            zone: c.zone,
+          })),
+        });
+        break;
+      }
+
       sbaPerformed = false;
+
+      if (iterationCount > 5) {
+        console.log(`[checkStateBasedActions] Iteration ${iterationCount}`);
+      }
 
       // Check player life totals
       if (state.player.life <= 0 && !state.isGameOver) {
+        console.log(`[checkStateBasedActions] SBA: Player life <= 0`);
         state.isGameOver = true;
         state.winner = "opponent";
         state.gameOverReason = "Player life reached 0";
@@ -933,6 +1280,9 @@ export class GameEngineService {
             card.damage >= effectiveToughness &&
             !card.keywords.includes("indestructible")
           ) {
+            if (iterationCount > 5) {
+              console.log(`[checkStateBasedActions] SBA: Destroying ${card.name} (${card.instanceId}) due to lethal damage`);
+            }
             events.push(
               ...this.destroyPermanent(state, card.instanceId, "lethal damage"),
             );
@@ -941,6 +1291,9 @@ export class GameEngineService {
 
           // Check 0 or less toughness
           if (effectiveToughness <= 0) {
+            if (iterationCount > 5) {
+              console.log(`[checkStateBasedActions] SBA: Destroying ${card.name} (${card.instanceId}) due to 0 toughness`);
+            }
             events.push(
               ...this.destroyPermanent(state, card.instanceId, "0 toughness"),
             );
@@ -965,7 +1318,11 @@ export class GameEngineService {
         // Check Sagas that completed their final chapter
         if (card.zone === "battlefield" && this.isSaga(card)) {
           const loreCounters = card.counters["lore"] || 0;
-          if (loreCounters >= this.getSagaFinalChapter(card)) {
+          const finalChapter = this.getSagaFinalChapter(card);
+          if (loreCounters >= finalChapter) {
+            if (iterationCount > 5) {
+              console.log(`[checkStateBasedActions] SBA: Destroying saga ${card.name} (${card.instanceId}) - lore: ${loreCounters}, final: ${finalChapter}, zone: ${card.zone}`);
+            }
             events.push(
               ...this.destroyPermanent(
                 state,
@@ -986,6 +1343,9 @@ export class GameEngineService {
           const host = state.cards[card.attachedTo];
           // Aura falls off if host is not on the battlefield
           if (!host || host.zone !== "battlefield") {
+            if (iterationCount > 5) {
+              console.log(`[checkStateBasedActions] SBA: Destroying aura ${card.name} (${card.instanceId}) - host invalid`);
+            }
             events.push(
               ...this.destroyPermanent(
                 state,
@@ -999,9 +1359,40 @@ export class GameEngineService {
       }
 
       // Check legend rule
-      events.push(...this.checkLegendRule(state));
-      if (events.some((e) => e.type === "card:destroyed")) {
+      const legendRuleEvents = this.checkLegendRule(state, iterationCount);
+      events.push(...legendRuleEvents);
+      if (legendRuleEvents.some((e) => e.type === "card:destroyed")) {
+        if (iterationCount > 5) {
+          console.log(`[checkStateBasedActions] SBA: Legend rule triggered`);
+        }
         sbaPerformed = true;
+      }
+
+      // Tokens in zones other than the battlefield cease to exist (CR 704.5d)
+      for (const card of Object.values(state.cards)) {
+        if (card.isToken && card.zone !== "battlefield" && card.zone !== "stack") {
+          // Remove token from any zone tracking arrays
+          const owner = card.owner;
+          if (card.zone === "graveyard") {
+            state[owner].graveyardOrder = state[owner].graveyardOrder.filter(
+              (id) => id !== card.instanceId,
+            );
+          } else if (card.zone === "exile") {
+            state[owner].exileOrder = state[owner].exileOrder.filter(
+              (id) => id !== card.instanceId,
+            );
+          } else if (card.zone === "hand") {
+            state[owner].handOrder = state[owner].handOrder.filter(
+              (id: string) => id !== card.instanceId,
+            );
+          } else if (card.zone === "library") {
+            state[owner].libraryOrder = state[owner].libraryOrder.filter(
+              (id) => id !== card.instanceId,
+            );
+          }
+          delete state.cards[card.instanceId];
+          sbaPerformed = true;
+        }
       }
 
       // Check if a player tried to draw from empty library
@@ -1018,7 +1409,7 @@ export class GameEngineService {
   /**
    * Check and enforce legend rule
    */
-  private checkLegendRule(state: FullPlaytestGameState): PlaytestEvent[] {
+  private checkLegendRule(state: FullPlaytestGameState, iterationCount?: number): PlaytestEvent[] {
     const events: PlaytestEvent[] = [];
     const legendsByController: Record<PlayerId, Map<string, string[]>> = {
       player: new Map(),
@@ -1040,6 +1431,9 @@ export class GameEngineService {
     for (const controller of ["player", "opponent"] as PlayerId[]) {
       for (const [name, instanceIds] of legendsByController[controller]) {
         if (instanceIds.length > 1) {
+          if (iterationCount && iterationCount > 5) {
+            console.log(`[checkStateBasedActions] Legend rule: destroying duplicates of ${name} for ${controller}`);
+          }
           // Keep first, destroy rest
           for (let i = 1; i < instanceIds.length; i++) {
             events.push(
@@ -1237,6 +1631,11 @@ export class GameEngineService {
     const events: PlaytestEvent[] = [];
     const activePlayer = state.activePlayer;
 
+    const battlefieldCards = Object.values(state.cards).filter(c => c.zone === "battlefield");
+    const sagas = battlefieldCards.filter(c => this.isSaga(c));
+    const activePlayerSagas = sagas.filter(c => c.controller === activePlayer);
+    console.log(`[addLoreCountersToSagas] Active player: ${activePlayer}, battlefield: ${battlefieldCards.length}, sagas: ${sagas.length}, active player sagas: ${activePlayerSagas.length}`);
+
     for (const card of Object.values(state.cards)) {
       if (
         card.controller === activePlayer &&
@@ -1245,6 +1644,7 @@ export class GameEngineService {
       ) {
         const currentLore = card.counters["lore"] || 0;
         card.counters["lore"] = currentLore + 1;
+        console.log(`[addLoreCountersToSagas] ${card.name}: lore ${currentLore} -> ${card.counters["lore"]}`);
 
         events.push({
           type: "card:counters",
@@ -1291,7 +1691,16 @@ export class GameEngineService {
     if (canPlaySorcerySpeed && playerState.landPlaysRemaining > 0) {
       for (const cardId of playerState.handOrder) {
         const card = state.cards[cardId];
-        if (card && card.typeLine?.includes("Land")) {
+        if (!card) continue;
+
+        if (card.layout === 'modal_dfc' && card.cardFaces) {
+          // MDFC: check each face for Land type
+          for (let i = 0; i < card.cardFaces.length; i++) {
+            if (card.cardFaces[i].typeLine?.includes("Land")) {
+              actions.push({ type: "play_land", cardId, faceIndex: i });
+            }
+          }
+        } else if (card.typeLine?.includes("Land")) {
           actions.push({ type: "play_land", cardId });
         }
       }
@@ -1300,7 +1709,9 @@ export class GameEngineService {
     // Cast spells from hand
     for (const cardId of playerState.handOrder) {
       const card = state.cards[cardId];
-      if (!card || card.typeLine?.includes("Land")) continue;
+      if (!card) continue;
+      // Skip pure lands, but NOT MDFCs (their front face typeLine won't include "Land" after init fix)
+      if (card.typeLine?.includes("Land")) continue;
 
       const isInstant =
         card.typeLine?.includes("Instant") || card.keywords.includes("flash");
@@ -1322,12 +1733,13 @@ export class GameEngineService {
               console.log(`[getAvailableActions] Found ${validTargets.length} valid targets:`, validTargets);
             }
             if (validTargets.length > 0) {
-              // For Auras and targeted spells, include the first valid target
-              // TODO: Allow AI to choose between multiple valid targets
               if (isAura) {
                 console.log(`[getAvailableActions] Adding cast_spell action for ${card.name} with target:`, validTargets[0]);
               }
-              actions.push({ type: "cast_spell", cardId, targets: [validTargets[0]] });
+              // Create one action per valid target so AI can choose
+              for (const target of validTargets) {
+                actions.push({ type: "cast_spell", cardId, targets: [target] });
+              }
             } else if (isAura) {
               console.log(`[getAvailableActions] Cannot cast ${card.name} - no valid targets`);
             }
@@ -1360,7 +1772,9 @@ export class GameEngineService {
               player,
             );
             if (validTargets.length > 0) {
-              actions.push({ type: "cast_spell", cardId, targets: [validTargets[0]] });
+              for (const target of validTargets) {
+                actions.push({ type: "cast_spell", cardId, targets: [target] });
+              }
             }
           } else {
             actions.push({ type: "cast_spell", cardId });
@@ -1379,13 +1793,37 @@ export class GameEngineService {
             card.typeLine?.includes("Creature") &&
             card.summoningSickness &&
             !card.keywords.includes("haste");
-          if (!hasSummoningSickness) {
+          // Check activation conditions (e.g. Temple of the False God)
+          const meetsCondition = this.meetsActivationCondition(card, state, player);
+          if (!hasSummoningSickness && meetsCondition) {
             actions.push({ type: "tap_for_mana", cardId: card.instanceId });
           }
         }
 
-        // Other activated abilities would be parsed from oracle text
-        // This will be expanded in Phase 9
+        // Fetch land abilities (e.g., Terramorphic Expanse, Evolving Wilds, Myriad Landscape)
+        if (this.isFetchLand(card) && !card.isTapped) {
+          // Check if the fetch ability has a mana cost (e.g., Myriad Landscape: {2}, {T}, Sacrifice)
+          const fetchManaCost = this.getFetchLandManaCost(card);
+          if (!fetchManaCost || this.canAffordManaCost(state, player, fetchManaCost)) {
+            actions.push({
+              type: "activate_ability",
+              cardId: card.instanceId,
+              abilityIndex: 0,
+            });
+          }
+        }
+
+        // General activated abilities parsed from oracle text
+        const abilities = this.parseActivatedAbilities(card);
+        for (let i = 0; i < abilities.length; i++) {
+          if (this.canActivateAbility(state, player, card, abilities[i])) {
+            actions.push({
+              type: "activate_ability",
+              cardId: card.instanceId,
+              abilityIndex: i,
+            });
+          }
+        }
       }
     }
 
@@ -1719,7 +2157,7 @@ export class GameEngineService {
   }
 
   /**
-   * Check if a card can tap for mana
+   * Check if a card has a mana ability
    */
   private canTapForMana(card: ExtendedGameCard): boolean {
     // Basic lands
@@ -1729,10 +2167,337 @@ export class GameEngineService {
     if (card.typeLine?.includes("Land") && card.oracleText?.includes("Add"))
       return true;
 
-    // Mana dorks
-    if (card.oracleText?.includes("{T}: Add")) return true;
+    // Mana dorks — use negative lookbehind to exclude granted abilities
+    // (e.g. Song of Freyalise: 'creatures you control gain "{T}: Add...')
+    if (/(?<!")\{T\}: Add/.test(card.oracleText || "")) return true;
 
     return false;
+  }
+
+  /**
+   * Check if a card is a fetch land (sacrifices to search for a basic land)
+   * Matches cards like Terramorphic Expanse, Evolving Wilds, etc.
+   */
+  private isFetchLand(card: ExtendedGameCard): boolean {
+    if (!card.oracleText) return false;
+    const text = card.oracleText.toLowerCase();
+    return (
+      text.includes("sacrifice") &&
+      text.includes("search your library") &&
+      text.includes("basic land")
+    );
+  }
+
+  /**
+   * Extract the mana cost from a fetch land's activated ability, if any.
+   * Returns null for zero-cost fetches (e.g., Evolving Wilds: "{T}, Sacrifice").
+   * Returns the mana cost string for paid fetches (e.g., Myriad Landscape: "{2}").
+   */
+  private getFetchLandManaCost(card: ExtendedGameCard): string | null {
+    if (!card.oracleText) return null;
+
+    const cleanedText = card.oracleText.replace(/\([^)]*\)/g, "").trim();
+    const lines = cleanedText.split("\n");
+
+    for (const line of lines) {
+      const lower = line.toLowerCase().trim();
+      if (
+        lower.includes("sacrifice") &&
+        lower.includes("search your library") &&
+        lower.includes("basic land")
+      ) {
+        const colonIdx = this.findAbilityColon(line.trim());
+        if (colonIdx === -1) continue;
+
+        const costPart = line.trim().substring(0, colonIdx);
+        // Extract mana symbols, excluding {T} (tap cost)
+        const manaSymbols = costPart.match(/\{[WUBRGC\d]+\}/gi) || [];
+        const manaCostSymbols = manaSymbols.filter(
+          (s) => s.toUpperCase() !== "{T}",
+        );
+
+        if (manaCostSymbols.length > 0) {
+          return manaCostSymbols.join("");
+        }
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Parse activated abilities from a card's oracle text.
+   * Returns an array of abilities with parsed costs and effect text.
+   * Excludes mana abilities, fetch land abilities, triggered abilities, and loyalty abilities.
+   */
+  parseActivatedAbilities(card: ExtendedGameCard): ParsedActivatedAbility[] {
+    if (!card.oracleText) return [];
+
+    // Strip reminder text (parenthesized text)
+    const cleanedText = card.oracleText.replace(/\([^)]*\)/g, "").trim();
+    const lines = cleanedText.split("\n");
+    const abilities: ParsedActivatedAbility[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      // Skip triggered abilities
+      if (/^(?:when|whenever|at the)\b/i.test(trimmed)) continue;
+
+      // Skip static/ETB text (no colon-separated cost:effect pattern)
+      if (/^this\b/i.test(trimmed)) continue;
+
+      // Skip loyalty abilities (+N:, -N:, 0:)
+      if (/^[+\-]?\d+\s*:/.test(trimmed)) continue;
+
+      // Match activated ability pattern: COST: EFFECT
+      // The cost portion must contain at least one recognizable cost element
+      // Use a colon that is NOT inside curly braces as the separator
+      const colonIndex = this.findAbilityColon(trimmed);
+      if (colonIndex === -1) continue;
+
+      const costText = trimmed.substring(0, colonIndex).trim();
+      const effectText = trimmed.substring(colonIndex + 1).trim();
+
+      if (!costText || !effectText) continue;
+
+      // Cost must contain at least one recognizable cost element
+      const hasCostElement =
+        /\{[TQWUBRGC\d]+\}/i.test(costText) ||
+        /\b(?:sacrifice|remove|pay|discard|exile|tap)\b/i.test(costText);
+      if (!hasCostElement) continue;
+
+      // Exclude mana abilities: cost is only {T} (possibly with conditions) and effect starts with "Add"
+      if (/^add\b/i.test(effectText) && /^\{T\}$/.test(costText.replace(/,\s*/g, "").trim())) continue;
+
+      // Exclude fetch lands (already handled separately)
+      const fullLower = trimmed.toLowerCase();
+      if (
+        fullLower.includes("sacrifice") &&
+        fullLower.includes("search your library") &&
+        fullLower.includes("basic land")
+      ) continue;
+
+      // Parse costs
+      const costs = this.parseAbilityCosts(costText, card.name);
+      abilities.push({ costText, effectText, costs });
+    }
+
+    return abilities;
+  }
+
+  /**
+   * Find the colon that separates costs from effects in an activated ability.
+   * Skips colons inside curly braces like {T}.
+   */
+  private findAbilityColon(text: string): number {
+    let depth = 0;
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === "{") depth++;
+      else if (text[i] === "}") depth--;
+      else if (text[i] === ":" && depth === 0) return i;
+    }
+    return -1;
+  }
+
+  /**
+   * Parse individual cost components from the cost portion of an activated ability.
+   */
+  private parseAbilityCosts(
+    costText: string,
+    cardName: string,
+  ): ParsedActivatedAbility["costs"] {
+    const costs: ParsedActivatedAbility["costs"] = {
+      manaCost: null,
+      tapSelf: false,
+      removedCounters: null,
+      sacrificeSelf: false,
+      payLife: null,
+    };
+
+    // Split on commas, but be careful not to split inside curly braces
+    const parts = this.splitCostParts(costText);
+
+    for (const part of parts) {
+      const trimmed = part.trim();
+
+      // Tap: {T}
+      if (trimmed === "{T}") {
+        costs.tapSelf = true;
+        continue;
+      }
+
+      // Mana cost: one or more {X} symbols (not {T} or {Q})
+      if (/^(\{[\dWUBRGCX]+\}\s*)+$/i.test(trimmed) && !/\{[TQ]\}/i.test(trimmed)) {
+        costs.manaCost = (costs.manaCost || "") + trimmed.replace(/\s+/g, "");
+        continue;
+      }
+
+      // Remove counter: "Remove a/N TYPE counter from CARDNAME/this"
+      const removeCounterMatch = trimmed.match(
+        /[Rr]emove\s+(?:a|an|(\d+)|(\w+))\s+([\w/+-]+)\s+counter/i,
+      );
+      if (removeCounterMatch) {
+        const wordToNum: Record<string, number> = {
+          a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5,
+        };
+        const rawCount = removeCounterMatch[1] || removeCounterMatch[2];
+        const count = rawCount
+          ? (parseInt(rawCount, 10) || wordToNum[rawCount.toLowerCase()] || 1)
+          : 1;
+        costs.removedCounters = {
+          type: removeCounterMatch[3].toLowerCase(),
+          count,
+        };
+        continue;
+      }
+
+      // Sacrifice self: "Sacrifice CARDNAME" or "Sacrifice ~" or "Sacrifice this"
+      const cardNameEscaped = cardName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (
+        new RegExp(`sacrifice\\s+(?:this|~|${cardNameEscaped})`, "i").test(trimmed)
+      ) {
+        costs.sacrificeSelf = true;
+        continue;
+      }
+
+      // Pay life: "Pay N life"
+      const payLifeMatch = trimmed.match(/[Pp]ay\s+(\d+)\s+life/);
+      if (payLifeMatch) {
+        costs.payLife = parseInt(payLifeMatch[1], 10);
+        continue;
+      }
+    }
+
+    return costs;
+  }
+
+  /**
+   * Split cost text on commas, respecting curly braces.
+   */
+  private splitCostParts(costText: string): string[] {
+    const parts: string[] = [];
+    let current = "";
+    let depth = 0;
+
+    for (const ch of costText) {
+      if (ch === "{") depth++;
+      else if (ch === "}") depth--;
+
+      if (ch === "," && depth === 0) {
+        parts.push(current);
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+    if (current) parts.push(current);
+    return parts;
+  }
+
+  /**
+   * Check if an activated ability's costs can be paid.
+   */
+  private canActivateAbility(
+    state: FullPlaytestGameState,
+    player: PlayerId,
+    card: ExtendedGameCard,
+    ability: ParsedActivatedAbility,
+  ): boolean {
+    if (card.zone !== "battlefield" || card.controller !== player) return false;
+
+    // Check tap cost
+    if (ability.costs.tapSelf) {
+      if (card.isTapped) return false;
+      // Creatures with summoning sickness can't use {T} abilities (unless haste)
+      const hasSummoningSickness =
+        card.typeLine?.includes("Creature") &&
+        card.summoningSickness &&
+        !card.keywords.includes("haste");
+      if (hasSummoningSickness) return false;
+    }
+
+    // Check mana cost
+    if (ability.costs.manaCost) {
+      let effectiveCost = ability.costs.manaCost;
+      // For abilities with {X} in cost, require enough mana for at least X=1.
+      // Activating abilities for X=0 is almost never meaningful (e.g. Treasure Vault
+      // sacrificing itself to create 0 treasures) and just generates noise / LLM calls.
+      const xCount = (effectiveCost.match(/\{X\}/gi) || []).length;
+      if (xCount > 0) {
+        effectiveCost = effectiveCost.replace(/\{X\}/gi, "") + `{${xCount}}`;
+      }
+      if (!this.canAffordManaCost(state, player, effectiveCost)) return false;
+    }
+
+    // Check counter removal
+    if (ability.costs.removedCounters) {
+      const { type, count } = ability.costs.removedCounters;
+      if ((card.counters[type] || 0) < count) return false;
+    }
+
+    // Check life payment (strict > per MTG rules)
+    if (ability.costs.payLife !== null) {
+      if (state[player].life <= ability.costs.payLife) return false;
+    }
+
+    // Check activation conditions (e.g., "Activate only if...")
+    if (!this.meetsActivationCondition(card, state, player)) return false;
+
+    return true;
+  }
+
+  /**
+   * Check if a card's mana ability can currently be activated.
+   * Handles "Activate only if..." conditions (e.g. Temple of the False God).
+   */
+  private meetsActivationCondition(
+    card: ExtendedGameCard,
+    state: FullPlaytestGameState,
+    controller: PlayerId,
+  ): boolean {
+    const oracleText = card.oracleText?.toLowerCase() || "";
+
+    // Check for "activate only if" or "activate this ability only if" conditions
+    const activateOnlyMatch = oracleText.match(
+      /activate(?:\s+this\s+ability)?\s+only\s+if\s+you\s+control\s+(\w+)\s+or\s+more\s+(\w+)/,
+    );
+    if (activateOnlyMatch) {
+      const requiredCount = this.parseWordNumber(activateOnlyMatch[1]);
+      const permanentType = activateOnlyMatch[2]; // e.g. "lands", "creatures"
+
+      // Count matching permanents the player controls
+      let count = 0;
+      for (const cardId of state.battlefieldOrder[controller]) {
+        const permanent = state.cards[cardId];
+        if (!permanent) continue;
+        const typeLine = permanent.typeLine?.toLowerCase() || "";
+        // Match singular form (e.g. "lands" -> "land")
+        const singularType = permanentType.replace(/s$/, "");
+        if (typeLine.includes(singularType)) {
+          count++;
+        }
+      }
+
+      if (count < requiredCount) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Parse a word-form number (e.g. "five") to its numeric value
+   */
+  private parseWordNumber(word: string): number {
+    const wordMap: Record<string, number> = {
+      one: 1, two: 2, three: 3, four: 4, five: 5,
+      six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+    };
+    return wordMap[word.toLowerCase()] || parseInt(word, 10) || 0;
   }
 
   /**
@@ -1794,6 +2559,7 @@ export class GameEngineService {
     state: FullPlaytestGameState,
     player: PlayerId,
     cardId: string,
+    faceIndex?: number,
   ): PlaytestEvent[] {
     const events: PlaytestEvent[] = [];
     const playerState = state[player];
@@ -1801,6 +2567,11 @@ export class GameEngineService {
 
     if (!card || playerState.landPlaysRemaining <= 0) {
       return events;
+    }
+
+    // Switch to the specified face for MDFCs (e.g., back face is a land)
+    if (faceIndex !== undefined && card.layout === 'modal_dfc') {
+      this.switchToFace(card, faceIndex);
     }
 
     playerState.landPlaysRemaining--;
@@ -2173,6 +2944,194 @@ export class GameEngineService {
   }
 
   /**
+   * Activate a fetch land ability: pay costs (mana + tap + sacrifice) then put ability on stack.
+   * Costs are paid immediately per MTG rules; the search resolves later from the stack.
+   */
+  activateFetchLand(
+    state: FullPlaytestGameState,
+    player: PlayerId,
+    cardId: string,
+  ): PlaytestEvent[] {
+    const events: PlaytestEvent[] = [];
+    const card = state.cards[cardId];
+
+    if (!card || card.isTapped || card.zone !== "battlefield") return events;
+
+    const cardName = card.name;
+
+    // Pay costs: mana cost (e.g., Myriad Landscape: {2})
+    const manaCost = this.getFetchLandManaCost(card);
+    if (manaCost) {
+      events.push(...this.spendManaForCost(state, player, manaCost));
+    }
+
+    // Pay costs: tap the land
+    card.isTapped = true;
+    events.push({
+      type: "card:tapped",
+      cardId,
+      cardName,
+      player,
+      isTapped: true,
+    });
+
+    // Pay costs: sacrifice the land (move to graveyard)
+    events.push(...this.moveCard(state, cardId, "graveyard", player));
+
+    this.addLogEntry(state, events, {
+      type: "action",
+      player,
+      message: `${player === "player" ? "Player" : "Opponent"} sacrifices ${cardName}`,
+    });
+
+    // Extract the actual ability effect text from the card's oracle text
+    const abilityText = this.getFetchLandEffectText(card) ||
+      "Search your library for a basic land card, put it onto the battlefield tapped, then shuffle your library.";
+
+    // Put the ability on the stack
+    const stackItem: StackItem = {
+      id: uuidv4(),
+      type: "ability",
+      sourceCardId: cardId,
+      controller: player,
+      targets: [],
+      abilityText,
+      abilityType: "activated",
+    };
+
+    events.push(...this.addToStack(state, stackItem));
+
+    return events;
+  }
+
+  /**
+   * Extract the effect text (after the colon) from a fetch land's activated ability.
+   */
+  private getFetchLandEffectText(card: ExtendedGameCard): string | null {
+    if (!card.oracleText) return null;
+
+    const cleanedText = card.oracleText.replace(/\([^)]*\)/g, "").trim();
+    const lines = cleanedText.split("\n");
+
+    for (const line of lines) {
+      const lower = line.toLowerCase().trim();
+      if (
+        lower.includes("sacrifice") &&
+        lower.includes("search your library") &&
+        lower.includes("basic land")
+      ) {
+        const colonIdx = this.findAbilityColon(line.trim());
+        if (colonIdx === -1) continue;
+        return line.trim().substring(colonIdx + 1).trim();
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract the basic land type (Plains, Island, Swamp, Mountain, Forest) from a basic land card.
+   */
+  private getBasicLandType(card: ExtendedGameCard): string | null {
+    if (!card.typeLine) return null;
+    const match = card.typeLine.match(/\b(Plains|Island|Swamp|Mountain|Forest)\b/);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * Activate a general activated ability on a permanent.
+   * Pays all costs (tap, mana, counter removal, life, sacrifice) and puts
+   * the ability on the stack.
+   */
+  activateAbility(
+    state: FullPlaytestGameState,
+    player: PlayerId,
+    cardId: string,
+    abilityIndex: number,
+  ): PlaytestEvent[] {
+    const events: PlaytestEvent[] = [];
+    const card = state.cards[cardId];
+
+    if (!card || card.zone !== "battlefield") return events;
+
+    const abilities = this.parseActivatedAbilities(card);
+    const ability = abilities[abilityIndex];
+    if (!ability) return events;
+
+    const cardName = card.name;
+
+    // Pay costs in order:
+
+    // 1. Tap cost
+    if (ability.costs.tapSelf) {
+      card.isTapped = true;
+      events.push({
+        type: "card:tapped",
+        cardId,
+        cardName,
+        player,
+        isTapped: true,
+      });
+    }
+
+    // 2. Mana cost
+    if (ability.costs.manaCost) {
+      events.push(...this.spendManaForCost(state, player, ability.costs.manaCost));
+    }
+
+    // 3. Remove counters
+    if (ability.costs.removedCounters) {
+      const { type, count } = ability.costs.removedCounters;
+      card.counters[type] = (card.counters[type] || 0) - count;
+      if (card.counters[type] <= 0) delete card.counters[type];
+      events.push({
+        type: "card:counters",
+        cardId,
+        counters: { ...card.counters },
+      });
+    }
+
+    // 4. Pay life
+    if (ability.costs.payLife !== null) {
+      state[player].life -= ability.costs.payLife;
+      events.push({
+        type: "life:changed",
+        player,
+        life: state[player].life,
+        change: -ability.costs.payLife,
+        source: cardName,
+      });
+    }
+
+    // 5. Sacrifice self (last, since it moves the card off battlefield)
+    if (ability.costs.sacrificeSelf) {
+      events.push(...this.moveCard(state, cardId, "graveyard", player));
+    }
+
+    // Log the activation
+    this.addLogEntry(state, events, {
+      type: "action",
+      player,
+      message: `${player === "player" ? "Player" : "Opponent"} activates ${cardName}: ${ability.effectText}`,
+    });
+
+    // Put ability on the stack
+    const stackItem: StackItem = {
+      id: uuidv4(),
+      type: "ability",
+      sourceCardId: cardId,
+      controller: player,
+      targets: [],
+      abilityText: ability.effectText,
+      abilityType: "activated",
+    };
+
+    events.push(...this.addToStack(state, stackItem));
+
+    return events;
+  }
+
+  /**
    * Declare attackers
    */
   declareAttackers(
@@ -2260,9 +3219,24 @@ export class GameEngineService {
     card.zone = toZone;
     card.controller = controller;
 
-    // Clean up watches if card is leaving the battlefield
+    // Clean up watches and copy state if card is leaving the battlefield
     if (fromZone === "battlefield" && toZone !== "battlefield") {
+      // Return any cards exiled "until this card leaves the battlefield"
+      events.push(...this.processLinkedExiles(state, cardId));
+
       this.cleanupWatchesForCard(state, cardId);
+
+      // Reset copy characteristics — card reverts to its printed identity
+      if (card.copyOf) {
+        card.name = card.originalName!;
+        card.imageUrl = card.originalImageUrl ?? null;
+        card.copyOf = undefined;
+        card.originalImageUrl = undefined;
+        card.originalName = undefined;
+      }
+
+      // Revert MDFCs to front face when leaving battlefield
+      this.revertToFrontFace(card);
     }
 
     // Update zone ordering arrays
@@ -3021,6 +3995,83 @@ export class GameEngineService {
   }
 
   // =====================
+  // Copy Effects (Sculpting Steel, Clone, etc.)
+  // =====================
+
+  /**
+   * Detect if a card has a copy-on-enter effect from oracle text
+   */
+  private isCopyEffect(card: ExtendedGameCard): { isCopy: boolean; copyType: string | null } {
+    if (!card.oracleText) return { isCopy: false, copyType: null };
+    const text = card.oracleText.toLowerCase();
+
+    if (!text.includes('as a copy of')) return { isCopy: false, copyType: null };
+
+    const isNonland = text.includes('nonland');
+
+    // "enter(s) (the battlefield) as a copy of (any) (nonland) [type]"
+    const typeMatch = text.match(/copy of (?:any )?(?:nonland )?(\w+)/);
+    const copyType = typeMatch?.[1] || 'permanent';
+
+    return { isCopy: true, copyType: isNonland ? 'nonland' : copyType };
+  }
+
+  /**
+   * Select the best valid target for a copy effect
+   * Heuristic: prefer controller's own permanents, pick highest CMC
+   */
+  private selectCopyTarget(
+    state: FullPlaytestGameState,
+    card: ExtendedGameCard,
+    copyType: string,
+  ): ExtendedGameCard | null {
+    const candidates = Object.values(state.cards).filter((c) => {
+      if (c.zone !== 'battlefield' || c.instanceId === card.instanceId) return false;
+      const type = c.typeLine?.toLowerCase() || '';
+      switch (copyType) {
+        case 'artifact': return type.includes('artifact');
+        case 'creature': return type.includes('creature');
+        case 'enchantment': return type.includes('enchantment');
+        case 'planeswalker': return type.includes('planeswalker');
+        case 'nonland': return !type.includes('land');
+        case 'permanent': return true;
+        default: return type.includes(copyType);
+      }
+    });
+
+    if (candidates.length === 0) return null;
+
+    // Pick the best target by CMC regardless of controller —
+    // copy effects shine when copying the strongest permanent on the board
+    candidates.sort((a, b) => (b.cmc || 0) - (a.cmc || 0));
+    return candidates[0];
+  }
+
+  /**
+   * Apply copy effect: overwrite copiable characteristics (MTG rule 707.2)
+   * Preserves identity fields (instanceId, scryfallId, owner, isCommander)
+   */
+  private applyCopyEffect(copyCard: ExtendedGameCard, target: ExtendedGameCard): void {
+    // Save originals for UI overlay and cleanup
+    copyCard.originalImageUrl = copyCard.imageUrl ?? undefined;
+    copyCard.originalName = copyCard.name;
+    copyCard.copyOf = target.instanceId;
+
+    // Overwrite copiable values
+    copyCard.name = target.name;
+    copyCard.manaCost = target.manaCost;
+    copyCard.cmc = target.cmc;
+    copyCard.colors = [...target.colors];
+    copyCard.colorIdentity = [...target.colorIdentity];
+    copyCard.typeLine = target.typeLine;
+    copyCard.oracleText = target.oracleText;
+    copyCard.power = target.power;
+    copyCard.toughness = target.toughness;
+    copyCard.keywords = [...target.keywords];
+    copyCard.imageUrl = target.imageUrl;
+  }
+
+  // =====================
   // Target Validation
   // =====================
 
@@ -3247,11 +4298,77 @@ export class GameEngineService {
       });
     }
 
+    // Pattern: "whenever [an/a] [subtype] creature you control deals combat damage to a player, draw a card"
+    // Examples: Research Thief ("whenever an artifact creature you control deals combat damage to a player, draw a card")
+    const combatDamageDrawMatch = oracleText.match(
+      /whenever (?:an? )?(\w+ )?creature you control deals combat damage to a player, draw a card/
+    );
+    if (combatDamageDrawMatch) {
+      const subtype = combatDamageDrawMatch[1]?.trim(); // e.g. "artifact"
+      console.log(`[registerWatchesForCard] Registering combat_damage draw watch for ${card.name} (subtype filter: ${subtype || 'none'})`);
+      this.registerWatch(state, {
+        sourceCardId: card.instanceId,
+        controller: card.controller,
+        triggerType: 'combat_damage',
+        condition: {
+          opponent: false, // source creature must be controlled by watch controller
+          damageSource: 'creature',
+          damageSourceSubtype: subtype ? subtype.charAt(0).toUpperCase() + subtype.slice(1) : undefined,
+          damageTarget: 'player',
+        },
+        effect: {
+          action: 'draw_card',
+          drawCount: 1,
+        },
+        isActive: true,
+      });
+    }
+
     // Add more card patterns here as needed
-    // You can extend this method to recognize more patterns or
-    // create a separate service to handle card-specific watch registration
 
     console.log(`[registerWatchesForCard] Finished processing ${card.name}. Total watches in state: ${state.watches?.length ?? 0}`);
+  }
+
+  /**
+   * Process linked exiles when a source card leaves the battlefield.
+   * Returns exiled cards to their designated zones (e.g. "until ~ leaves the battlefield" effects).
+   */
+  private processLinkedExiles(
+    state: FullPlaytestGameState,
+    sourceCardId: string,
+  ): PlaytestEvent[] {
+    const events: PlaytestEvent[] = [];
+    if (!state.linkedExiles || state.linkedExiles.length === 0) return events;
+
+    const toReturn = state.linkedExiles.filter(
+      (le) => le.sourceCardId === sourceCardId,
+    );
+    if (toReturn.length === 0) return events;
+
+    // Remove processed entries first to avoid re-triggering during moveCard
+    state.linkedExiles = state.linkedExiles.filter(
+      (le) => le.sourceCardId !== sourceCardId,
+    );
+
+    const sourceCard = state.cards[sourceCardId];
+    const sourceName = sourceCard?.name || "a permanent";
+
+    for (const linked of toReturn) {
+      const exiledCard = state.cards[linked.exiledCardId];
+      if (!exiledCard || exiledCard.zone !== "exile") continue;
+
+      events.push(
+        ...this.moveCard(state, linked.exiledCardId, linked.returnZone, exiledCard.owner),
+      );
+
+      this.addLogEntry(state, events, {
+        type: "ability",
+        player: exiledCard.owner,
+        message: `${exiledCard.name} returns to the ${linked.returnZone} (${sourceName} left the battlefield)`,
+      });
+    }
+
+    return events;
   }
 
   /**
@@ -3462,6 +4579,11 @@ export class GameEngineService {
       if (condition.damageSource === 'creature' && event.sourceCardId) {
         const sourceCard = state.cards[event.sourceCardId];
         if (!sourceCard?.typeLine?.includes('Creature')) return false;
+
+        // Check subtype (e.g. "Artifact" for "artifact creature you control")
+        if (condition.damageSourceSubtype) {
+          if (!sourceCard.typeLine?.includes(condition.damageSourceSubtype)) return false;
+        }
       }
 
       if (condition.damageTarget) {
@@ -3474,8 +4596,9 @@ export class GameEngineService {
         }
       }
 
-      // Check if damage is dealt to the watch controller (for Cabbage Merchant)
-      if (event.targetType === 'player' && event.targetId) {
+      // Check if damage is dealt to the watch controller (for "deals combat damage to you" patterns).
+      // Skip when opponent is explicitly false (meaning our creature deals damage to a player).
+      if (event.targetType === 'player' && event.targetId && condition.opponent !== false) {
         if (event.targetId !== watch.controller) return false;
       }
 

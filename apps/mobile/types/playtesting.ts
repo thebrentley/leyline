@@ -105,6 +105,10 @@ export interface ExtendedGameCard {
   attachments: string[]; // instanceIds of cards attached to this
   summoningSickness: boolean;
   damage: number;
+  // Copy effect tracking (Sculpting Steel, Clone, etc.)
+  copyOf?: string; // instanceId of the permanent being copied
+  originalImageUrl?: string; // copy card's own image (for overlay display)
+  originalName?: string; // copy card's printed name before becoming a copy
   // Card data (cached for quick access)
   imageUrl: string | null;
   manaCost: string | null;
@@ -117,6 +121,10 @@ export interface ExtendedGameCard {
   colorIdentity: string[];
   isCommander: boolean;
   keywords: string[]; // parsed keywords like 'flying', 'haste', etc.
+  // MDFC (Modal Double-Faced Card) support
+  layout?: string | null;
+  cardFaces?: { name: string; manaCost?: string; typeLine: string; oracleText?: string; power?: string; toughness?: string; imageUri?: string }[] | null;
+  activeFaceIndex?: number;
 }
 
 // =====================
@@ -223,6 +231,12 @@ export interface GameConfig {
   pauseOnSpellCast: boolean;
 }
 
+export interface LinkedExile {
+  sourceCardId: string;
+  exiledCardId: string;
+  returnZone: 'battlefield' | 'hand' | 'graveyard';
+}
+
 export interface FullPlaytestGameState {
   sessionId: string;
   deckId: string; // Primary deck (player 1)
@@ -258,6 +272,9 @@ export interface FullPlaytestGameState {
 
   // Combat
   combat: CombatState;
+
+  // Linked exile tracking ("until [source] leaves the battlefield")
+  linkedExiles?: LinkedExile[];
 
   // Game log
   log: GameLogEntry[];

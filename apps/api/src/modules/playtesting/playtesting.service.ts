@@ -30,6 +30,22 @@ export class PlaytestingService {
     private keywordService: KeywordAbilitiesService,
   ) {}
 
+  /**
+   * Parse raw Scryfall card_faces (snake_case) into camelCase CardFace objects
+   */
+  private parseCardFaces(rawFaces: any): { name: string; manaCost?: string; typeLine: string; oracleText?: string; power?: string; toughness?: string; imageUri?: string }[] | null {
+    if (!rawFaces || !Array.isArray(rawFaces)) return null;
+    return rawFaces.map((face: any) => ({
+      name: face.name,
+      manaCost: face.mana_cost ?? face.manaCost ?? undefined,
+      typeLine: face.type_line ?? face.typeLine ?? 'Unknown',
+      oracleText: face.oracle_text ?? face.oracleText ?? undefined,
+      power: face.power ?? undefined,
+      toughness: face.toughness ?? undefined,
+      imageUri: face.image_uris?.normal ?? face.imageUri ?? undefined,
+    }));
+  }
+
   async getStatus(userId: string) {
     return {
       enabled: true,
@@ -245,9 +261,24 @@ export class PlaytestingService {
       for (let i = 0; i < deckCard.quantity; i++) {
         const instanceId = `${sessionId}-p1-${instanceCounter++}`;
         const isCommander = deckCard.isCommander;
+
+        // Parse MDFC face data
+        const layout = deckCard.card?.layout || null;
+        const cardFaces = this.parseCardFaces((deckCard.card as any)?.cardFaces ?? null);
+        const isMDFC = layout === 'modal_dfc' && cardFaces && cardFaces.length > 0;
+
+        // For MDFCs, use front face data instead of combined top-level data
+        const frontFace = isMDFC ? cardFaces[0] : null;
+        const effectiveTypeLine = frontFace?.typeLine ?? deckCard.card?.typeLine ?? null;
+        const effectiveOracleText = frontFace?.oracleText ?? deckCard.card?.oracleText ?? null;
+        const effectivePower = frontFace?.power ?? deckCard.card?.power ?? null;
+        const effectiveToughness = frontFace?.toughness ?? deckCard.card?.toughness ?? null;
+        const effectiveManaCost = frontFace?.manaCost ?? deckCard.card?.manaCost ?? null;
+        const effectiveImageUrl = frontFace?.imageUri ?? deckCard.card?.imageNormal ?? null;
+
         const keywords = this.keywordService.parseKeywords(
-          deckCard.card?.oracleText || null,
-          deckCard.card?.typeLine || null,
+          effectiveOracleText,
+          effectiveTypeLine,
         );
 
         const gameCard: ExtendedGameCard = {
@@ -266,18 +297,21 @@ export class PlaytestingService {
           attachments: [],
           summoningSickness: false,
           damage: 0,
-          imageUrl: deckCard.card?.imageNormal || null,
-          manaCost: deckCard.card?.manaCost || null,
+          imageUrl: effectiveImageUrl,
+          manaCost: effectiveManaCost,
           cmc: deckCard.card?.cmc || 0,
-          typeLine: deckCard.card?.typeLine || null,
-          oracleText: deckCard.card?.oracleText || null,
-          power: deckCard.card?.power || null,
-          toughness: deckCard.card?.toughness || null,
+          typeLine: effectiveTypeLine,
+          oracleText: effectiveOracleText,
+          power: effectivePower,
+          toughness: effectiveToughness,
           colors: deckCard.card?.colors || [],
           colorIdentity: deckCard.card?.colorIdentity || [],
           isCommander,
           commanderTax: 0,
           keywords,
+          layout,
+          cardFaces,
+          activeFaceIndex: 0,
         };
 
         cards[instanceId] = gameCard;
@@ -300,9 +334,24 @@ export class PlaytestingService {
       for (let i = 0; i < deckCard.quantity; i++) {
         const instanceId = `${sessionId}-p2-${instanceCounter++}`;
         const isCommander = deckCard.isCommander;
+
+        // Parse MDFC face data
+        const layout = deckCard.card?.layout || null;
+        const cardFaces = this.parseCardFaces((deckCard.card as any)?.cardFaces ?? null);
+        const isMDFC = layout === 'modal_dfc' && cardFaces && cardFaces.length > 0;
+
+        // For MDFCs, use front face data instead of combined top-level data
+        const frontFace = isMDFC ? cardFaces[0] : null;
+        const effectiveTypeLine = frontFace?.typeLine ?? deckCard.card?.typeLine ?? null;
+        const effectiveOracleText = frontFace?.oracleText ?? deckCard.card?.oracleText ?? null;
+        const effectivePower = frontFace?.power ?? deckCard.card?.power ?? null;
+        const effectiveToughness = frontFace?.toughness ?? deckCard.card?.toughness ?? null;
+        const effectiveManaCost = frontFace?.manaCost ?? deckCard.card?.manaCost ?? null;
+        const effectiveImageUrl = frontFace?.imageUri ?? deckCard.card?.imageNormal ?? null;
+
         const keywords = this.keywordService.parseKeywords(
-          deckCard.card?.oracleText || null,
-          deckCard.card?.typeLine || null,
+          effectiveOracleText,
+          effectiveTypeLine,
         );
 
         const gameCard: ExtendedGameCard = {
@@ -321,18 +370,21 @@ export class PlaytestingService {
           attachments: [],
           summoningSickness: false,
           damage: 0,
-          imageUrl: deckCard.card?.imageNormal || null,
-          manaCost: deckCard.card?.manaCost || null,
+          imageUrl: effectiveImageUrl,
+          manaCost: effectiveManaCost,
           cmc: deckCard.card?.cmc || 0,
-          typeLine: deckCard.card?.typeLine || null,
-          oracleText: deckCard.card?.oracleText || null,
-          power: deckCard.card?.power || null,
-          toughness: deckCard.card?.toughness || null,
+          typeLine: effectiveTypeLine,
+          oracleText: effectiveOracleText,
+          power: effectivePower,
+          toughness: effectiveToughness,
           colors: deckCard.card?.colors || [],
           colorIdentity: deckCard.card?.colorIdentity || [],
           isCommander,
           commanderTax: 0,
           keywords,
+          layout,
+          cardFaces,
+          activeFaceIndex: 0,
         };
 
         cards[instanceId] = gameCard;
@@ -406,6 +458,7 @@ export class PlaytestingService {
       stack: [],
       combat,
       watches: [],
+      linkedExiles: [],
       log: [],
 
       isGameOver: false,

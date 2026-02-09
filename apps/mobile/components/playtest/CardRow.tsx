@@ -33,6 +33,15 @@ export function CardRow({
   // Filter out cards that are attached to something else (they render with their host)
   const visibleCards = cards.filter(card => !card.attachedTo);
 
+  // Debug: Log filtering for artifacts/enchantments row
+  const hasEnchantments = cards.some(c => c.typeLine?.toLowerCase().includes('enchantment'));
+  if (hasEnchantments) {
+    console.log(`[DEBUG CardRow] Received ${cards.length} cards, ${visibleCards.length} visible after filtering`);
+    cards.forEach(c => {
+      console.log(`[DEBUG CardRow] Card: ${c.name}, attachedTo: ${c.attachedTo}, visible: ${!c.attachedTo}`);
+    });
+  }
+
   // Empty row still takes up space for layout consistency
   if (visibleCards.length === 0) {
     return <View className="flex-1" />;

@@ -34,11 +34,11 @@ interface PlayerBoardProps {
   previousLife?: number;
   manaPool: ManaPool;
   combat?: CombatState;
-  hasPriority: boolean;
   handCount: number;
   onCardPress?: (card: ExtendedGameCard) => void;
   onCardLongPress?: (card: ExtendedGameCard) => void;
   onShowHand?: () => void;
+  onGraveyardPress?: () => void;
 }
 
 export function PlayerBoard({
@@ -56,11 +56,11 @@ export function PlayerBoard({
   previousLife,
   manaPool,
   combat,
-  hasPriority,
   handCount,
   onCardPress,
   onCardLongPress,
   onShowHand,
+  onGraveyardPress,
 }: PlayerBoardProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -123,7 +123,7 @@ export function PlayerBoard({
         );
       case "graveyard":
         return (
-          <CardPile cards={graveyard} icon={<Skull size={10} color="#fff" />} />
+          <CardPile cards={graveyard} icon={<Skull size={10} color="#fff" />} onPress={onGraveyardPress} />
         );
     }
   };
@@ -166,13 +166,7 @@ export function PlayerBoard({
     <CardDimensionsProvider dimensions={cardDimensions}>
       <View
         onLayout={handleLayout}
-        className={`flex-row px-2 py-2 ${
-          hasPriority
-            ? isDark
-              ? "border-2 border-purple-500"
-              : "border-2 border-purple-400"
-            : ""
-        }`}
+        className="flex-row px-2 py-2"
         style={{ minHeight: 200, flex: 1 }}
       >
         {/* Left column: command, library, graveyard */}

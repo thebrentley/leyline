@@ -123,10 +123,11 @@ export class LLMSpellResolutionService {
       }
     } catch (error) {
       console.error(`[LLMSpellResolution] Error resolving ${card.name}:`, error);
+      this.logApiError(error);
       this.gameEngine.addLogEntry(state, events, {
         type: 'action',
         player: controller,
-        message: `Error resolving ${card.name} effect`,
+        message: `Error resolving ${card.name} effect: ${error.message || "Unknown error"}`,
       });
     }
 
@@ -233,7 +234,7 @@ export class LLMSpellResolutionService {
 
 ## Available Actions
 
-You can use these 9 primitive actions:
+You can use these 10 primitive actions:
 
 1. **createToken** - Create token permanents
    Parameters: tokenId OR custom token properties, controller, quantity
@@ -243,9 +244,10 @@ You can use these 9 primitive actions:
    Parameters: player, criteria (supertype, type, subtype, cmc), maxResults, destination, reveal
    Example: { "type": "searchLibrary", "player": "self", "criteria": { "supertype": "Basic", "type": "Land" }, "maxResults": 1, "destination": "hand", "reveal": true }
 
-3. **moveCard** - Move a card between zones
+3. **moveCard** - Move a card between zones (hand, library, battlefield, graveyard, exile)
    Parameters: cardIdentifier, from, to, controller
    Example: { "type": "moveCard", "cardIdentifier": "$SEARCH_RESULT_0", "from": "library", "to": "hand", "controller": "self" }
+   Exile example: { "type": "moveCard", "cardIdentifier": "$TARGET_0", "from": "battlefield", "to": "exile", "controller": "opponent" }
 
 4. **dealDamage** - Deal damage to a player or creature
    Parameters: target, targetId (if creature), amount
@@ -272,6 +274,10 @@ You can use these 9 primitive actions:
    Parameters: message
    Example: { "type": "logMessage", "message": "No basic lands found" }
 
+10. **exileUntilSourceLeaves** - Exile a permanent until the source card leaves the battlefield. Use this for "exile ... until ~ leaves the battlefield" effects (e.g. Banisher Priest, Grasp of Fate, Oblivion Ring). The game engine automatically returns the exiled card when the source leaves.
+   Parameters: targetId, controller (of the target being exiled)
+   Example: { "type": "exileUntilSourceLeaves", "targetId": "$TARGET_0", "controller": "opponent" }
+
 ## Variable Substitution
 - Use $TARGET_N to reference spell targets (e.g., $TARGET_0 for first target)
 - Use $SEARCH_RESULT_N to reference cards from search actions (e.g., $SEARCH_RESULT_0 for first result)
@@ -295,7 +301,8 @@ You MUST respond with valid JSON in this exact format:
 - "May" makes the entire effect optional (still include the action, the game engine handles optionality)
 - Handle "if you do" conditionals by including the conditional action
 - Targets are provided in the spell's stack item (use $TARGET_N to reference them)
-- When searching library and moving to hand, use searchLibrary with destination: "hand"`;
+- When searching library and moving to hand, use searchLibrary with destination: "hand"
+- **CRITICAL: Player references must ALWAYS be "self" or "opponent" (relative to the spell's controller). "self" = the player who cast the spell. "opponent" = the other player. NEVER use literal values like "player" — always use "self" or "opponent".**`;
   }
 
   /**
@@ -309,14 +316,14 @@ You MUST respond with valid JSON in this exact format:
   ): string {
     const opponent = controller === 'player' ? 'opponent' : 'player';
 
-    // Build battlefield summary
+    // Build battlefield summary with card IDs for targeting
     const playerBattlefield = Object.values(state.cards)
       .filter((c) => c.zone === 'battlefield' && c.controller === controller)
-      .map((c) => c.name);
+      .map((c) => `${c.name} [${c.typeLine}] (id:${c.instanceId})`);
 
     const opponentBattlefield = Object.values(state.cards)
       .filter((c) => c.zone === 'battlefield' && c.controller === opponent)
-      .map((c) => c.name);
+      .map((c) => `${c.name} [${c.typeLine}] (id:${c.instanceId})`);
 
     // Build targets summary
     const targetsDesc = item.targets && item.targets.length > 0
@@ -330,24 +337,24 @@ You MUST respond with valid JSON in this exact format:
 **Name:** ${card.name}
 **Oracle Text:** "${card.oracleText}"
 **Type:** ${card.typeLine}
-**Controller:** ${controller}
 
-## Game State Context
-**Player Life:** ${state.player.life}
-**Opponent Life:** ${state.opponent.life}
-**Player Hand Size:** ${state.player.handOrder.length}
-**Player Library Size:** ${state.player.libraryOrder.length}
-**Opponent Hand Size:** ${state.opponent.handOrder.length}
-**Opponent Library Size:** ${state.opponent.libraryOrder.length}
+## Game State Context (from the spell controller's perspective)
+Use "self" for the spell controller and "opponent" for the other player. Do NOT use literal player identifiers.
+**Self (spell controller) Life:** ${state[controller].life}
+**Opponent Life:** ${state[opponent].life}
+**Self Hand Size:** ${state[controller].handOrder.length}
+**Self Library Size:** ${state[controller].libraryOrder.length}
+**Opponent Hand Size:** ${state[opponent].handOrder.length}
+**Opponent Library Size:** ${state[opponent].libraryOrder.length}
 
-**Player Battlefield:** ${playerBattlefield.length > 0 ? playerBattlefield.join(', ') : 'Empty'}
+**Self Battlefield:** ${playerBattlefield.length > 0 ? playerBattlefield.join(', ') : 'Empty'}
 **Opponent Battlefield:** ${opponentBattlefield.length > 0 ? opponentBattlefield.join(', ') : 'Empty'}
 
 ## Targets
 ${targetsDesc}
 
 ## Your Task
-Interpret the oracle text and output the sequence of actions to resolve this spell's effects. Remember to use variable substitution ($TARGET_N, $SEARCH_RESULT_N) where appropriate.`;
+Interpret the oracle text and output the sequence of actions to resolve this spell's effects. Remember: use "self" for the spell controller and "opponent" for the other player. Use variable substitution ($TARGET_N, $SEARCH_RESULT_N) where appropriate.`;
   }
 
   /**
@@ -373,6 +380,27 @@ Interpret the oracle text and output the sequence of actions to resolve this spe
       console.error('[LLMSpellResolution] Failed to parse LLM response:', error);
       console.error('[LLMSpellResolution] Raw response:', text);
       return { actions: [] };
+    }
+  }
+
+  /**
+   * Log detailed API error information (Anthropic errors, network errors, etc.)
+   */
+  private logApiError(error: any): void {
+    if (!error) return;
+
+    if (error.status) {
+      console.error(
+        `[LLMSpellResolution] API Error - Status: ${error.status}, Type: ${error.error?.type || "unknown"}, Message: ${error.error?.message || error.message}`,
+      );
+      if (error.headers) {
+        const retryAfter = error.headers["retry-after"];
+        if (retryAfter) {
+          console.error(`[LLMSpellResolution] API retry-after: ${retryAfter}s`);
+        }
+      }
+    } else if (error.code === "ECONNREFUSED" || error.code === "ETIMEDOUT" || error.code === "ENOTFOUND") {
+      console.error(`[LLMSpellResolution] Network Error - Code: ${error.code}, Message: ${error.message}`);
     }
   }
 }

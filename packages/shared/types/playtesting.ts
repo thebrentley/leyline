@@ -105,6 +105,10 @@ export interface ExtendedGameCard {
   summoningSickness: boolean;
   damage: number;
   chosenColor?: string; // For cards like Utopia Sprawl that choose a color as they enter
+  // Copy effect tracking (Sculpting Steel, Clone, etc.)
+  copyOf?: string; // instanceId of the permanent being copied
+  originalImageUrl?: string; // copy card's own image (for overlay display)
+  originalName?: string; // copy card's printed name before becoming a copy
   // Card data (cached for quick access)
   imageUrl: string | null;
   manaCost: string | null;
@@ -118,6 +122,10 @@ export interface ExtendedGameCard {
   isCommander: boolean;
   commanderTax: number; // How many times commander has been cast from command zone
   keywords: string[]; // parsed keywords like 'flying', 'haste', etc.
+  // MDFC (Modal Double-Faced Card) support
+  layout?: string | null; // 'modal_dfc', 'transform', 'normal', etc.
+  cardFaces?: { name: string; manaCost?: string; typeLine: string; oracleText?: string; power?: string; toughness?: string; imageUri?: string }[] | null;
+  activeFaceIndex?: number; // 0 = front face, 1 = back face
 }
 
 // =====================
@@ -222,6 +230,7 @@ export interface WatchCondition {
 
   // For combat_damage triggers
   damageSource?: 'creature' | 'any';
+  damageSourceSubtype?: string; // e.g., "Artifact" — source must also have this type
   damageTarget?: 'player' | 'planeswalker' | 'creature';
 
   // For card_tapped triggers
@@ -275,6 +284,16 @@ export interface GameWatch {
 }
 
 // =====================
+// Linked Exile Tracking
+// =====================
+
+export interface LinkedExile {
+  sourceCardId: string; // The card whose "until leaves" effect created this
+  exiledCardId: string; // The card that was exiled
+  returnZone: 'battlefield' | 'hand' | 'graveyard'; // Where the card returns when source leaves
+}
+
+// =====================
 // Full Game State
 // =====================
 
@@ -316,6 +335,9 @@ export interface FullPlaytestGameState {
 
   // Watch/Trigger system
   watches: GameWatch[];
+
+  // Linked exile tracking ("until [source] leaves the battlefield")
+  linkedExiles?: LinkedExile[];
 
   // Game log
   log: GameLogEntry[];
@@ -364,7 +386,7 @@ export type GameAction =
   | { type: 'concede' }
 
   // Card actions
-  | { type: 'play_land'; cardId: string }
+  | { type: 'play_land'; cardId: string; faceIndex?: number }
   | { type: 'cast_spell'; cardId: string; targets?: StackTarget[]; payingMana?: ManaPayment }
   | { type: 'activate_ability'; cardId: string; abilityIndex: number; targets?: StackTarget[] }
   | { type: 'tap_for_mana'; cardId: string }

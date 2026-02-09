@@ -1,7 +1,7 @@
-import { useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
-import type { FullPlaytestGameState, ExtendedGameCard, PlayerId } from '~/types/playtesting';
+import type { FullPlaytestGameState, ExtendedGameCard, ExtendedGameZone, PlayerId } from '~/types/playtesting';
 import {
   deriveGameState,
   initialPlaytestUIState,
@@ -12,7 +12,9 @@ import { PlayerBoard } from './PlayerBoard';
 import { HandOverlay } from './HandOverlay';
 import { MulliganView } from './MulliganView';
 import { CardPreviewModal } from './CardPreviewModal';
+import { GraveyardOverlay } from './GraveyardOverlay';
 import { StackPanel } from './StackPanel';
+import { StackCardOverlay, type StackOverlayPhase } from './StackCardOverlay';
 import { GameOverView } from './GameOverView';
 
 interface GameViewProps {
@@ -20,6 +22,8 @@ interface GameViewProps {
   playerName: string;
   opponentName: string;
   thinkingPlayer?: PlayerId | null;
+  pendingCardAnimation?: { cardId: string; controller: PlayerId } | null;
+  onCardAnimationComplete?: () => void;
   onPlayAgain?: () => void;
   onEndGame?: () => void;
 }
@@ -29,6 +33,8 @@ export function GameView({
   playerName,
   opponentName,
   thinkingPlayer,
+  pendingCardAnimation,
+  onCardAnimationComplete,
   onPlayAgain,
   onEndGame,
 }: GameViewProps) {
@@ -40,6 +46,21 @@ export function GameView({
   // Track previous life totals for animation
   const prevPlayerLife = useRef<number | undefined>(undefined);
   const prevOpponentLife = useRef<number | undefined>(undefined);
+
+  // Stack card overlay state
+  const prevTopStackItemIdRef = useRef<string | null>(null);
+  const stackInitializedRef = useRef(false);
+  const overlayItemIdRef = useRef<string | null>(null);
+  const overlaySourceCardIdRef = useRef<string | null>(null);
+  const [stackOverlay, setStackOverlay] = useState<{
+    card: ExtendedGameCard;
+    phase: StackOverlayPhase;
+    controller: PlayerId;
+    destination: ExtendedGameZone | null;
+    autoExit?: boolean;
+    typeLine?: string | null;
+    rowCardCount?: number;
+  } | null>(null);
 
   // Derive view state from game state
   const derived = useMemo(() => {
@@ -85,6 +106,121 @@ export function GameView({
 
   const previewCard = previewData?.card || null;
   const previewAttachments = previewData?.attachments || [];
+
+  // Look up where the overlay card ended up after leaving the stack
+  const getOverlayCardDestination = useCallback((): ExtendedGameZone | null => {
+    if (!overlaySourceCardIdRef.current || !gameState) return null;
+    const card = gameState.cards[overlaySourceCardIdRef.current];
+    if (!card || card.zone === 'stack') return null;
+    return card.zone;
+  }, [gameState]);
+
+  // Get the number of cards in the battlefield row that a card will land in
+  const getRowCardCount = useCallback((controller: PlayerId, typeLine?: string | null): number => {
+    if (!derived) return 0;
+    const tl = typeLine?.toLowerCase() ?? '';
+    const playerData = controller === 'player' ? derived.player : derived.opponent;
+    if (tl.includes('land')) return playerData.lands.length;
+    if (tl.includes('creature')) return playerData.creatures.length;
+    return playerData.artifactsEnchantments.length;
+  }, [derived]);
+
+  // Track stack changes to drive the card overlay animation
+  useEffect(() => {
+    if (!derived || !gameState) return;
+
+    const topItem = derived.stack[0] ?? null;
+    const topItemId = topItem?.id ?? null;
+    const prevTopId = prevTopStackItemIdRef.current;
+
+    // Skip initial load so we don't animate cards already on the stack
+    if (!stackInitializedRef.current) {
+      stackInitializedRef.current = true;
+      prevTopStackItemIdRef.current = topItemId;
+      overlayItemIdRef.current = topItemId;
+      return;
+    }
+
+    if (topItemId !== prevTopId) {
+      if (topItem && topItem.type === 'spell') {
+        // New spell on top of stack — animate it in
+        const card = gameState.cards[topItem.sourceCardId];
+        if (card) {
+          overlayItemIdRef.current = topItem.id;
+          overlaySourceCardIdRef.current = topItem.sourceCardId;
+          setStackOverlay({
+            card,
+            phase: 'entering',
+            controller: topItem.controller,
+            destination: null,
+            typeLine: card.typeLine,
+          });
+        }
+      } else if (!topItem && overlayItemIdRef.current) {
+        // Stack emptied — animate the current overlay card out
+        const dest = getOverlayCardDestination();
+        setStackOverlay((prev) => {
+          if (!prev) return null;
+          const count = getRowCardCount(prev.controller, prev.typeLine);
+          return { ...prev, phase: 'exiting', destination: dest, rowCardCount: count };
+        });
+      }
+      prevTopStackItemIdRef.current = topItemId;
+    }
+
+    // If the specific item we're showing was removed (e.g. resolved while others remain)
+    if (
+      overlayItemIdRef.current &&
+      topItemId !== overlayItemIdRef.current &&
+      stackOverlay?.phase === 'visible'
+    ) {
+      const dest = getOverlayCardDestination();
+      setStackOverlay((prev) => {
+        if (!prev) return null;
+        const count = getRowCardCount(prev.controller, prev.typeLine);
+        return { ...prev, phase: 'exiting', destination: dest, rowCardCount: count };
+      });
+    }
+  }, [derived?.stack, gameState, getOverlayCardDestination]);
+
+  // Trigger overlay for cards entering battlefield from hand (land plays, etc.)
+  useEffect(() => {
+    if (!pendingCardAnimation || !gameState) return;
+    // Don't start a new animation if one is already active
+    if (stackOverlay) return;
+
+    const card = gameState.cards[pendingCardAnimation.cardId];
+    if (!card) return;
+
+    overlaySourceCardIdRef.current = card.instanceId;
+    const count = getRowCardCount(pendingCardAnimation.controller, card.typeLine);
+    setStackOverlay({
+      card,
+      phase: 'entering',
+      controller: pendingCardAnimation.controller,
+      destination: 'battlefield',
+      autoExit: true,
+      typeLine: card.typeLine,
+      rowCardCount: count,
+    });
+  }, [pendingCardAnimation]);
+
+  const handleOverlayEntryComplete = useCallback(() => {
+    setStackOverlay((prev) => {
+      if (!prev) return null;
+      // For autoExit (lands), skip the visible pause and go straight to exiting
+      if (prev.autoExit) {
+        return { ...prev, phase: 'exiting' };
+      }
+      return { ...prev, phase: 'visible' };
+    });
+  }, []);
+
+  const handleOverlayExitComplete = useCallback(() => {
+    setStackOverlay(null);
+    overlayItemIdRef.current = null;
+    onCardAnimationComplete?.();
+  }, [onCardAnimationComplete]);
 
   if (!gameState || !derived) {
     return (
@@ -185,7 +321,6 @@ export function GameView({
         previousLife={opponentPreviousLife}
         manaPool={derived.opponent.manaPool}
         combat={derived.combat}
-        hasPriority={derived.priorityPlayer === 'opponent'}
         handCount={derived.opponent.hand.length}
         onCardPress={handleCardPress}
         onCardLongPress={handleCardLongPress}
@@ -193,6 +328,12 @@ export function GameView({
           dispatch({
             type: 'SET_EXPANDED_HAND',
             hand: uiState.expandedHand === 'opponent' ? null : 'opponent',
+          });
+        }}
+        onGraveyardPress={() => {
+          dispatch({
+            type: 'SET_EXPANDED_GRAVEYARD',
+            graveyard: uiState.expandedGraveyard === 'opponent' ? null : 'opponent',
           });
         }}
       />
@@ -227,7 +368,6 @@ export function GameView({
         previousLife={playerPreviousLife}
         manaPool={derived.player.manaPool}
         combat={derived.combat}
-        hasPriority={derived.priorityPlayer === 'player'}
         handCount={derived.player.hand.length}
         onCardPress={handleCardPress}
         onCardLongPress={handleCardLongPress}
@@ -235,6 +375,12 @@ export function GameView({
           dispatch({
             type: 'SET_EXPANDED_HAND',
             hand: uiState.expandedHand === 'player' ? null : 'player',
+          });
+        }}
+        onGraveyardPress={() => {
+          dispatch({
+            type: 'SET_EXPANDED_GRAVEYARD',
+            graveyard: uiState.expandedGraveyard === 'player' ? null : 'player',
           });
         }}
       />
@@ -261,12 +407,43 @@ export function GameView({
         position="bottom"
       />
 
+      {/* Opponent Graveyard Overlay (top, slides from left) */}
+      <GraveyardOverlay
+        cards={derived.opponent.graveyard}
+        isOpen={uiState.expandedGraveyard === 'opponent'}
+        onClose={() => dispatch({ type: 'SET_EXPANDED_GRAVEYARD', graveyard: null })}
+        onCardPress={handleCardLongPress}
+        position="top"
+      />
+
+      {/* Player Graveyard Overlay (bottom, slides from left) */}
+      <GraveyardOverlay
+        cards={derived.player.graveyard}
+        isOpen={uiState.expandedGraveyard === 'player'}
+        onClose={() => dispatch({ type: 'SET_EXPANDED_GRAVEYARD', graveyard: null })}
+        onCardPress={handleCardLongPress}
+        position="bottom"
+      />
+
       {/* Card Preview Modal */}
       <CardPreviewModal
         card={previewCard}
         attachments={previewAttachments}
         visible={!!previewCard}
         onClose={handleClosePreview}
+      />
+
+      {/* Stack Card Overlay — shows card large in center when cast */}
+      <StackCardOverlay
+        card={stackOverlay?.card ?? null}
+        phase={stackOverlay?.phase ?? null}
+        controller={stackOverlay?.controller ?? null}
+        destination={stackOverlay?.destination ?? null}
+        typeLine={stackOverlay?.typeLine}
+        autoExit={stackOverlay?.autoExit}
+        rowCardCount={stackOverlay?.rowCardCount}
+        onEntryComplete={handleOverlayEntryComplete}
+        onExitComplete={handleOverlayExitComplete}
       />
     </View>
   );

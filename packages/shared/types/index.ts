@@ -250,6 +250,7 @@ export interface PlaytestMessageBase {
   type: string;
   deckId: string;
   timestamp: string;
+  seq: number;
 }
 
 /**

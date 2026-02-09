@@ -12,5 +12,6 @@ export { HandOverlay } from './HandOverlay';
 export { MulliganView } from './MulliganView';
 export { CardPreviewModal } from './CardPreviewModal';
 export { StackPanel } from './StackPanel';
+export { StackCardOverlay } from './StackCardOverlay';
 export { PriorityIndicator } from './PriorityIndicator';
 export { GameOverView } from './GameOverView';

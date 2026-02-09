@@ -30,6 +30,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private userSockets: Map<string, Set<string>> = new Map();
   // Track active playtest sessions: deckId -> sessionId
   private activePlaytestSessions: Map<string, string> = new Map();
+  // Per-deck message sequence counter for ordered delivery
+  private playtestSeqCounters: Map<string, number> = new Map();
 
   constructor(private jwtService: JwtService) {}
 
@@ -114,6 +116,15 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
+  /**
+   * Get the next sequence number for a deck's playtest messages
+   */
+  private nextSeq(deckId: string): number {
+    const seq = (this.playtestSeqCounters.get(deckId) ?? 0) + 1;
+    this.playtestSeqCounters.set(deckId, seq);
+    return seq;
+  }
+
   // =====================
   // Playtesting WebSocket Methods
   // =====================
@@ -178,6 +189,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       ...event,
       deckId,
       timestamp: new Date().toISOString(),
+      seq: this.nextSeq(deckId),
     };
 
     // Debug: check how many clients are in the room
@@ -226,12 +238,15 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     const sessionId = `playtest-${deckId}-${Date.now()}`;
     this.activePlaytestSessions.set(deckId, sessionId);
+    // Reset sequence counter for new session
+    this.playtestSeqCounters.set(deckId, 0);
 
     this.emitPlaytestMessage(deckId, {
       type: "session:started",
       deckId,
       sessionId,
       timestamp: new Date().toISOString(),
+      seq: this.nextSeq(deckId),
     });
 
     return sessionId;
@@ -253,6 +268,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       deckId,
       sessionId,
       timestamp: new Date().toISOString(),
+      seq: this.nextSeq(deckId),
     });
 
     return true;

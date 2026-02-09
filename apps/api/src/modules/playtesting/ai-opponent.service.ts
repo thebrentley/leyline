@@ -24,6 +24,25 @@ export class AIOpponentService {
   }
 
   /**
+   * Wrap a promise with a timeout to prevent indefinite hangs
+   * @param promise The promise to wrap
+   * @param timeoutMs Timeout in milliseconds (default: 30000ms = 30 seconds)
+   * @param errorMessage Error message if timeout occurs
+   */
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number = 30000,
+    errorMessage: string = "API call timed out"
+  ): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
+      ),
+    ]);
+  }
+
+  /**
    * Decide what action to take given the current game state
    */
   async decideAction(
@@ -56,41 +75,54 @@ export class AIOpponentService {
           manaPool: state[player].manaPool,
           lands: state.battlefieldOrder[player]
             .map((id) => state.cards[id])
+            .filter((card) => card?.typeLine?.includes("Land"))
+            .map((card) => ({ name: card?.name, tapped: card?.isTapped })),
+          permanents: state.battlefieldOrder[player]
+            .map((id) => state.cards[id])
+            .filter((card) => !card?.typeLine?.includes("Land"))
             .map((card) => ({ name: card?.name, tapped: card?.isTapped })),
         },
         null,
         2,
       ),
     );
+    // Filter tap_for_mana - castSpell() auto-taps lands via spendManaForCost(),
+    // so tap_for_mana is redundant for both heuristics and LLM decisions
+    const actionableActions = availableActions.filter(a => a.type !== "tap_for_mana");
+
     // Check if heuristics can handle this decision
     const heuristicResult = this.getHeuristicAction(
       state,
       player,
-      availableActions,
+      actionableActions,
     );
     if (heuristicResult) {
       return heuristicResult;
     }
 
     // Build the decision prompt
-    const prompt = this.buildDecisionPrompt(state, player, availableActions);
+    const prompt = this.buildDecisionPrompt(state, player, actionableActions);
     const systemPrompt = this.getSystemPrompt();
 
     console.log("[AI] Decision prompt:", prompt);
 
     try {
-      const response = await this.anthropic.beta.promptCaching.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        system: [
-          {
-            type: "text",
-            text: systemPrompt,
-            cache_control: { type: "ephemeral" }, // Cache system prompt for 5 min
-          },
-        ],
-        messages: [{ role: "user", content: prompt }],
-      });
+      const response = await this.withTimeout(
+        this.anthropic.beta.promptCaching.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1024,
+          system: [
+            {
+              type: "text",
+              text: systemPrompt,
+              cache_control: { type: "ephemeral" }, // Cache system prompt for 5 min
+            },
+          ],
+          messages: [{ role: "user", content: prompt }],
+        }),
+        30000,
+        "AI decision timed out after 30 seconds"
+      );
 
       // Extract token usage from response
       const tokenUsage: TokenUsage = {
@@ -105,12 +137,13 @@ export class AIOpponentService {
       // Parse the response
       const content = response.content[0];
       if (content.type === "text") {
-        const decision = this.parseDecision(content.text, availableActions);
+        const decision = this.parseDecision(content.text, actionableActions);
         decision.tokenUsage = tokenUsage;
         return decision;
       }
     } catch (error) {
       console.error("[AI] Error getting AI decision:", error);
+      this.logApiError(error);
     }
 
     // Fallback: pass priority
@@ -141,6 +174,7 @@ When deciding what to do, consider:
 8. **Combat Math** - Favorable attacks and blocks
 9. **Targeting** - Before casting spells that require targets, verify: (a) valid targets exist, and (b) the target is optimal. Don't cast removal on a weak creature if a bigger threat exists. Don't cast a buff spell if you have no creatures
 10. **Land Selection** - When choosing which land to play, prefer lands that enter the battlefield tapped during early turns (1-4) unless an untapped land allows you to cast a spell this turn. Save untapped lands for when you need the mana immediately
+11. **Synergy Awareness** - Before sacrificing or consuming tokens/permanents, check if other permanents you control have abilities that use them. For example, don't sacrifice a token for a small effect if another permanent can turn that token into something much more valuable. Read the oracle text of your permanents carefully to identify synergies between cards
 
 ## Response Format
 You MUST respond in valid JSON format:
@@ -205,7 +239,7 @@ ${this.formatBattlefieldCards(state, state.battlefieldOrder[opponent], opponent)
 ${this.formatManaAvailable(state, player)}
 
 ### Castable Spells Analysis
-${this.formatCastableSpellsAnalysis(state, player, availableActions)}
+${this.formatCastableSpellsAnalysis(state, player)}
 
 `;
 
@@ -353,15 +387,28 @@ Analyze the game state and choose the best action. Respond in JSON format with a
             .map(([k, v]) => `${v} ${k}`)
             .join(", ");
           if (counters) status += ` {${counters}}`;
-          return `  - ${c.name} ${c.power}/${c.toughness}${status}${c.keywords.length > 0 ? ` [${c.keywords.join(", ")}]` : ""}`;
+          const oracleText = c.oracleText?.trim();
+          const hasAbilities = oracleText && !c.keywords.some((k) => oracleText.toLowerCase() === k.toLowerCase());
+          const abilityInfo = hasAbilities ? ` | ${oracleText}` : "";
+          return `  - ${c.name} ${c.power}/${c.toughness}${status}${c.keywords.length > 0 ? ` [${c.keywords.join(", ")}]` : ""}${abilityInfo}`;
         })
         .join("\n")}\n`;
     }
 
     if (others.length > 0) {
-      result += `Other permanents: ${others
-        .map((c) => `${c.name}${c.isTapped ? " (T)" : ""}`)
-        .join(", ")}\n`;
+      result += `Other permanents (${others.length}):\n${others
+        .map((c) => {
+          let status = "";
+          if (c.isTapped) status += " (T)";
+          const counters = Object.entries(c.counters)
+            .filter(([, v]) => v > 0)
+            .map(([k, v]) => `${v} ${k}`)
+            .join(", ");
+          if (counters) status += ` {${counters}}`;
+          const oracleText = c.oracleText?.trim();
+          return `  - ${c.name}${status}${oracleText ? ` | ${oracleText}` : ""}`;
+        })
+        .join("\n")}\n`;
     }
 
     return result || "(empty)";
@@ -390,9 +437,10 @@ Analyze the game state and choose the best action. Respond in JSON format with a
       if (!card || card.isTapped) continue;
 
       // Check if it's a mana source
+      // Use negative lookbehind to exclude granted abilities (e.g. 'gain "{T}: Add...')
+      const hasTapAbility = /(?<!")\{T\}: Add/.test(card.oracleText || "");
       const canProduceMana =
-        card.typeLine?.includes("Land") ||
-        card.oracleText?.includes("{T}: Add");
+        card.typeLine?.includes("Land") || hasTapAbility;
 
       // Creatures with summoning sickness can't tap for mana (unless they have haste)
       const hasSummoningSickness =
@@ -400,7 +448,22 @@ Analyze the game state and choose the best action. Respond in JSON format with a
         card.summoningSickness &&
         !card.keywords.includes("haste");
 
-      if (canProduceMana && !hasSummoningSickness) {
+      // Check activation conditions (e.g. Temple of the False God)
+      const meetsCondition = this.meetsActivationCondition(card, state, player);
+
+      // Exclude fetch-only lands (they sacrifice to search, they don't produce mana).
+      // But include lands that ALSO have a separate mana ability (e.g., Myriad Landscape: {T}: Add {C})
+      const oracleTextLower = card.oracleText?.toLowerCase() || "";
+      const isFetchOnly =
+        oracleTextLower.includes("sacrifice") &&
+        oracleTextLower.includes("search your library") &&
+        oracleTextLower.includes("basic land") &&
+        !(card.oracleText || "").split("\n").some(
+          (line) =>
+            /\{T\}: Add/i.test(line) && !line.toLowerCase().includes("sacrifice"),
+        );
+
+      if (canProduceMana && !hasSummoningSickness && meetsCondition && !isFetchOnly) {
         availableMana++;
 
         // Determine color (simplified)
@@ -441,12 +504,10 @@ Analyze the game state and choose the best action. Respond in JSON format with a
 
   /**
    * Analyze which spells can be cast with available mana
-   * This helps the AI understand when tapping lands is useful vs wasteful
    */
   private formatCastableSpellsAnalysis(
     state: FullPlaytestGameState,
     player: PlayerId,
-    availableActions: GameAction[],
   ): string {
     const playerState = state[player];
 
@@ -475,7 +536,22 @@ Analyze the game state and choose the best action. Respond in JSON format with a
         card.summoningSickness &&
         !card.keywords.includes("haste");
 
-      if (canProduceMana && !hasSummoningSickness) {
+      // Check activation conditions (e.g. Temple of the False God)
+      const meetsCondition = this.meetsActivationCondition(card, state, player);
+
+      // Exclude fetch-only lands (they sacrifice to search, they don't produce mana).
+      // But include lands that ALSO have a separate mana ability (e.g., Myriad Landscape: {T}: Add {C})
+      const oracleTextCheck = card.oracleText?.toLowerCase() || "";
+      const isFetchOnlyCheck =
+        oracleTextCheck.includes("sacrifice") &&
+        oracleTextCheck.includes("search your library") &&
+        oracleTextCheck.includes("basic land") &&
+        !(card.oracleText || "").split("\n").some(
+          (line) =>
+            /\{T\}: Add/i.test(line) && !line.toLowerCase().includes("sacrifice"),
+        );
+
+      if (canProduceMana && !hasSummoningSickness && meetsCondition && !isFetchOnlyCheck) {
         totalAvailableMana++;
         const typeLine = card.typeLine?.toLowerCase() || "";
         const oracleText = card.oracleText?.toLowerCase() || "";
@@ -501,6 +577,11 @@ Analyze the game state and choose the best action. Respond in JSON format with a
     const pool = playerState.manaPool;
     const poolTotal = Object.values(pool).reduce((sum, v) => sum + v, 0);
     const effectiveTotalMana = totalAvailableMana + poolTotal;
+
+    // Count creatures on player's battlefield for spell usefulness checks
+    const playerCreatureCount = state.battlefieldOrder[player]
+      .map((id) => state.cards[id])
+      .filter((card) => card?.typeLine?.includes("Creature")).length;
 
     // Analyze each spell in hand
     const handCards = playerState.handOrder.map((id) => state.cards[id]);
@@ -550,8 +631,17 @@ Analyze the game state and choose the best action. Respond in JSON format with a
 
       if (canCast) {
         castableSpells.push(card.name);
+        // Warn if spell only affects creatures you control but you have none
+        const oracleLower = (card.oracleText || "").toLowerCase();
+        const affectsYourCreatures =
+          oracleLower.includes("creatures you control") ||
+          oracleLower.includes("each creature you control");
+        const noEffectWarning =
+          affectsYourCreatures && playerCreatureCount === 0
+            ? " -- WARNING: you have NO creatures, this spell would have no effect. Do NOT cast."
+            : "";
         spellAnalysis.push(
-          `- ${card.name} (${costDisplay}) - CAN CAST with ${cmc} mana`,
+          `- ${card.name} (${costDisplay}) - CAN CAST with ${cmc} mana${noEffectWarning}`,
         );
       } else {
         spellAnalysis.push(
@@ -560,34 +650,11 @@ Analyze the game state and choose the best action. Respond in JSON format with a
       }
     }
 
-    // Check if there are tap_for_mana actions but no castable spells
-    const hasTapForManaActions = availableActions.some(
-      (a) => a.type === "tap_for_mana",
-    );
-    const hasCastSpellActions = availableActions.some(
-      (a) => a.type === "cast_spell",
-    );
-
-    let guidance = "";
-    if (
-      hasTapForManaActions &&
-      !hasCastSpellActions &&
-      castableSpells.length === 0
-    ) {
-      guidance = `\n**⚠️ IMPORTANT:** You have no spells that can be cast this turn. Tapping lands for mana would be wasteful since unused mana empties at end of phase. You should PASS PRIORITY instead.`;
-    } else if (
-      hasTapForManaActions &&
-      castableSpells.length > 0 &&
-      !hasCastSpellActions
-    ) {
-      guidance = `\n**Note:** You have castable spells in hand but they are not in the available actions yet. You may need to tap lands first to add mana to your pool, then the cast action will become available.`;
-    }
-
     if (spellAnalysis.length === 0) {
       return "(No spells in hand to analyze)";
     }
 
-    return spellAnalysis.join("\n") + guidance;
+    return spellAnalysis.join("\n");
   }
 
   /**
@@ -814,12 +881,45 @@ Analyze the game state and choose the best action. Respond in JSON format with a
 
       case "cast_spell": {
         const card = state.cards[action.cardId];
-        return `Cast: ${card?.name || "Unknown"} (${card?.manaCost || "free"})`;
+        let castDesc = `Cast: ${card?.name || "Unknown"} (${card?.manaCost || "free"})`;
+        if (action.targets?.length) {
+          const targetNames = action.targets
+            .map((t) => {
+              if (t.type === "player") return t.id;
+              const tc = state.cards[t.id];
+              if (!tc) return "Unknown";
+              const owner =
+                tc.controller === state.activePlayer ? "your" : "opponent's";
+              return `${owner} ${tc.name}`;
+            })
+            .join(", ");
+          castDesc += ` targeting ${targetNames}`;
+        }
+        return castDesc;
       }
 
       case "activate_ability": {
         const card = state.cards[action.cardId];
-        return `Activate ability of ${card?.name || "Unknown"}`;
+        if (!card) return `Activate ability of Unknown`;
+        const oracleLower = card.oracleText?.toLowerCase() || "";
+        if (
+          oracleLower.includes("sacrifice") &&
+          oracleLower.includes("search your library") &&
+          oracleLower.includes("basic land")
+        ) {
+          return `Activate ${card.name}: Sacrifice to search library for a basic land (enters tapped)`;
+        }
+        // Show parsed ability details for general activated abilities
+        const abilityLine = this.getActivatedAbilityLine(card, action.abilityIndex);
+        if (abilityLine) {
+          const counters = Object.entries(card.counters)
+            .filter(([, v]) => v > 0)
+            .map(([k, v]) => `${v} ${k}`)
+            .join(", ");
+          const counterInfo = counters ? ` [has ${counters} counter(s)]` : "";
+          return `Activate ${card.name}: ${abilityLine.costText} → ${abilityLine.effectText}${counterInfo}`;
+        }
+        return `Activate ability of ${card.name}`;
       }
 
       case "tap_for_mana": {
@@ -868,6 +968,102 @@ Analyze the game state and choose the best action. Respond in JSON format with a
       default:
         return `Action: ${action.type}`;
     }
+  }
+
+  /**
+   * Extract the Nth activated ability line from a card's oracle text.
+   * Lightweight version of GameEngineService.parseActivatedAbilities for display purposes.
+   */
+  private getActivatedAbilityLine(
+    card: ExtendedGameCard,
+    abilityIndex: number,
+  ): { costText: string; effectText: string } | null {
+    if (!card.oracleText) return null;
+
+    const cleanedText = card.oracleText.replace(/\([^)]*\)/g, "").trim();
+    const lines = cleanedText.split("\n");
+    let abilityCount = 0;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      // Skip triggered/static/loyalty abilities
+      if (/^(?:when|whenever|at the|this)\b/i.test(trimmed)) continue;
+      if (/^[+\-]?\d+\s*:/.test(trimmed)) continue;
+
+      // Find colon not inside curly braces
+      let depth = 0;
+      let colonIdx = -1;
+      for (let i = 0; i < trimmed.length; i++) {
+        if (trimmed[i] === "{") depth++;
+        else if (trimmed[i] === "}") depth--;
+        else if (trimmed[i] === ":" && depth === 0) { colonIdx = i; break; }
+      }
+      if (colonIdx === -1) continue;
+
+      const costText = trimmed.substring(0, colonIdx).trim();
+      const effectText = trimmed.substring(colonIdx + 1).trim();
+      if (!costText || !effectText) continue;
+
+      // Must contain a recognizable cost element
+      const hasCost =
+        /\{[TQWUBRGC\d]+\}/i.test(costText) ||
+        /\b(?:sacrifice|remove|pay|discard|exile|tap)\b/i.test(costText);
+      if (!hasCost) continue;
+
+      // Exclude mana abilities
+      if (/^add\b/i.test(effectText) && /^\{T\}$/.test(costText.replace(/,\s*/g, "").trim())) continue;
+
+      // Exclude fetch lands
+      const fullLower = trimmed.toLowerCase();
+      if (fullLower.includes("sacrifice") && fullLower.includes("search your library") && fullLower.includes("basic land")) continue;
+
+      if (abilityCount === abilityIndex) {
+        return { costText, effectText };
+      }
+      abilityCount++;
+    }
+
+    return null;
+  }
+
+  /**
+   * Check if a fetch land's ability has a mana cost beyond {T} and sacrifice.
+   * For example, Myriad Landscape costs {2} in addition to {T} and sacrifice.
+   */
+  private fetchLandHasManaCost(card: ExtendedGameCard): boolean {
+    if (!card?.oracleText) return false;
+
+    const lines = card.oracleText.replace(/\([^)]*\)/g, "").split("\n");
+    for (const line of lines) {
+      const lower = line.toLowerCase().trim();
+      if (
+        lower.includes("sacrifice") &&
+        lower.includes("search your library") &&
+        lower.includes("basic land")
+      ) {
+        // Find colon separating cost from effect (not inside braces)
+        let depth = 0;
+        let colonIdx = -1;
+        const trimmed = line.trim();
+        for (let i = 0; i < trimmed.length; i++) {
+          if (trimmed[i] === "{") depth++;
+          else if (trimmed[i] === "}") depth--;
+          else if (trimmed[i] === ":" && depth === 0) {
+            colonIdx = i;
+            break;
+          }
+        }
+        if (colonIdx === -1) return false;
+
+        const costPart = trimmed.substring(0, colonIdx);
+        // Check for mana symbols other than {T}
+        const manaSymbols = costPart.match(/\{[WUBRGC\d]+\}/gi) || [];
+        return manaSymbols.some((s) => s.toUpperCase() !== "{T}");
+      }
+    }
+    return false;
   }
 
   /**
@@ -1017,18 +1213,22 @@ Respond with JSON:
 Where indices correspond to the order in "Your Creatures That Can Attack" (0-indexed).`;
 
     try {
-      const response = await this.anthropic.beta.promptCaching.messages.create({
-        model: "claude-3-5-haiku-20241022", // Haiku for combat decisions
-        max_tokens: 512,
-        system: [
-          {
-            type: "text",
-            text: "You are an expert MTG player deciding combat. Be aggressive when it makes sense, but avoid throwing away creatures for no value.",
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-        messages: [{ role: "user", content: prompt }],
-      });
+      const response = await this.withTimeout(
+        this.anthropic.beta.promptCaching.messages.create({
+          model: "claude-3-5-haiku-20241022", // Haiku for combat decisions
+          max_tokens: 512,
+          system: [
+            {
+              type: "text",
+              text: "You are an expert MTG player deciding combat. Be aggressive when it makes sense, but avoid throwing away creatures for no value.",
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+          messages: [{ role: "user", content: prompt }],
+        }),
+        30000,
+        "AI attacker decision timed out after 30 seconds"
+      );
 
       // Extract token usage
       const tokenUsage: TokenUsage = {
@@ -1059,6 +1259,7 @@ Where indices correspond to the order in "Your Creatures That Can Attack" (0-ind
       }
     } catch (error) {
       console.error("[AI] Error deciding attackers:", error);
+      this.logApiError(error);
     }
 
     // Default: attack with everything if opponent has no blockers
@@ -1140,18 +1341,22 @@ Respond with JSON:
 Use empty array for blocks if you don't want to block.`;
 
     try {
-      const response = await this.anthropic.beta.promptCaching.messages.create({
-        model: "claude-3-5-haiku-20241022", // Haiku for combat decisions
-        max_tokens: 512,
-        system: [
-          {
-            type: "text",
-            text: "You are an expert MTG player deciding blocks. Preserve your life total while avoiding unnecessary creature trades.",
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-        messages: [{ role: "user", content: prompt }],
-      });
+      const response = await this.withTimeout(
+        this.anthropic.beta.promptCaching.messages.create({
+          model: "claude-3-5-haiku-20241022", // Haiku for combat decisions
+          max_tokens: 512,
+          system: [
+            {
+              type: "text",
+              text: "You are an expert MTG player deciding blocks. Preserve your life total while avoiding unnecessary creature trades.",
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+          messages: [{ role: "user", content: prompt }],
+        }),
+        30000,
+        "AI blocker decision timed out after 30 seconds"
+      );
 
       // Extract token usage
       const tokenUsage: TokenUsage = {
@@ -1187,6 +1392,7 @@ Use empty array for blocks if you don't want to block.`;
       }
     } catch (error) {
       console.error("[AI] Error deciding blockers:", error);
+      this.logApiError(error);
     }
 
     return { blockers: [] };
@@ -1194,7 +1400,8 @@ Use empty array for blocks if you don't want to block.`;
 
   /**
    * Decide whether to mulligan the opening hand
-   * Uses London mulligan rules - always draw 7, then put X cards on bottom where X = mulligan count
+   * Simple heuristic: keep 3-5 land hands, mulligan the rest.
+   * For exactly 2 lands, keep if we have mana rocks or mana dorks.
    */
   async decideMulligan(
     state: FullPlaytestGameState,
@@ -1204,11 +1411,6 @@ Use empty array for blocks if you don't want to block.`;
     const playerState = state[player];
     const hand = playerState.handOrder.map((id) => state.cards[id]);
 
-    // If this is a free mulligan (first one in Commander), be more willing to mulligan
-    const isFreeMultiplayer =
-      mulliganCount === 0 &&
-      (state.format === "commander" || state.format === "edh");
-
     // After 3+ mulligans, always keep (going to 4 cards or fewer is usually bad)
     if (mulliganCount >= 3) {
       return {
@@ -1217,71 +1419,61 @@ Use empty array for blocks if you don't want to block.`;
       };
     }
 
-    if (!this.anthropic) {
-      // Fallback: basic heuristic - keep if we have 2-5 lands
-      const landCount = hand.filter((c) => c.typeLine?.includes("Land")).length;
-      const keep = landCount >= 2 && landCount <= 5;
+    const landCount = hand.filter((c) => c.typeLine?.includes("Land")).length;
+
+    // 3-5 lands: always keep
+    if (landCount >= 3 && landCount <= 5) {
       return {
-        keep,
-        reasoning: keep
-          ? `Keeping with ${landCount} lands`
-          : `Mulliganing: ${landCount} lands is not ideal`,
+        keep: true,
+        reasoning: `Keeping with ${landCount} lands`,
       };
     }
 
-    // Build the mulligan decision prompt
-    const prompt = this.buildMulliganPrompt(
-      state,
-      player,
-      hand,
-      mulliganCount,
-      isFreeMultiplayer,
-    );
-
-    try {
-      const response = await this.anthropic.beta.promptCaching.messages.create({
-        model: "claude-3-5-haiku-20241022", // Haiku for simple mulligan decisions
-        max_tokens: 512,
-        system: [
-          {
-            type: "text",
-            text: this.getMulliganSystemPrompt(),
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-        messages: [{ role: "user", content: prompt }],
-      });
-
-      // Extract token usage
-      const tokenUsage: TokenUsage = {
-        inputTokens: response.usage?.input_tokens || 0,
-        outputTokens: response.usage?.output_tokens || 0,
-        cacheReadInputTokens:
-          (response.usage as any)?.cache_read_input_tokens || 0,
-        cacheCreationInputTokens:
-          (response.usage as any)?.cache_creation_input_tokens || 0,
+    // 0-1 lands: always mulligan
+    if (landCount < 2) {
+      return {
+        keep: false,
+        reasoning: `Mulliganing: only ${landCount} land${landCount === 1 ? "" : "s"}`,
       };
-
-      const content = response.content[0];
-      if (content.type === "text") {
-        const jsonMatch = content.text.match(/\{\s*"[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          return {
-            keep: parsed.keep === true,
-            reasoning: parsed.reasoning || "No reasoning provided",
-            tokenUsage,
-          };
-        }
-      }
-    } catch (error) {
-      console.error("[AI] Error deciding mulligan:", error);
     }
 
-    // Fallback: keep the hand
+    // 6+ lands: always mulligan
+    if (landCount > 5) {
+      return {
+        keep: false,
+        reasoning: `Mulliganing: ${landCount} lands is too many`,
+      };
+    }
+
+    // Exactly 2 lands: keep if we have mana acceleration (Sol Ring, Arcane Signet, or mana dorks)
+    const hasManaAcceleration = hand.some((c) => {
+      const name = c.name?.toLowerCase() || "";
+      if (name === "sol ring" || name === "arcane signet") return true;
+      // Mana dork: creature that taps to add mana
+      const isCreature = c.typeLine?.includes("Creature");
+      const tapForMana = /\{T\}.*[Aa]dd/.test(c.oracleText || "");
+      return isCreature && tapForMana;
+    });
+
+    if (hasManaAcceleration) {
+      const accelCards = hand
+        .filter((c) => {
+          const name = c.name?.toLowerCase() || "";
+          if (name === "sol ring" || name === "arcane signet") return true;
+          const isCreature = c.typeLine?.includes("Creature");
+          const tapForMana = /\{T\}.*[Aa]dd/.test(c.oracleText || "");
+          return isCreature && tapForMana;
+        })
+        .map((c) => c.name);
+      return {
+        keep: true,
+        reasoning: `Keeping 2 lands with mana acceleration: ${accelCards.join(", ")}`,
+      };
+    }
+
     return {
-      keep: true,
-      reasoning: "Error evaluating hand, keeping by default",
+      keep: false,
+      reasoning: `Mulliganing: only 2 lands and no mana acceleration`,
     };
   }
 
@@ -1333,18 +1525,22 @@ Use empty array for blocks if you don't want to block.`;
     );
 
     try {
-      const response = await this.anthropic.beta.promptCaching.messages.create({
-        model: "claude-3-5-haiku-20241022", // Haiku for simple bottom cards decisions
-        max_tokens: 512,
-        system: [
-          {
-            type: "text",
-            text: "You are an expert MTG player deciding which cards to put on the bottom of your library after a mulligan. Choose cards that are least useful in the early game or that you have duplicates of.",
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-        messages: [{ role: "user", content: prompt }],
-      });
+      const response = await this.withTimeout(
+        this.anthropic.beta.promptCaching.messages.create({
+          model: "claude-3-5-haiku-20241022", // Haiku for simple bottom cards decisions
+          max_tokens: 512,
+          system: [
+            {
+              type: "text",
+              text: "You are an expert MTG player deciding which cards to put on the bottom of your library after a mulligan. Choose cards that are least useful in the early game or that you have duplicates of.",
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+          messages: [{ role: "user", content: prompt }],
+        }),
+        30000,
+        "AI bottom cards decision timed out after 30 seconds"
+      );
 
       // Extract token usage
       const tokenUsage: TokenUsage = {
@@ -1379,6 +1575,7 @@ Use empty array for blocks if you don't want to block.`;
       }
     } catch (error) {
       console.error("[AI] Error deciding bottom cards:", error);
+      this.logApiError(error);
     }
 
     // Fallback: bottom highest CMC non-lands
@@ -1394,89 +1591,6 @@ Use empty array for blocks if you don't want to block.`;
       cardIds: sortedHand.slice(0, cardsToBottom).map((c) => c.instanceId),
       reasoning: "Fallback: bottoming highest CMC non-land cards",
     };
-  }
-
-  /**
-   * Get system prompt for mulligan decisions
-   */
-  private getMulliganSystemPrompt(): string {
-    return `You are an expert Magic: The Gathering player evaluating an opening hand.
-
-## Mulligan Guidelines for Commander
-
-A keepable hand typically has:
-1. **Mana Sources**: 2-4 lands (or mana rocks) to cast early spells
-2. **Curve**: Cards you can cast in the first few turns
-3. **Game Plan**: Cards that advance your strategy (card draw, ramp, or key pieces)
-4. **Color Access**: Lands that produce the colors you need for cards in hand
-
-Red flags to mulligan:
-- 0-1 lands (won't cast anything)
-- 6-7 lands with no action
-- All high-cost cards with no ramp
-- Wrong colors for the cards in hand
-- No clear path to doing anything meaningful
-
-In Commander with free first mulligan, be more willing to mulligan marginal hands.
-
-## Response Format
-Respond with JSON:
-{
-  "keep": <true or false>,
-  "reasoning": "<1-2 sentence explanation>"
-}`;
-  }
-
-  /**
-   * Build the mulligan decision prompt
-   */
-  private buildMulliganPrompt(
-    state: FullPlaytestGameState,
-    player: PlayerId,
-    hand: ExtendedGameCard[],
-    mulliganCount: number,
-    isFreeMultiplayer: boolean,
-  ): string {
-    const deckName =
-      player === "player" ? state.deckName : state.opponentDeckName;
-    const commanders = state[player].commandZone.map((id) => state.cards[id]);
-
-    const cardsAfterKeep = 7 - mulliganCount;
-
-    // Format commander details with CMC and oracle text
-    const commanderDetails =
-      commanders.length > 0
-        ? commanders
-            .map(
-              (
-                c,
-              ) => `- **${c.name}** (CMC: ${c.cmc}, Mana Cost: ${c.manaCost || "None"})
-  Type: ${c.typeLine}
-  Oracle Text: ${c.oracleText || "No text"}`,
-            )
-            .join("\n")
-        : "None";
-
-    return `## Mulligan Decision
-
-**Deck:** ${deckName}
-**Mulligan Count:** ${mulliganCount}${isFreeMultiplayer ? " (free mulligan in multiplayer)" : ""}
-**Cards After Keeping:** ${cardsAfterKeep}
-
-### Commander(s):
-${commanderDetails}
-
-### Your Opening Hand (${hand.length} cards):
-${hand.map((c, i) => `${i + 1}. ${c.name} - ${c.manaCost || "No cost"} - ${c.typeLine}${c.oracleText ? `\n   Oracle: ${c.oracleText}` : ""}`).join("\n")}
-
-### Analysis Questions:
-- How many lands? Do they produce the right colors?
-- Does my commander offer any means of producing mana (e.g., mana abilities, cost reduction)?
-- Do other cards in my hand have ways to produce mana or fetch lands (e.g., mana dorks, ramp spells, land tutors)?
-- Can I afford to cast the mana-producing/ramp cards in my hand with my current lands?
-- Is it worth going to ${cardsAfterKeep - 1} cards for a better hand?
-
-Should you keep this hand or mulligan?`;
   }
 
   /**
@@ -1520,8 +1634,9 @@ Choose exactly ${cardsToBottom} indices (0-indexed).`;
     availableActions: GameAction[],
   ): { action: GameAction; reasoning: string } | null {
     // Filter out concede - heuristics will never concede
+    // (tap_for_mana already filtered upstream in decideAction)
     const filteredActions = availableActions.filter(
-      (action) => action.type !== "concede" && action.type !== "tap_for_mana",
+      (action) => action.type !== "concede",
     );
 
     const passAction = filteredActions.find((a) => a.type === "pass_priority");
@@ -1635,7 +1750,7 @@ Choose exactly ${cardsToBottom} indices (0-indexed).`;
       (state.step === "untap" || state.step === "upkeep")
     ) {
       // Check if we have any instant-speed actions (not just pass_priority)
-      // Note: tap_for_mana is already filtered out of filteredActions
+
       const hasInstantAction = filteredActions.some(
         (a) => a.type !== "pass_priority",
       );
@@ -1654,7 +1769,7 @@ Choose exactly ${cardsToBottom} indices (0-indexed).`;
       state.stack.length === 0
     ) {
       // Check if we have any meaningful actions besides pass_priority
-      // Note: tap_for_mana is already filtered out of filteredActions
+
       const hasMeaningfulAction = filteredActions.some(
         (a) => a.type !== "pass_priority",
       );
@@ -1664,6 +1779,36 @@ Choose exactly ${cardsToBottom} indices (0-indexed).`;
           reasoning:
             "Auto-passing on opponent's turn (no instant-speed plays).",
         };
+      }
+    }
+
+    // Auto-activate zero-cost fetch lands during main phase (the found land enters tapped anyway,
+    // so there's no strategic reason to hold the fetch land in most cases).
+    // Fetch lands with mana costs (e.g., Myriad Landscape: {2}, {T}, Sacrifice) are left to the LLM.
+    if (
+      state.activePlayer === player &&
+      (state.phase === "precombat_main" || state.phase === "postcombat_main") &&
+      state.stack.length === 0
+    ) {
+      const activateAbilityActions = filteredActions.filter(
+        (a) => a.type === "activate_ability",
+      );
+      for (const abilityAction of activateAbilityActions) {
+        if (abilityAction.type === "activate_ability") {
+          const abilityCard = state.cards[abilityAction.cardId];
+          const oracleLower = abilityCard?.oracleText?.toLowerCase() || "";
+          if (
+            oracleLower.includes("sacrifice") &&
+            oracleLower.includes("search your library") &&
+            oracleLower.includes("basic land") &&
+            !this.fetchLandHasManaCost(abilityCard)
+          ) {
+            return {
+              action: abilityAction,
+              reasoning: `Activating ${abilityCard?.name || "fetch land"} to search for a basic land.`,
+            };
+          }
+        }
       }
     }
 
@@ -1705,131 +1850,31 @@ Choose exactly ${cardsToBottom} indices (0-indexed).`;
       }
     }
 
-    // Auto-tap mana when there's a pending cast_spell action
-    // If we have tap_for_mana actions and a cast_spell action exists,
-    // and we need to tap lands to afford the spell, auto-tap
-    const tapForManaActions = availableActions.filter(
-      (a) => a.type === "tap_for_mana",
-    );
+    // Auto-cast when there's exactly one castable permanent spell with no targeting decision.
+    // Only auto-cast permanents (creatures, artifacts, enchantments, planeswalkers) since
+    // they always advance the board. Instants and sorceries are situational and need LLM evaluation.
+    // spendManaForCost() in castSpell() handles auto-tapping all needed lands at once,
+    // so we just return the cast_spell action directly instead of tapping one land at a time
     const castSpellActions = filteredActions.filter(
       (a) => a.type === "cast_spell",
     );
 
-    // If we have exactly one spell to cast and need mana, tap lands automatically
     if (
       castSpellActions.length === 1 &&
-      tapForManaActions.length > 0 &&
       state.activePlayer === player
     ) {
       const spellAction = castSpellActions[0];
-      if (spellAction.type === "cast_spell") {
+      if (spellAction.type === "cast_spell" && !spellAction.targets?.length) {
         const spellCard = state.cards[spellAction.cardId];
         if (spellCard) {
-          const playerMana = state[player].manaPool;
-          const currentManaTotal = Object.values(playerMana).reduce(
-            (sum, v) => sum + v,
-            0,
-          );
-
-          // If we don't have enough mana yet, tap a land
-          if (
-            currentManaTotal < spellCard.cmc &&
-            tapForManaActions.length > 0
-          ) {
-            // Find the best land to tap (prefer basics that match spell colors)
-            const spellColors = this.parseManaCostColors(
-              spellCard.manaCost || "",
-            );
-            let bestTap = tapForManaActions[0];
-
-            for (const tapAction of tapForManaActions) {
-              if (tapAction.type === "tap_for_mana") {
-                const landCard = state.cards[tapAction.cardId];
-                if (landCard) {
-                  const landColor = this.getLandColor(landCard);
-                  // Prefer lands that produce colors we need
-                  if (landColor && spellColors.includes(landColor)) {
-                    bestTap = tapAction;
-                    break;
-                  }
-                }
-              }
-            }
-
-            if (bestTap.type === "tap_for_mana") {
-              const landCard = state.cards[bestTap.cardId];
-              return {
-                action: bestTap,
-                reasoning: `Auto-tapping ${landCard?.name || "land"} to cast ${spellCard.name}.`,
-              };
-            }
-          }
-        }
-      }
-    }
-
-    // Auto-tap when ONLY tap_for_mana and pass are available, and we have a castable spell in hand
-    // This handles the case where cast_spell isn't available yet because we need mana first
-    if (
-      tapForManaActions.length > 0 &&
-      passAction &&
-      state.activePlayer === player &&
-      (state.phase === "precombat_main" || state.phase === "postcombat_main") &&
-      state.stack.length === 0
-    ) {
-      // Check if the only actions are tap_for_mana, pass_priority, and concede
-      const onlyTapAndPass = availableActions.every(
-        (a) => a.type === "tap_for_mana" || a.type === "pass_priority" || a.type === "concede",
-      );
-
-      if (onlyTapAndPass) {
-        // Check if we have a spell in hand that we could cast
-        const hand = state[player].handOrder.map((id) => state.cards[id]);
-        const playerMana = state[player].manaPool;
-        const untappedLandCount = tapForManaActions.length;
-        const currentManaTotal = Object.values(playerMana).reduce(
-          (sum, v) => sum + v,
-          0,
-        );
-        const potentialMana = currentManaTotal + untappedLandCount;
-
-        // Find a sorcery-speed spell we're trying to cast
-        // Skip instants and cards with flash - those should be held up for response opportunities
-        // and only cast when there's a valid target and the situation warrants it
-        const castableSpell = hand.find((card) => {
-          if (!card || card.typeLine?.includes("Land")) return false;
-          const isInstant =
-            card.typeLine?.includes("Instant") ||
-            card.keywords?.includes("flash");
-          if (isInstant) return false;
-          return card.cmc <= potentialMana;
-        });
-
-        if (castableSpell) {
-          // Tap a land to work toward casting this spell
-          const spellColors = this.parseManaCostColors(
-            castableSpell.manaCost || "",
-          );
-          let bestTap = tapForManaActions[0];
-
-          for (const tapAction of tapForManaActions) {
-            if (tapAction.type === "tap_for_mana") {
-              const landCard = state.cards[tapAction.cardId];
-              if (landCard) {
-                const landColor = this.getLandColor(landCard);
-                if (landColor && spellColors.includes(landColor)) {
-                  bestTap = tapAction;
-                  break;
-                }
-              }
-            }
-          }
-
-          if (bestTap.type === "tap_for_mana") {
-            const landCard = state.cards[bestTap.cardId];
+          // Only auto-cast permanents - instants/sorceries are situational
+          const isPermanent = spellCard.typeLine &&
+            !spellCard.typeLine.includes("Instant") &&
+            !spellCard.typeLine.includes("Sorcery");
+          if (isPermanent) {
             return {
-              action: bestTap,
-              reasoning: `Auto-tapping ${landCard?.name || "land"} to cast ${castableSpell.name}.`,
+              action: spellAction,
+              reasoning: `Auto-casting ${spellCard.name} (only castable spell, no targets).`,
             };
           }
         }
@@ -1841,38 +1886,46 @@ Choose exactly ${cardsToBottom} indices (0-indexed).`;
   }
 
   /**
-   * Parse mana cost string to get required colors
-   * e.g., "{2}{G}{G}" returns ["G", "G"]
+   * Check if a card's mana ability can currently be activated.
+   * Handles "Activate only if..." conditions (e.g. Temple of the False God).
    */
-  private parseManaCostColors(manaCost: string): string[] {
-    const colors: string[] = [];
-    const matches = manaCost.match(/\{([WUBRG])\}/gi) || [];
-    for (const match of matches) {
-      const color = match.replace(/[{}]/g, "").toUpperCase();
-      colors.push(color);
-    }
-    return colors;
-  }
-
-  /**
-   * Get the primary color a land produces
-   */
-  private getLandColor(card: ExtendedGameCard): string | null {
-    const typeLine = card.typeLine?.toLowerCase() || "";
+  private meetsActivationCondition(
+    card: ExtendedGameCard,
+    state: FullPlaytestGameState,
+    controller: PlayerId,
+  ): boolean {
     const oracleText = card.oracleText?.toLowerCase() || "";
 
-    if (typeLine.includes("plains") || oracleText.includes("add {w}"))
-      return "W";
-    if (typeLine.includes("island") || oracleText.includes("add {u}"))
-      return "U";
-    if (typeLine.includes("swamp") || oracleText.includes("add {b}"))
-      return "B";
-    if (typeLine.includes("mountain") || oracleText.includes("add {r}"))
-      return "R";
-    if (typeLine.includes("forest") || oracleText.includes("add {g}"))
-      return "G";
+    const activateOnlyMatch = oracleText.match(
+      /activate(?:\s+this\s+ability)?\s+only\s+if\s+you\s+control\s+(\w+)\s+or\s+more\s+(\w+)/,
+    );
+    if (activateOnlyMatch) {
+      const wordMap: Record<string, number> = {
+        one: 1, two: 2, three: 3, four: 4, five: 5,
+        six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+      };
+      const requiredCount =
+        wordMap[activateOnlyMatch[1].toLowerCase()] ||
+        parseInt(activateOnlyMatch[1], 10) ||
+        0;
+      const permanentType = activateOnlyMatch[2];
+      const singularType = permanentType.replace(/s$/, "");
 
-    return null; // Colorless or unknown
+      let count = 0;
+      for (const cardId of state.battlefieldOrder[controller]) {
+        const permanent = state.cards[cardId];
+        if (!permanent) continue;
+        if (permanent.typeLine?.toLowerCase().includes(singularType)) {
+          count++;
+        }
+      }
+
+      if (count < requiredCount) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   /**
@@ -2055,7 +2108,17 @@ Choose exactly ${cardsToBottom} indices (0-indexed).`;
         card.summoningSickness &&
         !card.keywords.includes("haste");
 
-      if (canProduceMana && !hasSummoningSickness) {
+      // Check activation conditions (e.g. Temple of the False God)
+      const meetsCondition = this.meetsActivationCondition(card, state, player);
+
+      // Exclude fetch lands
+      const oText = card.oracleText?.toLowerCase() || "";
+      const isFetch =
+        oText.includes("sacrifice") &&
+        oText.includes("search your library") &&
+        oText.includes("basic land");
+
+      if (canProduceMana && !hasSummoningSickness && meetsCondition && !isFetch) {
         untappedManaCount++;
       }
     }
@@ -2085,5 +2148,26 @@ Choose exactly ${cardsToBottom} indices (0-indexed).`;
     }
 
     return false; // No immediate advantage
+  }
+
+  /**
+   * Log detailed API error information (Anthropic errors, network errors, etc.)
+   */
+  private logApiError(error: any): void {
+    if (!error) return;
+
+    if (error.status) {
+      console.error(
+        `[AI] API Error - Status: ${error.status}, Type: ${error.error?.type || "unknown"}, Message: ${error.error?.message || error.message}`,
+      );
+      if (error.headers) {
+        const retryAfter = error.headers["retry-after"];
+        if (retryAfter) {
+          console.error(`[AI] API retry-after: ${retryAfter}s`);
+        }
+      }
+    } else if (error.code === "ECONNREFUSED" || error.code === "ETIMEDOUT" || error.code === "ENOTFOUND") {
+      console.error(`[AI] Network Error - Code: ${error.code}, Message: ${error.message}`);
+    }
   }
 }

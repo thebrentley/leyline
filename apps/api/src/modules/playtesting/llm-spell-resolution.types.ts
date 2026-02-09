@@ -84,6 +84,12 @@ export interface LogMessageAction {
   message: string;
 }
 
+export interface ExileUntilLeavesAction {
+  type: 'exileUntilSourceLeaves';
+  targetId: string; // Can be $TARGET_N or specific card ID
+  controller: 'self' | 'opponent'; // Controller of the target being exiled
+}
+
 /**
  * Union type of all possible spell actions
  */
@@ -96,7 +102,8 @@ export type SpellAction =
   | DestroyPermanentAction
   | ShuffleLibraryAction
   | RevealCardAction
-  | LogMessageAction;
+  | LogMessageAction
+  | ExileUntilLeavesAction;
 
 /**
  * Response format expected from the LLM

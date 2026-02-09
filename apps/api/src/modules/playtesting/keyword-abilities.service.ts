@@ -813,6 +813,7 @@ export class KeywordAbilitiesService {
   /**
    * Parse ETB effect text to determine required targets
    * For effects like "deal damage to target opponent" or "target player gains life"
+   * or "exile target nonland permanent"
    */
   private parseETBTargets(
     effectText: string,
@@ -820,16 +821,45 @@ export class KeywordAbilitiesService {
     controller: PlayerId,
   ): StackTarget[] {
     const targets: StackTarget[] = [];
+    const opponent = controller === 'player' ? 'opponent' : 'player';
 
     // Check for "target opponent" or "target player"
     if (effectText.includes('target opponent')) {
-      // Auto-target the opponent
-      const opponent = controller === 'player' ? 'opponent' : 'player';
       targets.push({ type: 'player', id: opponent });
     } else if (effectText.includes('target player')) {
-      // For simplicity, auto-target the opponent (could be enhanced for player choice)
-      const opponent = controller === 'player' ? 'opponent' : 'player';
       targets.push({ type: 'player', id: opponent });
+    }
+
+    // Check for permanent targeting patterns (e.g. "target nonland permanent", "target creature")
+    const permanentTargetMatch = effectText.match(
+      /target\s+(nonland\s+)?(?:permanent|creature|artifact|enchantment|planeswalker)/i,
+    );
+    if (permanentTargetMatch) {
+      const isNonland = !!permanentTargetMatch[1];
+      const opponentBattlefield = Object.values(state.cards).filter(
+        (c) => c.zone === 'battlefield' && c.controller === opponent,
+      );
+
+      // Filter to matching permanents
+      const candidates = opponentBattlefield.filter((c) => {
+        const typeLine = (c.typeLine || '').toLowerCase();
+        if (isNonland && typeLine.includes('land') && !typeLine.includes('creature')) {
+          return false; // exclude pure lands for "nonland permanent"
+        }
+        // Match the specific type if requested (not just "permanent")
+        const specificType = permanentTargetMatch[0]
+          .replace(/target\s+(nonland\s+)?/i, '')
+          .toLowerCase();
+        if (specificType !== 'permanent' && !typeLine.includes(specificType)) {
+          return false;
+        }
+        return true;
+      });
+
+      if (candidates.length > 0) {
+        // Auto-select the first candidate (could be enhanced with AI choice)
+        targets.push({ type: 'card', id: candidates[0].instanceId });
+      }
     }
 
     return targets;

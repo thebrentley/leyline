@@ -49,16 +49,10 @@ export function GameCard({
   const contextDimensions = useCardDimensions();
   const dimensions =
     propDimensions ?? contextDimensions ?? (size ? CARD_SIZES[size] : CARD_SIZES.battlefield);
-  const hasCounters = card.counters && Object.keys(card.counters).length > 0;
-  const counterCount = hasCounters
-    ? Object.values(card.counters as Record<string, number>).reduce(
-        (a, b) => a + b,
-        0,
-      )
-    : 0;
+  const counterEntries = card.counters
+    ? Object.entries(card.counters).filter(([, v]) => v > 0)
+    : [];
   const hasDamage = card.damage > 0;
-  const isSaga = card.typeLine?.includes('Saga') ?? false;
-  const loreCounters = card.counters?.['lore'] || 0;
 
   // Animated rotation for tap state
   const tapProgress = useSharedValue(card.isTapped ? 1 : 0);
@@ -197,6 +191,34 @@ export function GameCard({
           </View>
         )}
 
+        {/* Copy overlay — shows the copy card's own art */}
+        {card.copyOf && card.originalImageUrl && (
+          <View
+            style={{
+              position: 'absolute',
+              top: 24,
+              left: 24,
+              width: dimensions.width * 0.4,
+              height: dimensions.height * 0.4,
+              borderRadius: 4,
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: isDark ? '#475569' : '#cbd5e1',
+              shadowColor: '#000',
+              shadowOffset: { width: 1, height: 1 },
+              shadowOpacity: 0.3,
+              shadowRadius: 2,
+              elevation: 3,
+            }}
+          >
+            <Image
+              source={{ uri: card.originalImageUrl }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="cover"
+            />
+          </View>
+        )}
+
         {/* Attack indicator */}
         {isAttacking && (
           <View className="absolute top-0 left-0 right-0 bg-red-500/90 py-0.5 flex-row items-center justify-center">
@@ -213,17 +235,19 @@ export function GameCard({
           </View>
         )}
 
-        {/* Lore counter badge for Sagas (amber) */}
-        {isSaga && loreCounters > 0 && (
-          <View className="absolute top-0 right-0 bg-amber-500 rounded-bl px-1">
-            <Text className="text-white text-xs font-bold">{loreCounters}</Text>
-          </View>
-        )}
-
-        {/* Generic counters badge for non-Sagas (green) */}
-        {!isSaga && counterCount > 0 && (
-          <View className="absolute top-0 right-0 bg-green-500 rounded-bl px-1">
-            <Text className="text-white text-xs font-bold">{counterCount}</Text>
+        {/* Counter badges */}
+        {counterEntries.length > 0 && (
+          <View className="absolute top-0 right-0 flex-col items-end">
+            {counterEntries.map(([type, count]) => (
+              <View
+                key={type}
+                className={`rounded-bl px-1 ${type === 'lore' ? 'bg-amber-500' : 'bg-green-600'}`}
+              >
+                <Text className="text-white text-xs font-bold">
+                  {count} {type === '+1/+1' ? '+1' : type === '-1/-1' ? '-1' : type}
+                </Text>
+              </View>
+            ))}
           </View>
         )}
 
@@ -243,6 +267,13 @@ export function GameCard({
         {hasAttachments && (
           <View className="absolute bottom-0 left-0 bg-purple-500 rounded-tr px-1">
             <Text className="text-white text-xs font-bold">{attachments.length}</Text>
+          </View>
+        )}
+
+        {/* DFC indicator badge */}
+        {card.layout === 'modal_dfc' && !isAttacking && !isBlocking && (
+          <View className="absolute top-0 left-0 bg-blue-500 rounded-br px-1">
+            <Text className="text-white text-[8px] font-bold">DFC</Text>
           </View>
         )}
       </View>

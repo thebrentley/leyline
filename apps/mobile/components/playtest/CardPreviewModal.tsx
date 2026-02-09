@@ -1,6 +1,6 @@
 import { Modal, Pressable, View, Image, Text } from 'react-native';
 import { useColorScheme } from 'nativewind';
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -25,6 +25,8 @@ export function CardPreviewModal({ card, attachments = [], visible, onClose }: C
 
   // Track which card we're viewing (0 = host, 1+ = attachments)
   const [activeIndex, setActiveIndex] = useState(0);
+  // Track whether we're showing the back face of a DFC
+  const [showBackFace, setShowBackFace] = useState(false);
 
   const scale = useSharedValue(0.8);
   const opacity = useSharedValue(0);
@@ -34,10 +36,25 @@ export function CardPreviewModal({ card, attachments = [], visible, onClose }: C
   const activeCard = allCards[activeIndex] || card;
   const hasMultipleCards = allCards.length > 1;
 
-  // Reset to host card when the main card changes
+  // Check if active card is a DFC with multiple faces
+  const isDFC = activeCard?.layout === 'modal_dfc' && activeCard?.cardFaces && activeCard.cardFaces.length > 1;
+
+  // Get the display image and info based on flip state
+  const displayFace = isDFC && showBackFace ? activeCard.cardFaces![1] : null;
+  const displayImageUrl = displayFace?.imageUri || activeCard?.imageUrl;
+  const displayName = displayFace?.name || activeCard?.name;
+  const displayTypeLine = displayFace?.typeLine || activeCard?.typeLine;
+
+  // Reset to host card and front face when the main card changes
   useEffect(() => {
     setActiveIndex(0);
+    setShowBackFace(false);
   }, [card?.instanceId]);
+
+  // Reset flip state when cycling between cards
+  useEffect(() => {
+    setShowBackFace(false);
+  }, [activeIndex]);
 
   useEffect(() => {
     if (visible) {
@@ -128,10 +145,20 @@ export function CardPreviewModal({ card, attachments = [], visible, onClose }: C
                 </View>
               )}
 
+              {/* DFC flip button */}
+              {isDFC && (
+                <Pressable
+                  onPress={() => setShowBackFace((prev) => !prev)}
+                  className="absolute top-2 right-2 p-2 rounded-full bg-black/50 active:bg-black/70 z-20"
+                >
+                  <RefreshCw size={20} color="#fff" />
+                </Pressable>
+              )}
+
               {/* Card image */}
-              {activeCard.imageUrl ? (
+              {displayImageUrl ? (
                 <Image
-                  source={{ uri: activeCard.imageUrl }}
+                  source={{ uri: displayImageUrl }}
                   style={{ width: cardWidth, height: cardHeight }}
                   resizeMode="contain"
                 />
@@ -147,15 +174,38 @@ export function CardPreviewModal({ card, attachments = [], visible, onClose }: C
                       isDark ? 'text-white' : 'text-slate-800'
                     }`}
                   >
-                    {activeCard.name}
+                    {displayName}
                   </Text>
                   <Text
                     className={`text-sm mt-2 text-center px-4 ${
                       isDark ? 'text-slate-400' : 'text-slate-600'
                     }`}
                   >
-                    {activeCard.typeLine}
+                    {displayTypeLine}
                   </Text>
+                </View>
+              )}
+
+              {/* Copy overlay — shows the copy card's own art */}
+              {activeCard.copyOf && activeCard.originalImageUrl && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: 48,
+                    left: 48,
+                    width: cardWidth * 0.35,
+                    height: cardHeight * 0.35,
+                    borderRadius: 8,
+                    overflow: 'hidden',
+                    borderWidth: 2,
+                    borderColor: isDark ? '#475569' : '#cbd5e1',
+                  }}
+                >
+                  <Image
+                    source={{ uri: activeCard.originalImageUrl }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="contain"
+                  />
                 </View>
               )}
 
@@ -171,6 +221,15 @@ export function CardPreviewModal({ card, attachments = [], visible, onClose }: C
                       />
                     </Pressable>
                   ))}
+                </View>
+              )}
+
+              {/* Back face label (when viewing the back of a DFC) */}
+              {isDFC && showBackFace && (
+                <View className="bg-blue-500/80 mx-4 px-2 py-1 rounded">
+                  <Text className="text-white text-xs text-center">
+                    Back face — {activeCard.cardFaces![1].name}
+                  </Text>
                 </View>
               )}
 
@@ -208,13 +267,15 @@ export function CardPreviewModal({ card, attachments = [], visible, onClose }: C
                     </View>
                   )}
 
-                  {Object.keys(activeCard.counters).length > 0 && (
-                    <View className="px-2 py-1 rounded bg-purple-500/20">
+                  {Object.entries(activeCard.counters)
+                    .filter(([, v]) => v > 0)
+                    .map(([type, count]) => (
+                    <View key={type} className="px-2 py-1 rounded bg-purple-500/20">
                       <Text className="text-purple-400 text-xs font-medium">
-                        {Object.values(activeCard.counters).reduce((a, b) => a + b, 0)} counters
+                        {count} {type}
                       </Text>
                     </View>
-                  )}
+                  ))}
                 </View>
 
                 {/* Zone info */}
@@ -225,6 +286,17 @@ export function CardPreviewModal({ card, attachments = [], visible, onClose }: C
                 >
                   Zone: {activeCard.zone} | Controller: {activeCard.controller}
                 </Text>
+
+                {/* Copy info */}
+                {activeCard.copyOf && activeCard.originalName && (
+                  <Text
+                    className={`text-xs mt-1 ${
+                      isDark ? 'text-blue-400' : 'text-blue-600'
+                    }`}
+                  >
+                    {activeCard.originalName} (copying {activeCard.name})
+                  </Text>
+                )}
               </View>
             </View>
           </Pressable>

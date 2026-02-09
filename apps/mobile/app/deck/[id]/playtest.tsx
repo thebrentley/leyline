@@ -40,7 +40,7 @@ import { useResponsive } from "~/hooks/useResponsive";
 import { DesktopSidebar } from "~/components/web/DesktopSidebar";
 import { useSocket, type PlaytestMessage } from "~/contexts/SocketContext";
 import { GameView } from "~/components/playtest";
-import type { ExtendedGameZone, FullPlaytestGameState, PlayerId, PlayerState, CumulativeTokenUsage } from "~/types/playtesting";
+import type { ExtendedGameZone, FullPlaytestGameState, PlayerId, PlayerState, StackItem, CumulativeTokenUsage } from "~/types/playtesting";
 
 // Color identity colors for deck display
 const MANA_COLORS: Record<string, string> = {
@@ -108,9 +108,22 @@ export default function PlaytestPage() {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const scrollContentHeight = useRef(0);
   const scrollViewHeight = useRef(0);
+  // Pending card animation (for land plays / hand-to-battlefield)
+  const [pendingCardAnimation, setPendingCardAnimation] = useState<{
+    cardId: string;
+    controller: PlayerId;
+  } | null>(null);
+  // Event queue for sequential processing of visual events
+  const eventQueueRef = useRef<PlaytestMessage[]>([]);
+  const isProcessingEventRef = useRef(false);
+  const drainTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Callback for resuming queue after animation completes
+  const animationResumeRef = useRef<(() => void) | null>(null);
   // Animation for slide-from-right panel
   const PANEL_WIDTH = 320;
   const narrativePanelAnim = useRef(new Animated.Value(PANEL_WIDTH)).current;
+  // Log view mode: simple (default) shows key events only, verbose shows everything
+  const [logViewMode, setLogViewMode] = useState<'simple' | 'verbose'>('simple');
   // Debug game state display
   const [showGameState, setShowGameState] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -192,13 +205,31 @@ export default function PlaytestPage() {
   useEffect(() => {
     if (!id) return;
 
-    const unsubscribe = onPlaytestMessage((message) => {
-      if (message.deckId !== id) return;
+    // Delay (ms) after processing each event type before draining the next
+    const getEventDelay = (msg: any): number => {
+      switch (msg.type) {
+        case 'stack:added': return 1800;
+        case 'stack:resolved': return 1500;
+        case 'card:moved': return 400;
+        case 'life:changed': return 500;
+        case 'combat:attackers': return 600;
+        case 'combat:blockers': return 600;
+        case 'combat:ended': return 300;
+        case 'token:created': return 400;
+        default: return 150;
+      }
+    };
 
-      // Extract game state context from certain message types
-      const messageAny = message as any;
+    // Events that skip the queue (no visual animation needed)
+    const BYPASS_QUEUE = new Set([
+      'ai:thinking', 'ai:decided', 'ai:tokens',
+      'mulligan:evaluating', 'mulligan:decision', 'mulligan:bottomCards', 'mulligan:complete',
+      'game:log', 'priority:changed',
+    ]);
 
-      // Update current game context based on message type
+    // Process a single message: apply state updates and add log entry
+    const processMessage = (msg: PlaytestMessage) => {
+      const messageAny = msg as any;
       if (messageAny.type === 'gamestate:full' && messageAny.gameState) {
         const gs = messageAny.gameState;
         // Store full game state for the GameView
@@ -273,7 +304,51 @@ export default function PlaytestPage() {
             },
           };
         });
+      } else if (messageAny.type === 'card:counters') {
+        // Update card counters (e.g., lore counters on Sagas)
+        setGameState(prev => {
+          if (!prev) return null;
+          const { cardId, counters } = messageAny;
+          const card = prev.cards[cardId];
+          if (!card) return prev;
+
+          return {
+            ...prev,
+            cards: {
+              ...prev.cards,
+              [cardId]: {
+                ...card,
+                counters,
+              },
+            },
+          };
+        });
+      } else if (messageAny.type === 'card:damage') {
+        // Update card damage
+        setGameState(prev => {
+          if (!prev) return null;
+          const { cardId, damage } = messageAny;
+          const card = prev.cards[cardId];
+          if (!card) return prev;
+
+          return {
+            ...prev,
+            cards: {
+              ...prev.cards,
+              [cardId]: {
+                ...card,
+                damage,
+              },
+            },
+          };
+        });
       } else if (messageAny.type === 'card:moved') {
+        // Trigger animation for cards entering battlefield from hand (land plays, etc.)
+        const { cardId: movedCardId, from: moveFrom, to: moveTo, player: movePlayer } = messageAny;
+        if (moveFrom === 'hand' && moveTo === 'battlefield') {
+          setPendingCardAnimation({ cardId: movedCardId, controller: movePlayer as PlayerId });
+        }
+
         // Update game state when a card is moved between zones
         setGameState(prev => {
           if (!prev) return null;
@@ -338,6 +413,62 @@ export default function PlaytestPage() {
             battlefieldOrder,
           };
         });
+      } else if (messageAny.type === 'stack:added') {
+        // A spell or ability was added to the stack
+        setGameState(prev => {
+          if (!prev) return null;
+          const item = messageAny.item as StackItem;
+          return {
+            ...prev,
+            stack: [item, ...prev.stack],
+          };
+        });
+      } else if (messageAny.type === 'stack:resolved') {
+        // The top item on the stack resolved
+        setGameState(prev => {
+          if (!prev) return null;
+          const { itemId } = messageAny;
+          return {
+            ...prev,
+            stack: prev.stack.filter((s: StackItem) => s.id !== itemId),
+          };
+        });
+      } else if (messageAny.type === 'combat:attackers') {
+        setGameState(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            combat: {
+              ...prev.combat,
+              isActive: true,
+              attackers: messageAny.attackers || [],
+            },
+          };
+        });
+      } else if (messageAny.type === 'combat:blockers') {
+        setGameState(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            combat: {
+              ...prev.combat,
+              blockers: messageAny.blockers || [],
+            },
+          };
+        });
+      } else if (messageAny.type === 'combat:ended') {
+        setGameState(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            combat: {
+              ...prev.combat,
+              isActive: false,
+              attackers: [],
+              blockers: [],
+            },
+          };
+        });
       } else if (messageAny.type === 'ai:thinking' || messageAny.type === 'mulligan:evaluating') {
         setThinkingPlayer(messageAny.player as PlayerId);
       } else if (messageAny.type === 'ai:decided' || messageAny.type === 'mulligan:decision') {
@@ -347,29 +478,80 @@ export default function PlaytestPage() {
         setTokenUsage(messageAny.tokenUsage);
       }
 
-      // Skip noisy message types
-      if (messageAny.type === 'game:log' || messageAny.type === 'priority:changed') {
+      // Add log entry for non-noisy messages
+      if (messageAny.type !== 'game:log' && messageAny.type !== 'priority:changed') {
+        setCurrentGameContext(prevContext => {
+          setLogs((prevLogs) => [
+            ...prevLogs,
+            {
+              id: `${Date.now()}-${Math.random()}`,
+              timestamp: new Date().toISOString(),
+              message: msg,
+              context: { ...prevContext },
+            },
+          ]);
+          return prevContext;
+        });
+      }
+    };
+
+    // Drain the event queue one message at a time
+    const drainQueue = () => {
+      if (isProcessingEventRef.current || eventQueueRef.current.length === 0) return;
+      isProcessingEventRef.current = true;
+      const nextMsg = eventQueueRef.current.shift()!;
+      processMessage(nextMsg);
+
+      // For hand→battlefield moves, wait for the animation callback instead of a fixed delay
+      const msgAny = nextMsg as any;
+      if (msgAny.type === 'card:moved' && msgAny.from === 'hand' && msgAny.to === 'battlefield') {
+        animationResumeRef.current = () => {
+          isProcessingEventRef.current = false;
+          drainQueue();
+        };
         return;
       }
 
-      // Get context at time of message (use functional update to access latest state)
-      setCurrentGameContext(prevContext => {
-        // Add log entry with current context
-        setLogs((prevLogs) => [
-          ...prevLogs,
-          {
-            id: `${Date.now()}-${Math.random()}`,
-            timestamp: new Date().toISOString(),
-            message,
-            context: { ...prevContext },
-          },
-        ]);
-        return prevContext;
-      });
+      const delay = getEventDelay(msgAny);
+      drainTimeoutRef.current = setTimeout(() => {
+        isProcessingEventRef.current = false;
+        drainQueue();
+      }, delay);
+    };
+
+    const unsubscribe = onPlaytestMessage((message) => {
+      if (message.deckId !== id) return;
+      const messageAny = message as any;
+
+      // Full state sync: clear queue and process immediately
+      if (messageAny.type === 'gamestate:full') {
+        eventQueueRef.current = [];
+        if (drainTimeoutRef.current) {
+          clearTimeout(drainTimeoutRef.current);
+          drainTimeoutRef.current = null;
+        }
+        isProcessingEventRef.current = false;
+        processMessage(message);
+        return;
+      }
+
+      // Non-visual events: process immediately
+      if (BYPASS_QUEUE.has(messageAny.type)) {
+        processMessage(message);
+        return;
+      }
+
+      // Visual events: queue for sequential processing
+      eventQueueRef.current.push(message);
+      drainQueue();
     });
 
     return () => {
       unsubscribe();
+      if (drainTimeoutRef.current) {
+        clearTimeout(drainTimeoutRef.current);
+      }
+      animationResumeRef.current = null;
     };
   }, [id, onPlaytestMessage]);
 
@@ -588,9 +770,126 @@ export default function PlaytestPage() {
       }
       case 'mulligan:complete':
         return `✅ ${msg.message || 'Mulligan phase complete - the game begins!'}`;
+      case 'token:created': {
+        const tokenPlayer = getPlayerName(msg.controller);
+        const count = msg.tokenIds?.length || 1;
+        const name = msg.tokenName || 'Token';
+        return `✨ ${tokenPlayer} creates ${count} ${name} token${count > 1 ? 's' : ''}.`;
+      }
       default:
         return `📝 ${msg.type}`;
     }
+  };
+
+  // Build simplified log entries for 'simple' view mode
+  const getSimpleLogs = (): { id: string; turn?: number; message: string }[] => {
+    const result: { id: string; turn?: number; message: string }[] = [];
+
+    const getPlayerName = (msgPlayer?: string) => {
+      if (msgPlayer === 'player') return deckName;
+      if (msgPlayer === 'opponent') return opponentDeck?.name || 'Opponent';
+      return 'A player';
+    };
+
+    for (let i = 0; i < logs.length; i++) {
+      const log = logs[i];
+      const msg = log.message as any;
+
+      switch (msg.type) {
+        case 'session:started':
+          result.push({ id: log.id, turn: log.context.turn, message: 'Game started.' });
+          break;
+
+        case 'turn:started': {
+          const name = msg.activePlayer === 'player' ? deckName : opponentDeck?.name || 'Opponent';
+          result.push({ id: log.id, turn: log.context.turn, message: `${name}'s turn began.` });
+          break;
+        }
+
+        case 'card:moved': {
+          const playerName = getPlayerName(msg.player);
+          const card = msg.cardName || 'a card';
+
+          if (msg.to === 'hand' && msg.from === 'library') {
+            result.push({ id: log.id, turn: log.context.turn, message: `${playerName} drew a card.` });
+          } else if (msg.to === 'battlefield' && msg.from === 'hand') {
+            result.push({ id: log.id, turn: log.context.turn, message: `${playerName} played ${card}.` });
+          } else if (msg.to === 'stack' && (msg.from === 'hand' || msg.from === 'command')) {
+            // Look ahead for stack:added to get target info
+            let targetStr = '';
+            for (let j = i + 1; j < Math.min(i + 5, logs.length); j++) {
+              const nextMsg = (logs[j].message as any);
+              if (nextMsg.type === 'stack:added' && nextMsg.item?.targets?.length > 0) {
+                const targets = nextMsg.item.targets.map((t: any) => {
+                  if (t.type === 'player') return t.id === 'player' ? deckName : opponentDeck?.name || 'Opponent';
+                  return gameState?.cards?.[t.id]?.name || 'target';
+                });
+                targetStr = ` targeting ${targets.join(', ')}`;
+                break;
+              }
+            }
+            result.push({ id: log.id, turn: log.context.turn, message: `${playerName} cast ${card}${targetStr}.` });
+          } else if (msg.to === 'graveyard' && msg.from === 'hand') {
+            result.push({ id: log.id, turn: log.context.turn, message: `${playerName} discarded ${card}.` });
+          }
+          break;
+        }
+
+        case 'card:tapped': {
+          if (!msg.isTapped) break;
+          const tapPlayer = getPlayerName(msg.player);
+          // Aggregate consecutive taps from the same player
+          const tappedCards = [msg.cardName || 'a card'];
+          while (i + 1 < logs.length) {
+            const nextMsg = (logs[i + 1].message as any);
+            if (nextMsg.type === 'card:tapped' && nextMsg.isTapped && nextMsg.player === msg.player) {
+              tappedCards.push(nextMsg.cardName || 'a card');
+              i++;
+            } else {
+              break;
+            }
+          }
+          result.push({ id: log.id, turn: log.context.turn, message: `${tapPlayer} tapped ${tappedCards.join(', ')}.` });
+          break;
+        }
+
+        case 'combat:attackers': {
+          const attackers = msg.attackers || [];
+          if (attackers.length === 0) break;
+          const atkPlayer = log.context.activePlayerDeckName || getPlayerName(msg.player);
+          const names = attackers.map((a: any) => gameState?.cards?.[a.cardId]?.name || 'creature');
+          result.push({ id: log.id, turn: log.context.turn, message: `${atkPlayer} attacked with ${names.join(', ')}.` });
+          break;
+        }
+
+        case 'combat:blockers': {
+          const blockers = msg.blockers || [];
+          if (blockers.length === 0) break;
+          const descriptions = blockers.map((b: any) => {
+            const blockerName = gameState?.cards?.[b.cardId]?.name || 'creature';
+            const attackerName = gameState?.cards?.[b.blockingAttackerId]?.name || 'creature';
+            return `${blockerName} blocked ${attackerName}`;
+          });
+          result.push({ id: log.id, turn: log.context.turn, message: descriptions.join(', ') + '.' });
+          break;
+        }
+
+        case 'life:changed': {
+          if (msg.change >= 0) break;
+          const target = msg.player === 'player' ? deckName : opponentDeck?.name || 'Opponent';
+          result.push({ id: log.id, turn: log.context.turn, message: `${target} lost ${Math.abs(msg.change)} life. (${msg.life})` });
+          break;
+        }
+
+        case 'game:over': {
+          const winner = msg.winner === 'player' ? deckName : opponentDeck?.name || 'Opponent';
+          result.push({ id: log.id, turn: log.context.turn, message: `${winner} wins! ${msg.reason || ''}` });
+          break;
+        }
+      }
+    }
+
+    return result;
   };
 
   // Scroll handlers for stick-to-bottom behavior
@@ -834,6 +1133,15 @@ export default function PlaytestPage() {
             playerName={deckName}
             opponentName={opponentDeck?.name || "Opponent"}
             thinkingPlayer={thinkingPlayer}
+            pendingCardAnimation={pendingCardAnimation}
+            onCardAnimationComplete={() => {
+              setPendingCardAnimation(null);
+              if (animationResumeRef.current) {
+                const resume = animationResumeRef.current;
+                animationResumeRef.current = null;
+                resume();
+              }
+            }}
             onPlayAgain={handlePlayAgain}
             onEndGame={handleEndGame}
           />
@@ -1200,15 +1508,36 @@ export default function PlaytestPage() {
                 <Text
                   className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}
                 >
-                  Game Story
+                  Game Log
                 </Text>
               </View>
-              <Pressable
-                onPress={closeNarrativePanel}
-                className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
-              >
-                <X size={20} color={isDark ? "#94a3b8" : "#64748b"} />
-              </Pressable>
+              <View className="flex-row items-center gap-2">
+                {/* Simple / Verbose toggle */}
+                <View className={`flex-row rounded-lg overflow-hidden border ${isDark ? "border-slate-700" : "border-slate-300"}`}>
+                  <Pressable
+                    onPress={() => setLogViewMode('simple')}
+                    className={`px-2.5 py-1 ${logViewMode === 'simple' ? (isDark ? 'bg-purple-900/50' : 'bg-purple-100') : ''}`}
+                  >
+                    <Text className={`text-xs font-medium ${logViewMode === 'simple' ? (isDark ? 'text-purple-300' : 'text-purple-700') : (isDark ? 'text-slate-500' : 'text-slate-400')}`}>
+                      Simple
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setLogViewMode('verbose')}
+                    className={`px-2.5 py-1 border-l ${isDark ? "border-slate-700" : "border-slate-300"} ${logViewMode === 'verbose' ? (isDark ? 'bg-purple-900/50' : 'bg-purple-100') : ''}`}
+                  >
+                    <Text className={`text-xs font-medium ${logViewMode === 'verbose' ? (isDark ? 'text-purple-300' : 'text-purple-700') : (isDark ? 'text-slate-500' : 'text-slate-400')}`}>
+                      Verbose
+                    </Text>
+                  </Pressable>
+                </View>
+                <Pressable
+                  onPress={closeNarrativePanel}
+                  className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
+                >
+                  <X size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+                </Pressable>
+              </View>
             </View>
 
             {/* Token Usage Display */}
@@ -1328,7 +1657,7 @@ export default function PlaytestPage() {
                 >
                   Waiting for the game to begin...
                 </Text>
-              ) : (
+              ) : logViewMode === 'verbose' ? (
                 logs.map((log, index) => (
                   <View key={log.id} className="mb-3">
                     {/* Show turn marker when turn changes */}
@@ -1354,6 +1683,30 @@ export default function PlaytestPage() {
                       className={`text-xs mt-1 ${isDark ? "text-slate-600" : "text-slate-400"}`}
                     >
                       {new Date(log.timestamp).toLocaleTimeString()}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                getSimpleLogs().map((entry, index, arr) => (
+                  <View key={entry.id} className="mb-2">
+                    {/* Show turn marker when turn changes */}
+                    {(index === 0 || arr[index - 1]?.turn !== entry.turn) && entry.turn && (
+                      <View
+                        className={`mb-2 pb-1 border-b ${isDark ? "border-slate-700" : "border-slate-200"}`}
+                      >
+                        <Text
+                          className={`text-xs font-bold uppercase tracking-wide ${
+                            isDark ? "text-amber-400" : "text-amber-600"
+                          }`}
+                        >
+                          Turn {entry.turn}
+                        </Text>
+                      </View>
+                    )}
+                    <Text
+                      className={`text-sm leading-relaxed ${isDark ? "text-slate-300" : "text-slate-700"}`}
+                    >
+                      {entry.message}
                     </Text>
                   </View>
                 ))
