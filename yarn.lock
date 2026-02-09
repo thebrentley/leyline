@@ -6934,6 +6934,7 @@ mkdirp@^1.0.3, mkdirp@^1.0.4:
     clsx "^2.1.1"
     expo "~54.0.32"
     expo-camera "~17.0.10"
+    expo-clipboard "^8.0.8"
     expo-constants "~18.0.13"
     expo-image-manipulator "~14.0.8"
     expo-image-picker "~17.0.10"
@@ -9405,7 +9406,7 @@ uuid@^7.0.3:
   resolved "https://registry.npmjs.org/uuid/-/uuid-7.0.3.tgz"
   integrity sha512-DPSke0pXhTZgoF/d+WSt2QaKMCFSfx7QegxEWT+JOuHF5aWrKEn0G+ztjuJg/gG8/ItK+rbPCD/yNv8yyih6Cg==
 
-uuid@9.0.1:
+uuid@^9.0.0, uuid@9.0.1:
   version "9.0.1"
   resolved "https://registry.npmjs.org/uuid/-/uuid-9.0.1.tgz"
   integrity sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==
