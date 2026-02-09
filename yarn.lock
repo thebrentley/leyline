@@ -916,6 +916,7 @@
     socket.io "^4.8.3"
     stream-json "^1.9.1"
     typeorm "^0.3.19"
+    uuid "^9.0.0"
 
 "@decktutor/shared@file:/Users/brentwalter/develop/leyline/monorepo/packages/shared":
   version "1.0.0"
@@ -4692,6 +4693,11 @@ expo-server@^1.0.5:
   version "1.0.5"
   resolved "https://registry.npmjs.org/expo-server/-/expo-server-1.0.5.tgz"
   integrity sha512-IGR++flYH70rhLyeXF0Phle56/k4cee87WeQ4mamS+MkVAVP+dDlOHf2nN06Z9Y2KhU0Gp1k+y61KkghF7HdhA==
+
+expo-sharing@~14.0.8:
+  version "14.0.8"
+  resolved "https://registry.npmjs.org/expo-sharing/-/expo-sharing-14.0.8.tgz"
+  integrity sha512-A1pPr2iBrxypFDCWVAESk532HK+db7MFXbvO2sCV9ienaFXAk7lIBm6bkqgE6vzRd9O3RGdEGzYx80cYlc089Q==
 
 expo-status-bar@~3.0.9:
   version "3.0.9"

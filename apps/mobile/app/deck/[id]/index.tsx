@@ -10,6 +10,7 @@ import {
   CloudDownload,
   Crown,
   DollarSign,
+  FileDown,
   Grid3X3,
   History,
   Layers,
@@ -58,6 +59,7 @@ import { Button } from "~/components/ui/button";
 import { showToast } from "~/lib/toast";
 import { Spinner } from "~/components/Spinner";
 import { ColorTagManager } from "~/components/ColorTagManager";
+import { DeckExportModal } from "~/components/DeckExportModal";
 import { EditionPickerModal } from "~/components/EditionPickerModal";
 import {
   authApi,
@@ -707,6 +709,7 @@ export default function DeckDetailScreen() {
   const [loadingEditions, setLoadingEditions] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [archidektConnected, setArchidektConnected] = useState(false);
+  const [exportModalVisible, setExportModalVisible] = useState(false);
 
   // Confirmation dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -2644,6 +2647,23 @@ export default function DeckDetailScreen() {
                 : "border-slate-200 bg-white"
             }`}
           >
+            <Pressable
+              onPress={() => {
+                setMenuVisible(false);
+                setExportModalVisible(true);
+              }}
+              className={`flex-row items-center gap-3 px-4 py-3 ${
+                isDark ? "active:bg-slate-700" : "active:bg-slate-100"
+              }`}
+            >
+              <FileDown
+                size={18}
+                color={isDark ? "#94a3b8" : "#64748b"}
+              />
+              <Text className={isDark ? "text-white" : "text-slate-900"}>
+                Export Deck
+              </Text>
+            </Pressable>
             {deck?.archidektId && archidektConnected && (
               <Pressable
                 onPress={handlePullFromArchidekt}
@@ -4814,6 +4834,15 @@ export default function DeckDetailScreen() {
         searchContextId={id}
         existingCardIds={existingCardIds}
       />
+
+      {/* Export Modal */}
+      {deck && (
+        <DeckExportModal
+          visible={exportModalVisible}
+          onClose={() => setExportModalVisible(false)}
+          deck={deck}
+        />
+      )}
     </>
   );
 
