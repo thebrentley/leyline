@@ -1,5 +1,5 @@
 {
-  "name": "@decktutor/api",
+  "name": "@leyline/api",
   "version": "1.0.0",
   "private": true,
   "scripts": {

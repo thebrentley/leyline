@@ -7,7 +7,7 @@ import type {
   StackItem,
   ExtendedGameCard,
   PlaytestEvent,
-} from '@decktutor/shared';
+} from '@leyline/shared';
 import { GameEngineService } from './game-engine.service';
 import { ActionExecutorService } from './action-executor.service';
 import { SpellResolutionCacheService } from './spell-resolution-cache.service';

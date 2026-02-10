@@ -1,4 +1,4 @@
-# DeckTutor
+# Leyline
 
 A full-stack MTG deck management web application using NestJS for the backend API and React Native Web for a cross-platform frontend.
 
@@ -12,7 +12,7 @@ A full-stack MTG deck management web application using NestJS for the backend AP
 ## Project Structure
 
 ```
-decktutor/
+leyline/
 ├── apps/
 │   ├── api/              # NestJS backend
 │   │   └── src/
@@ -45,14 +45,14 @@ decktutor/
 
 1. **Clone and install dependencies:**
    ```bash
-   cd decktutor
+   cd leyline
    npm install
    ```
 
 2. **Set up the database:**
    ```bash
    # Create PostgreSQL database
-   createdb decktutor
+   createdb leyline
 
    # Copy environment file
    cp apps/api/.env.example apps/api/.env

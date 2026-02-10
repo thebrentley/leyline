@@ -5,7 +5,7 @@ import type {
   FullPlaytestGameState,
   PlayerId,
   ExtendedGameCard,
-} from '@decktutor/shared';
+} from '@leyline/shared';
 import { SearchService } from './search.service';
 
 /**

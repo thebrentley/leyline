@@ -1,4 +1,4 @@
-import type { ExtendedGameZone, PlayerId } from '@decktutor/shared';
+import type { ExtendedGameZone, PlayerId } from '@leyline/shared';
 
 /**
  * Action types that the LLM can specify to resolve spell effects

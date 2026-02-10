@@ -56,7 +56,7 @@ export default function Hero() {
       </div>
 
       {/* Main Content */}
-      <div className="relative z-10 mx-auto max-w-7xl px-4 pt-12 pb-16 md:px-8 md:pt-20 md:pb-24">
+      <div className="relative z-10 mx-auto max-w-7xl px-4 pt-12 pb-16 md:px-8 md:pt-20 md:pb-12">
         <div className="grid items-center gap-12 lg:grid-cols-2">
           {/* Left Column - Text */}
           <div className="space-y-6 md:space-y-8">
@@ -160,6 +160,20 @@ export default function Hero() {
           </div>
         </div>
       </div>
+      {/* Footer */}
+      <footer className="relative z-10 mt-auto px-4 py-6 md:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between border-t border-gray-800 pt-6">
+          <span className="text-xs text-gray-500">
+            &copy; {new Date().getFullYear()} Leyline
+          </span>
+          <Link
+            href="/privacy"
+            className="text-xs text-gray-500 transition-colors hover:text-purple-400"
+          >
+            Privacy Policy
+          </Link>
+        </div>
+      </footer>
     </div>
   )
 }

@@ -20,7 +20,7 @@
     "esModuleInterop": true,
     "paths": {
       "@/*": ["src/*"],
-      "@decktutor/shared": ["../../packages/shared/types"]
+      "@leyline/shared": ["../../packages/shared/types"]
     }
   },
   "include": ["src/**/*"],

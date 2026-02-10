@@ -15,7 +15,7 @@ import type {
   GameLogEntry,
   CombatDamageInfo,
   GameWatch,
-} from "@decktutor/shared";
+} from "@leyline/shared";
 import { SpellEffectsService } from "./spell-effects/spell-effects.service";
 import { LLMSpellResolutionService } from "./llm-spell-resolution.service";
 import { KeywordAbilitiesService } from "./keyword-abilities.service";
@@ -24,7 +24,7 @@ import { SearchService } from "./search.service";
 import { LandSelectionService } from "./land-selection.service";
 
 // Re-export PlaytestEvent for use in spell effects
-export type { PlaytestEvent } from "@decktutor/shared";
+export type { PlaytestEvent } from "@leyline/shared";
 
 export interface ParsedActivatedAbility {
   costText: string;       // Raw cost string, e.g. "{1}, {T}, Remove a page counter from Tome of Legends"

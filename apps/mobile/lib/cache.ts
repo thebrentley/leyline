@@ -6,7 +6,7 @@ interface CacheEntry<T> {
   ttl: number; // TTL in milliseconds
 }
 
-const CACHE_PREFIX = "@decktutor_cache:";
+const CACHE_PREFIX = "@leyline_cache:";
 
 /**
  * Simple caching layer using AsyncStorage

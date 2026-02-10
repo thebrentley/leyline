@@ -4,7 +4,7 @@ import type {
   ExtendedGameZone,
   FullPlaytestGameState,
   PlayerId,
-} from '@decktutor/shared';
+} from '@leyline/shared';
 
 /**
  * Criteria for searching cards in a zone

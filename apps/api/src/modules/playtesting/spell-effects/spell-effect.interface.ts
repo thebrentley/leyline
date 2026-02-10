@@ -2,7 +2,7 @@ import type {
   FullPlaytestGameState,
   PlayerId,
   StackItem,
-} from '@decktutor/shared';
+} from '@leyline/shared';
 import type { PlaytestEvent } from '../game-engine.service';
 
 /**

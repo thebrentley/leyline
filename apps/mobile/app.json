@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "Leyline | MTG Everything. Connected",
-    "slug": "decktutor",
-    "scheme": "decktutor",
+    "name": "Leyline",
+    "slug": "mtgleyline",
+    "owner": "thebrentley",
+    "scheme": "leyline",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -11,14 +12,16 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0f172a"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.decktutor.mobile",
-      "deploymentTarget": "16.0",
+      "bundleIdentifier": "com.mtgleyline.app",
+      "buildNumber": "1",
       "infoPlist": {
-        "NSCameraUsageDescription": "DeckTutor needs camera access to scan Magic: The Gathering cards for your collection"
+        "NSCameraUsageDescription": "Leyline needs camera access to scan Magic: The Gathering cards for your collection",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSHumanReadableCopyright": "Copyright © 2026 Leyline. All rights reserved."
       }
     },
     "android": {
@@ -28,11 +31,19 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.decktutor.mobile"
+      "package": "com.mtgleyline.app"
     },
     "web": {
       "favicon": "./public/favicon.png",
       "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "08ba8adf-d4c1-4dd9-8e8b-2a99add5c2f8"
+      },
+      "router": {
+        "origin": "https://mtgleyline.com"
+      }
     },
     "plugins": [
       "expo-router",
@@ -40,13 +51,21 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "DeckTutor needs camera access to scan Magic cards"
+          "cameraPermission": "Leyline needs camera access to scan Magic cards"
         }
       ],
       [
         "react-native-document-scanner-plugin",
         {
-          "cameraPermission": "Allow DeckTutor to scan MTG cards"
+          "cameraPermission": "Allow Leyline to scan MTG cards"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.0"
+          }
         }
       ]
     ]

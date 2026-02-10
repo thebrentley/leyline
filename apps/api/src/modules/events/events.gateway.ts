@@ -15,7 +15,7 @@ import type {
   PlaytestClientEvents,
   PlaytestEvent,
   FullPlaytestGameState,
-} from "@decktutor/shared";
+} from "@leyline/shared";
 
 @Injectable()
 @WebSocketGateway({

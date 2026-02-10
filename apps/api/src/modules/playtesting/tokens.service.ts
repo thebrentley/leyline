@@ -6,7 +6,7 @@ import type {
   ExtendedGameCard,
   FullPlaytestGameState,
   PlayerId,
-} from '@decktutor/shared';
+} from '@leyline/shared';
 import { KeywordAbilitiesService } from './keyword-abilities.service';
 
 @Injectable()

@@ -1,17 +1,17 @@
-# CLAUDE.md - DeckTutor Project Guide
+# CLAUDE.md - Leyline Project Guide
 
-This document provides context for AI assistants working on the DeckTutor codebase.
+This document provides context for AI assistants working on the Leyline codebase.
 
 ## Project Overview
 
-DeckTutor is a full-stack MTG (Magic: The Gathering) deck management application with AI-powered deck advisory features. It's built as a monorepo with a NestJS backend API and React Native Web frontend for cross-platform support.
+Leyline is a full-stack MTG (Magic: The Gathering) deck management application with AI-powered deck advisory features. It's built as a monorepo with a NestJS backend API and React Native Web frontend for cross-platform support.
 
 ## Architecture
 
 ### Monorepo Structure
 
 ```
-decktutor/
+leyline/
 ├── apps/
 │   ├── api/              # NestJS backend (TypeScript)
 │   └── mobile/           # React Native Web frontend (Expo)
@@ -159,7 +159,7 @@ npm run dev:mobile
 - NativeWind for styling (Tailwind classes)
 
 ### Shared Types
-- Import from `@decktutor/shared` package
+- Import from `@leyline/shared` package
 - Ensures type safety between frontend/backend
 
 ## AI Advisor Implementation
@@ -211,7 +211,7 @@ The AI advisor is a key feature leveraging Claude AI:
 ### Adding Shared Types
 1. Define in `packages/shared/src/`
 2. Export from index
-3. Import via `@decktutor/shared` in both apps
+3. Import via `@leyline/shared` in both apps
 
 ### Database Changes
 1. Update entity in `apps/api/src/entities/`

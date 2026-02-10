@@ -4,7 +4,7 @@ import type {
   PlayerId,
   StackItem,
   PlaytestEvent,
-} from '@decktutor/shared';
+} from '@leyline/shared';
 import { GameEngineService } from './game-engine.service';
 import { TokensService } from './tokens.service';
 import { SearchService } from './search.service';

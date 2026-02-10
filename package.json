@@ -1,8 +1,8 @@
 {
-  "name": "decktutor",
+  "name": "leyline",
   "version": "1.0.0",
   "private": true,
-  "description": "DeckTutor - MTG Deck Management App",
+  "description": "Leyline - MTG Everything. Connected",
   "workspaces": [
     "apps/api",
     "apps/landing",
@@ -10,11 +10,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:api": "npm run dev -w @decktutor/api",
+    "dev:api": "npm run dev -w @leyline/api",
     "dev:landing": "npm run dev -w @leyline/landing",
     "dev:mobile": "npm run start -w mobile",
     "dev:mobile-prod": "cp apps/mobile/.env apps/mobile/.env.local.bak && cp apps/mobile/.env.production apps/mobile/.env && npm run start -w mobile; cp apps/mobile/.env.local.bak apps/mobile/.env && rm apps/mobile/.env.local.bak",
-    "build:api": "npm run build -w @decktutor/api",
+    "build:api": "npm run build -w @leyline/api",
     "build:landing": "npm run build -w @leyline/landing",
     "docker:push": "./scripts/push-api-ecr.sh",
     "docker:push:api": "./scripts/push-api-ecr.sh",

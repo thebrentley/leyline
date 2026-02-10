@@ -12,7 +12,7 @@ import type {
   GameLogEntry,
   GameConfig,
   TokenUsage,
-} from "@decktutor/shared";
+} from "@leyline/shared";
 
 interface QueuedAction {
   player: PlayerId;
@@ -735,7 +735,7 @@ export class GameLoopService {
         });
 
         // AI decides keep or mulligan
-        let decision: { keep: boolean; reasoning: string; tokenUsage?: import("@decktutor/shared").TokenUsage };
+        let decision: { keep: boolean; reasoning: string; tokenUsage?: import("@leyline/shared").TokenUsage };
         try {
           decision = await this.aiOpponent.decideMulligan(
             state,
@@ -860,7 +860,7 @@ export class GameLoopService {
     if (cardsToBottom <= 0) return;
 
     // AI decides which cards to bottom
-    let decision: { cardIds: string[]; reasoning: string; tokenUsage?: import("@decktutor/shared").TokenUsage };
+    let decision: { cardIds: string[]; reasoning: string; tokenUsage?: import("@leyline/shared").TokenUsage };
     try {
       decision = await this.aiOpponent.decideBottomCards(state, player, cardsToBottom);
     } catch (bottomCardsError) {

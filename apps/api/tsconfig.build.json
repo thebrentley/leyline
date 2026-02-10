@@ -5,7 +5,7 @@
     "tsBuildInfoFile": "./dist/tsconfig.build.tsbuildinfo",
     "paths": {
       "@/*": ["src/*"],
-      "@decktutor/shared": ["../../packages/shared/dist"]
+      "@leyline/shared": ["../../packages/shared/dist"]
     }
   },
   "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]

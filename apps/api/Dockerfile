@@ -9,15 +9,15 @@ COPY apps/api/package*.json ./apps/api/
 COPY packages/shared/package*.json ./packages/shared/
 
 # Install dependencies
-RUN npm ci --workspace=@decktutor/api --workspace=@decktutor/shared
+RUN npm ci --workspace=@leyline/api --workspace=@leyline/shared
 
 # Copy source files
 COPY apps/api ./apps/api
 COPY packages/shared ./packages/shared
 
 # Build shared package first, then API
-RUN npm run build --workspace=@decktutor/shared
-RUN npm run build --workspace=@decktutor/api
+RUN npm run build --workspace=@leyline/shared
+RUN npm run build --workspace=@leyline/api
 
 # Production stage
 FROM node:20-alpine AS production

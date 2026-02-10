@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsObject, ValidateNested, IsNumber } from 'class-validator';
 import { Type } from 'class-transformer';
-import type { GameAction, GameConfig, FullPlaytestGameState } from '@decktutor/shared';
+import type { GameAction, GameConfig, FullPlaytestGameState } from '@leyline/shared';
 
 export class StartGameDto {
   @IsString()

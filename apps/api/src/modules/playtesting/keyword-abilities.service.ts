@@ -8,7 +8,7 @@ import type {
   StackItem,
   StackTarget,
   PlayerId,
-} from '@decktutor/shared';
+} from '@leyline/shared';
 
 // =====================
 // Keyword Handler Interface

@@ -14,8 +14,8 @@ import type {
   GameConfig,
   PlayerId,
   CombatState,
-} from '@decktutor/shared';
-import { DEFAULT_TOKEN_USAGE } from '@decktutor/shared';
+} from '@leyline/shared';
+import { DEFAULT_TOKEN_USAGE } from '@leyline/shared';
 
 @Injectable()
 export class PlaytestingService {

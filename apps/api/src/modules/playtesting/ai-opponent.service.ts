@@ -10,7 +10,7 @@ import type {
   AttackerInfo,
   BlockerInfo,
   TokenUsage,
-} from "@decktutor/shared";
+} from "@leyline/shared";
 
 @Injectable()
 export class AIOpponentService {
