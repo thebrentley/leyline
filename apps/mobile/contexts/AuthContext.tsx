@@ -48,11 +48,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function loadStoredAuth() {
     try {
       const storedToken = await secureStorage.getItem(TOKEN_KEY);
-      
+
       if (storedToken) {
         // Verify token is still valid by fetching user
         const response = await authApi.getMe();
-        
+
         if (response.data) {
           setUser(response.data);
           setToken(storedToken);
@@ -86,7 +86,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (response.data) {
         await secureStorage.setItem(TOKEN_KEY, response.data.accessToken);
-        await secureStorage.setItem(USER_KEY, JSON.stringify(response.data.user));
+        await secureStorage.setItem(
+          USER_KEY,
+          JSON.stringify(response.data.user),
+        );
         setToken(response.data.accessToken);
         setUser(response.data.user);
       }
@@ -109,7 +112,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (response.data) {
         await secureStorage.setItem(TOKEN_KEY, response.data.accessToken);
-        await secureStorage.setItem(USER_KEY, JSON.stringify(response.data.user));
+        await secureStorage.setItem(
+          USER_KEY,
+          JSON.stringify(response.data.user),
+        );
         setToken(response.data.accessToken);
         setUser(response.data.user);
       }
@@ -145,7 +151,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, signIn, signUp, signOut, refreshUser }}>
+    <AuthContext.Provider
+      value={{ user, token, isLoading, signIn, signUp, signOut, refreshUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

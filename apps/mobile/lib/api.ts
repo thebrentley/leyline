@@ -20,7 +20,7 @@ async function getAuthToken(): Promise<string | null> {
 
 async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<ApiResponse<T>> {
   try {
     const token = await getAuthToken();
@@ -34,6 +34,7 @@ async function request<T>(
       (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
     }
 
+    console.log(`${API_URL}${endpoint}`);
     const response = await fetch(`${API_URL}${endpoint}`, {
       ...options,
       headers,
@@ -43,7 +44,10 @@ async function request<T>(
 
     if (!response.ok) {
       return {
-        error: data.message || data.error || `Request failed with status ${response.status}`,
+        error:
+          data.message ||
+          data.error ||
+          `Request failed with status ${response.status}`,
       };
     }
 
@@ -86,7 +90,7 @@ export interface ColorTag {
   color: string;
 }
 
-export type DeckSyncStatus = 'waiting' | 'syncing' | 'synced' | 'error';
+export type DeckSyncStatus = "waiting" | "syncing" | "synced" | "error";
 
 export interface DeckSummary {
   id: string;
@@ -162,7 +166,7 @@ export interface DeckVersion {
   deckId: string;
   versionNumber: number;
   description: string | null;
-  changeType: 'sync' | 'manual' | 'advisor' | 'revert';
+  changeType: "sync" | "manual" | "advisor" | "revert";
   cards: VersionCard[];
   colorTags: ColorTag[];
   cardCount: number;
@@ -249,7 +253,10 @@ export interface CardSearchResult {
 // ==================== Auth API ====================
 
 export const authApi = {
-  async login(email: string, password: string): Promise<ApiResponse<AuthResponse>> {
+  async login(
+    email: string,
+    password: string,
+  ): Promise<ApiResponse<AuthResponse>> {
     return request<AuthResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
@@ -259,7 +266,7 @@ export const authApi = {
   async register(
     email: string,
     password: string,
-    displayName?: string
+    displayName?: string,
   ): Promise<ApiResponse<AuthResponse>> {
     return request<AuthResponse>("/auth/register", {
       method: "POST",
@@ -273,7 +280,7 @@ export const authApi = {
 
   async connectArchidekt(
     username: string,
-    password: string
+    password: string,
   ): Promise<ApiResponse<User>> {
     return request<User>("/auth/archidekt/connect", {
       method: "POST",
@@ -319,154 +326,138 @@ export const decksApi = {
   async updateCardQuantity(
     deckId: string,
     cardName: string,
-    delta: number
+    delta: number,
   ): Promise<ApiResponse<{ success: boolean; newQuantity: number }>> {
     return request<{ success: boolean; newQuantity: number }>(
       `/decks/${deckId}/cards/quantity`,
       {
         method: "PATCH",
         body: JSON.stringify({ cardName, delta }),
-      }
+      },
     );
   },
 
   async updateCardTag(
     deckId: string,
     cardName: string,
-    tagId: string | null
+    tagId: string | null,
   ): Promise<ApiResponse<{ success: boolean }>> {
-    return request<{ success: boolean }>(
-      `/decks/${deckId}/cards/tag`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ cardName, tagId }),
-      }
-    );
+    return request<{ success: boolean }>(`/decks/${deckId}/cards/tag`, {
+      method: "PATCH",
+      body: JSON.stringify({ cardName, tagId }),
+    });
   },
 
   async setCardCommander(
     deckId: string,
     cardName: string,
-    isCommander: boolean
+    isCommander: boolean,
   ): Promise<ApiResponse<{ success: boolean }>> {
-    return request<{ success: boolean }>(
-      `/decks/${deckId}/cards/commander`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ cardName, isCommander }),
-      }
-    );
+    return request<{ success: boolean }>(`/decks/${deckId}/cards/commander`, {
+      method: "PATCH",
+      body: JSON.stringify({ cardName, isCommander }),
+    });
   },
 
   async setCardCategory(
     deckId: string,
     cardName: string,
-    category: 'mainboard' | 'sideboard'
+    category: "mainboard" | "sideboard",
   ): Promise<ApiResponse<{ success: boolean }>> {
-    return request<{ success: boolean }>(
-      `/decks/${deckId}/cards/category`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ cardName, category }),
-      }
-    );
+    return request<{ success: boolean }>(`/decks/${deckId}/cards/category`, {
+      method: "PATCH",
+      body: JSON.stringify({ cardName, category }),
+    });
   },
 
   async addCardToDeck(
     deckId: string,
     scryfallId: string,
-    quantity: number = 1
+    quantity: number = 1,
   ): Promise<ApiResponse<{ success: boolean; cardName: string }>> {
     return request<{ success: boolean; cardName: string }>(
       `/decks/${deckId}/cards`,
       {
         method: "POST",
         body: JSON.stringify({ scryfallId, quantity }),
-      }
+      },
     );
   },
 
   async removeCardFromDeck(
     deckId: string,
-    cardName: string
+    cardName: string,
   ): Promise<ApiResponse<{ success: boolean }>> {
     return request<{ success: boolean }>(
       `/decks/${deckId}/cards/${encodeURIComponent(cardName)}`,
       {
         method: "DELETE",
-      }
+      },
     );
   },
 
   async changeCardEdition(
     deckId: string,
     cardName: string,
-    scryfallId: string
+    scryfallId: string,
   ): Promise<ApiResponse<{ success: boolean }>> {
-    return request<{ success: boolean }>(
-      `/decks/${deckId}/cards/edition`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ cardName, scryfallId }),
-      }
-    );
+    return request<{ success: boolean }>(`/decks/${deckId}/cards/edition`, {
+      method: "PATCH",
+      body: JSON.stringify({ cardName, scryfallId }),
+    });
   },
 
   async linkCardToCollection(
     deckId: string,
     cardName: string,
     collectionCardId?: string,
-    forceUnlink?: boolean
-  ): Promise<ApiResponse<{
-    success: boolean;
-    linkedDeckCard?: { deckId: string; deckName: string };
-    availablePrintings?: Array<{
-      id: string;
-      scryfallId: string;
-      setCode: string;
-      setName: string;
-      collectorNumber: string;
-      quantity: number;
-      foilQuantity: number;
-      linkedTo?: { deckId: string; deckName: string };
-    }>;
-    needsSelection?: boolean;
-    editionChanged?: boolean;
-    alreadyLinked?: { deckId: string; deckName: string };
-  }>> {
-    return request(
-      `/decks/${deckId}/cards/link`,
-      {
-        method: "POST",
-        body: JSON.stringify({ cardName, collectionCardId, forceUnlink }),
-      }
-    );
+    forceUnlink?: boolean,
+  ): Promise<
+    ApiResponse<{
+      success: boolean;
+      linkedDeckCard?: { deckId: string; deckName: string };
+      availablePrintings?: Array<{
+        id: string;
+        scryfallId: string;
+        setCode: string;
+        setName: string;
+        collectorNumber: string;
+        quantity: number;
+        foilQuantity: number;
+        linkedTo?: { deckId: string; deckName: string };
+      }>;
+      needsSelection?: boolean;
+      editionChanged?: boolean;
+      alreadyLinked?: { deckId: string; deckName: string };
+    }>
+  > {
+    return request(`/decks/${deckId}/cards/link`, {
+      method: "POST",
+      body: JSON.stringify({ cardName, collectionCardId, forceUnlink }),
+    });
   },
 
   async unlinkCardFromCollection(
     deckId: string,
-    cardName: string
+    cardName: string,
   ): Promise<ApiResponse<{ success: boolean }>> {
-    return request<{ success: boolean }>(
-      `/decks/${deckId}/cards/unlink`,
-      {
-        method: "POST",
-        body: JSON.stringify({ cardName }),
-      }
-    );
+    return request<{ success: boolean }>(`/decks/${deckId}/cards/unlink`, {
+      method: "POST",
+      body: JSON.stringify({ cardName }),
+    });
   },
 
   async addColorTag(
     deckId: string,
     name: string,
-    color: string
+    color: string,
   ): Promise<ApiResponse<{ success: boolean; colorTags: ColorTag[] }>> {
     return request<{ success: boolean; colorTags: ColorTag[] }>(
       `/decks/${deckId}/color-tags`,
       {
         method: "POST",
         body: JSON.stringify({ name, color }),
-      }
+      },
     );
   },
 
@@ -474,26 +465,26 @@ export const decksApi = {
     deckId: string,
     tagId: string,
     newName: string,
-    color: string
+    color: string,
   ): Promise<ApiResponse<{ success: boolean; colorTags: ColorTag[] }>> {
     return request<{ success: boolean; colorTags: ColorTag[] }>(
       `/decks/${deckId}/color-tags/${tagId}`,
       {
         method: "PATCH",
         body: JSON.stringify({ name: newName, color }),
-      }
+      },
     );
   },
 
   async deleteColorTag(
     deckId: string,
-    tagId: string
+    tagId: string,
   ): Promise<ApiResponse<{ success: boolean; colorTags: ColorTag[] }>> {
     return request<{ success: boolean; colorTags: ColorTag[] }>(
       `/decks/${deckId}/color-tags/${tagId}`,
       {
         method: "DELETE",
-      }
+      },
     );
   },
 
@@ -501,25 +492,31 @@ export const decksApi = {
     return request<ArchidektDeck[]>("/decks/archidekt");
   },
 
-  async syncFromArchidekt(archidektId: number): Promise<ApiResponse<DeckDetail>> {
+  async syncFromArchidekt(
+    archidektId: number,
+  ): Promise<ApiResponse<DeckDetail>> {
     return request<DeckDetail>(`/decks/sync/${archidektId}`, {
       method: "POST",
     });
   },
 
-  async syncAllFromArchidekt(): Promise<ApiResponse<{
-    queued: number;
-    decks: Array<{ id: string; name: string }>;
-  }>> {
+  async syncAllFromArchidekt(): Promise<
+    ApiResponse<{
+      queued: number;
+      decks: Array<{ id: string; name: string }>;
+    }>
+  > {
     return request("/decks/sync-all", {
       method: "POST",
     });
   },
 
-  async getSyncStatus(): Promise<ApiResponse<{
-    queueSize: number;
-    isProcessing: boolean;
-  }>> {
+  async getSyncStatus(): Promise<
+    ApiResponse<{
+      queueSize: number;
+      isProcessing: boolean;
+    }>
+  > {
     return request("/decks/sync/status");
   },
 
@@ -528,14 +525,23 @@ export const decksApi = {
     return request<DeckVersion[]>(`/decks/${deckId}/versions`);
   },
 
-  async getVersion(deckId: string, versionId: string): Promise<ApiResponse<DeckVersion>> {
+  async getVersion(
+    deckId: string,
+    versionId: string,
+  ): Promise<ApiResponse<DeckVersion>> {
     return request<DeckVersion>(`/decks/${deckId}/versions/${versionId}`);
   },
 
-  async revertToVersion(deckId: string, versionId: string): Promise<ApiResponse<DeckDetail>> {
-    return request<DeckDetail>(`/decks/${deckId}/versions/${versionId}/revert`, {
-      method: "POST",
-    });
+  async revertToVersion(
+    deckId: string,
+    versionId: string,
+  ): Promise<ApiResponse<DeckDetail>> {
+    return request<DeckDetail>(
+      `/decks/${deckId}/versions/${versionId}/revert`,
+      {
+        method: "POST",
+      },
+    );
   },
 };
 
@@ -551,10 +557,10 @@ export const collectionApi = {
     if (options?.page) params.set("page", options.page.toString());
     if (options?.pageSize) params.set("pageSize", options.pageSize.toString());
     if (options?.search) params.set("search", options.search);
-    
+
     const query = params.toString();
     return request<PaginatedResponse<CollectionCard>>(
-      `/collection${query ? `?${query}` : ""}`
+      `/collection${query ? `?${query}` : ""}`,
     );
   },
 
@@ -565,7 +571,7 @@ export const collectionApi = {
   async add(
     scryfallId: string,
     quantity: number,
-    foilQuantity?: number
+    foilQuantity?: number,
   ): Promise<ApiResponse<CollectionCard>> {
     return request<CollectionCard>("/collection", {
       method: "POST",
@@ -579,7 +585,7 @@ export const collectionApi = {
       quantity?: number;
       foilQuantity?: number;
       linkedDeckCard?: { deckId: string; deckName: string } | null;
-    }
+    },
   ): Promise<ApiResponse<CollectionCard>> {
     return request<CollectionCard>(`/collection/${id}`, {
       method: "PUT",
@@ -593,7 +599,9 @@ export const collectionApi = {
     });
   },
 
-  async linkAllToDecks(): Promise<ApiResponse<{ linked: number; total: number }>> {
+  async linkAllToDecks(): Promise<
+    ApiResponse<{ linked: number; total: number }>
+  > {
     return request<{ linked: number; total: number }>("/collection/link-all", {
       method: "POST",
     });
@@ -601,12 +609,14 @@ export const collectionApi = {
 
   async bulkImport(
     lines: string[],
-    options?: { autoLink?: boolean }
-  ): Promise<ApiResponse<{
-    imported: number;
-    linked: number;
-    errors: Array<{ line: string; error: string }>;
-  }>> {
+    options?: { autoLink?: boolean },
+  ): Promise<
+    ApiResponse<{
+      imported: number;
+      linked: number;
+      errors: Array<{ line: string; error: string }>;
+    }>
+  > {
     return request("/collection/bulk-import", {
       method: "POST",
       body: JSON.stringify({ lines, options }),
@@ -619,12 +629,14 @@ export const collectionApi = {
 export const cardsApi = {
   async search(
     query: string,
-    page?: number
-  ): Promise<ApiResponse<{
-    cards: CardSearchResult[];
-    hasMore: boolean;
-    totalCards: number;
-  }>> {
+    page?: number,
+  ): Promise<
+    ApiResponse<{
+      cards: CardSearchResult[];
+      hasMore: boolean;
+      totalCards: number;
+    }>
+  > {
     const params = new URLSearchParams({ q: query });
     if (page) params.set("page", page.toString());
 
@@ -634,13 +646,15 @@ export const cardsApi = {
   async searchLocal(
     query: string,
     page?: number,
-    limit?: number
-  ): Promise<ApiResponse<{
-    cards: CardSearchResult[];
-    hasMore: boolean;
-    totalCards: number;
-    page?: number;
-  }>> {
+    limit?: number,
+  ): Promise<
+    ApiResponse<{
+      cards: CardSearchResult[];
+      hasMore: boolean;
+      totalCards: number;
+      page?: number;
+    }>
+  > {
     const params = new URLSearchParams({ q: query });
     if (page) params.set("page", page.toString());
     if (limit) params.set("limit", limit.toString());
@@ -648,9 +662,11 @@ export const cardsApi = {
     return request(`/cards/search/local?${params.toString()}`);
   },
 
-  async autocomplete(query: string): Promise<ApiResponse<{ suggestions: string[] }>> {
+  async autocomplete(
+    query: string,
+  ): Promise<ApiResponse<{ suggestions: string[] }>> {
     return request<{ suggestions: string[] }>(
-      `/cards/autocomplete?q=${encodeURIComponent(query)}`
+      `/cards/autocomplete?q=${encodeURIComponent(query)}`,
     );
   },
 
@@ -667,16 +683,18 @@ export const cardsApi = {
 
   async getPrints(cardName: string): Promise<ApiResponse<CardSearchResult[]>> {
     return request<CardSearchResult[]>(
-      `/cards/prints/${encodeURIComponent(cardName)}`
+      `/cards/prints/${encodeURIComponent(cardName)}`,
     );
   },
 
-  async getSets(): Promise<ApiResponse<Array<{ setCode: string; setName: string }>>> {
-    return request<Array<{ setCode: string; setName: string }>>('/cards/sets');
+  async getSets(): Promise<
+    ApiResponse<Array<{ setCode: string; setName: string }>>
+  > {
+    return request<Array<{ setCode: string; setName: string }>>("/cards/sets");
   },
 
   async getTypes(): Promise<ApiResponse<string[]>> {
-    return request<string[]>('/cards/types');
+    return request<string[]>("/cards/types");
   },
 
   async fuzzyMatch(
@@ -686,12 +704,18 @@ export const cardsApi = {
       collectorNumber?: string;
       maxDistance?: number;
       limit?: number;
-    }
-  ): Promise<ApiResponse<{
-    matches: Array<CardSearchResult & { distance: number; confidence: number }>;
-  }>> {
+    },
+  ): Promise<
+    ApiResponse<{
+      matches: Array<
+        CardSearchResult & { distance: number; confidence: number }
+      >;
+    }>
+  > {
     return request<{
-      matches: Array<CardSearchResult & { distance: number; confidence: number }>;
+      matches: Array<
+        CardSearchResult & { distance: number; confidence: number }
+      >;
     }>("/cards/fuzzy-match", {
       method: "POST",
       body: JSON.stringify({
@@ -709,17 +733,17 @@ export const cardsApi = {
 
 export interface DeckChange {
   id: string;
-  action: 'add' | 'remove' | 'swap';
+  action: "add" | "remove" | "swap";
   cardName: string;
   targetCardName?: string;
   quantity: number;
   reason: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: "pending" | "accepted" | "rejected";
 }
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   timestamp: string;
   suggestedChanges?: DeckChange[];
@@ -741,7 +765,11 @@ export interface ChatSession {
 // ==================== Playtesting API ====================
 
 // Re-export types from SocketContext for convenience
-export type { PlaytestGameState, GameCard, GameZone } from "~/contexts/SocketContext";
+export type {
+  PlaytestGameState,
+  GameCard,
+  GameZone,
+} from "~/contexts/SocketContext";
 
 export interface StartPlaytestResponse {
   success: boolean;
@@ -749,15 +777,28 @@ export interface StartPlaytestResponse {
 }
 
 export const playtestingApi = {
-  async startGame(player1DeckId: string, player2DeckId: string): Promise<ApiResponse<StartPlaytestResponse>> {
+  async startGame(
+    player1DeckId: string,
+    player2DeckId: string,
+  ): Promise<ApiResponse<StartPlaytestResponse>> {
     return request<StartPlaytestResponse>(`/playtesting/start`, {
       method: "POST",
       body: JSON.stringify({ player1DeckId, player2DeckId }),
     });
   },
 
-  async getGameState(deckId: string): Promise<ApiResponse<{ success: boolean; gameState: import("~/contexts/SocketContext").PlaytestGameState | null }>> {
-    return request<{ success: boolean; gameState: import("~/contexts/SocketContext").PlaytestGameState | null }>(`/playtesting/game/${deckId}`);
+  async getGameState(
+    deckId: string,
+  ): Promise<
+    ApiResponse<{
+      success: boolean;
+      gameState: import("~/contexts/SocketContext").PlaytestGameState | null;
+    }>
+  > {
+    return request<{
+      success: boolean;
+      gameState: import("~/contexts/SocketContext").PlaytestGameState | null;
+    }>(`/playtesting/game/${deckId}`);
   },
 
   async endGame(deckId: string): Promise<ApiResponse<{ success: boolean }>> {
@@ -790,7 +831,10 @@ export const advisorApi = {
     return request<ChatSession>(`/advisor/session/${sessionId}`);
   },
 
-  async createSession(deckId: string, name?: string): Promise<ApiResponse<ChatSession>> {
+  async createSession(
+    deckId: string,
+    name?: string,
+  ): Promise<ApiResponse<ChatSession>> {
     return request<ChatSession>("/advisor/sessions", {
       method: "POST",
       body: JSON.stringify({ deckId, name }),
@@ -805,7 +849,7 @@ export const advisorApi = {
   async updateChangeStatus(
     sessionId: string,
     changeId: string,
-    status: 'accepted' | 'rejected'
+    status: "accepted" | "rejected",
   ): Promise<ApiResponse<ChatSession>> {
     return request<ChatSession>(`/advisor/session/${sessionId}/change`, {
       method: "PUT",
@@ -816,7 +860,7 @@ export const advisorApi = {
   async bulkUpdateChangeStatus(
     sessionId: string,
     changeIds: string[],
-    status: 'accepted' | 'rejected'
+    status: "accepted" | "rejected",
   ): Promise<ApiResponse<ChatSession>> {
     return request<ChatSession>(`/advisor/session/${sessionId}/changes/bulk`, {
       method: "PUT",
@@ -824,13 +868,18 @@ export const advisorApi = {
     });
   },
 
-  async deleteSession(sessionId: string): Promise<ApiResponse<{ success: boolean }>> {
+  async deleteSession(
+    sessionId: string,
+  ): Promise<ApiResponse<{ success: boolean }>> {
     return request<{ success: boolean }>(`/advisor/session/${sessionId}`, {
       method: "DELETE",
     });
   },
 
-  async updateSession(sessionId: string, updates: { name?: string }): Promise<ApiResponse<ChatSession>> {
+  async updateSession(
+    sessionId: string,
+    updates: { name?: string },
+  ): Promise<ApiResponse<ChatSession>> {
     return request<ChatSession>(`/advisor/session/${sessionId}`, {
       method: "PATCH",
       body: JSON.stringify(updates),

@@ -1,6 +1,5 @@
 import { DrawerActions, useNavigation } from "@react-navigation/native";
 import {
-  Camera,
   CheckCircle,
   FileText,
   Grid3X3,
@@ -33,7 +32,6 @@ import {
 } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { CardScanner } from "~/components/camera/CardScanner";
 import { ScryfallSearch } from "~/components/ScryfallSearch";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { Button } from "~/components/ui/button";
@@ -1228,8 +1226,6 @@ export default function CollectionScreen() {
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [bulkImportModalVisible, setBulkImportModalVisible] = useState(false);
   const [scryfallSearchVisible, setScryfallSearchVisible] = useState(false);
-  const [scannerVisible, setScannerVisible] = useState(false);
-
   // Confirmation dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
     visible: boolean;
@@ -1739,23 +1735,6 @@ export default function CollectionScreen() {
         </ScrollView>
       )}
 
-      {/* FAB - Camera Scanner Button */}
-      {!isDesktop && (
-        <Pressable
-          onPress={() => setScannerVisible(true)}
-          className="absolute bottom-24 right-6 h-14 w-14 rounded-full bg-purple-600 items-center justify-center shadow-lg"
-          style={{
-            shadowColor: "#7C3AED",
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 8,
-          }}
-        >
-          <Camera size={28} color="white" />
-        </Pressable>
-      )}
-
       {/* FAB - Add Card Button */}
       {!isDesktop && (
         <Pressable
@@ -1832,18 +1811,6 @@ export default function CollectionScreen() {
         existingCardIds={existingCardIds}
       />
 
-      {/* Card Scanner */}
-      <CardScanner
-        visible={scannerVisible}
-        onClose={() => setScannerVisible(false)}
-        onComplete={() => {
-          setScannerVisible(false);
-          // Refresh collection after scanning
-          cache.remove(CACHE_KEYS.COLLECTION_STATS);
-          loadCollection(true, searchQuery);
-          loadStats();
-        }}
-      />
     </SafeAreaView>
   );
 }

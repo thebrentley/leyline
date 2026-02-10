@@ -2,20 +2,16 @@ import {
   DrawerContentComponentProps,
   DrawerContentScrollView,
 } from "@react-navigation/drawer";
-import Constants from "expo-constants";
 import { Slot } from "expo-router";
 import { Drawer } from "expo-router/drawer";
 import {
   ChevronRight,
-  CircleHelp,
   Home,
   Layers,
   Library,
   Link2,
   LogOut,
-  MessageSquarePlus,
   Moon,
-  Settings,
 } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useState } from "react";
@@ -86,8 +82,6 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
   const { user, signOut } = useAuth();
   const insets = useSafeAreaInsets();
   const iconColor = isDark ? "#94a3b8" : "#64748b";
-  const appVersion = Constants.expoConfig?.version || "1.0.0";
-
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const handleLogout = () => {
@@ -184,13 +178,6 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         />
         <Divider isDark={isDark} />
 
-        <DrawerItem
-          icon={<Settings size={24} color={iconColor} />}
-          label="Settings"
-          isDark={isDark}
-        />
-        <Divider isDark={isDark} />
-
         {/* Dark Mode Toggle */}
         <View
           className={`flex-row items-center justify-between px-6 py-4`}
@@ -211,20 +198,6 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         </View>
         <Divider isDark={isDark} />
 
-        <DrawerItem
-          icon={<CircleHelp size={24} color={iconColor} />}
-          label="Help Center"
-          isDark={isDark}
-        />
-        <Divider isDark={isDark} />
-
-        <DrawerItem
-          icon={<MessageSquarePlus size={24} color={iconColor} />}
-          label="Give us feedback"
-          isDark={isDark}
-        />
-        <Divider isDark={isDark} />
-
         {/* Log out */}
         <Pressable
           onPress={handleLogout}
@@ -238,21 +211,6 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           </Text>
         </Pressable>
       </DrawerContentScrollView>
-
-      {/* Footer */}
-      <View
-        className="items-center gap-1 pb-4"
-        style={{ paddingBottom: insets.bottom + 16 }}
-      >
-        <Text className={isDark ? "text-slate-600" : "text-slate-400"}>
-          Version {appVersion}
-        </Text>
-        <Pressable>
-          <Text className={isDark ? "text-slate-500" : "text-slate-400"}>
-            Terms of Service
-          </Text>
-        </Pressable>
-      </View>
 
       {/* Logout Confirmation */}
       <ConfirmDialog

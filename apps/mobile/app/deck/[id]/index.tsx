@@ -1852,11 +1852,6 @@ export default function DeckDetailScreen() {
             } lg:bg-purple-500/10`}
           >
             <Plus size={20} color="#7C3AED" />
-            {isDesktop && (
-              <Text className="text-sm font-medium text-purple-500">
-                Add Card
-              </Text>
-            )}
           </Pressable>
           {/* Color Tag Manager */}
           <Pressable
@@ -1868,13 +1863,6 @@ export default function DeckDetailScreen() {
             }`}
           >
             <Palette size={20} color={isDark ? "#94a3b8" : "#64748b"} />
-            {isDesktop && (
-              <Text
-                className={`text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}
-              >
-                Tags
-              </Text>
-            )}
           </Pressable>
           {/* AI Advisor Toggle - Desktop only */}
           {isDesktop && (
@@ -1897,13 +1885,6 @@ export default function DeckDetailScreen() {
               ) : (
                 <Sparkles size={20} color="#7C3AED" />
               )}
-              <Text
-                className={`text-sm font-medium ${
-                  advisorPanelVisible ? "text-white" : "text-purple-500"
-                }`}
-              >
-                Advisor
-              </Text>
             </Pressable>
           )}
           {/* Menu */}
@@ -1932,13 +1913,6 @@ export default function DeckDetailScreen() {
                     size={20}
                     color={isDark ? "#94a3b8" : "#64748b"}
                   />
-                  {isDesktop && (
-                    <Text
-                      className={`text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}
-                    >
-                      More
-                    </Text>
-                  )}
                 </>
               )}
             </Pressable>
@@ -1969,19 +1943,13 @@ export default function DeckDetailScreen() {
                   setGroupByMenuVisible(true);
                 });
               }}
-              className={`flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg ${
+              className={`flex-row items-center gap-1.5 p-2.5 lg:px-4 lg:py-2 rounded-lg ${
                 isDark
                   ? "bg-slate-800 lg:hover:bg-slate-700"
                   : "bg-white border border-slate-200 lg:hover:bg-slate-50"
               }`}
             >
-              <Layers size={14} color={isDark ? "#94a3b8" : "#64748b"} />
-              <Text
-                className={`text-xs lg:text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
-              >
-                {GROUP_BY_OPTIONS.find((o) => o.value === groupBy)?.label ||
-                  "Group"}
-              </Text>
+              <Layers size={18} color={isDark ? "#94a3b8" : "#64748b"} />
             </Pressable>
 
           </View>
@@ -1992,7 +1960,7 @@ export default function DeckDetailScreen() {
               setSearchVisible(!searchVisible);
               if (searchVisible) setSearchQuery("");
             }}
-            className={`flex-row items-center gap-1.5 p-2 lg:px-4 lg:py-2 rounded-lg ${
+            className={`flex-row items-center gap-1.5 p-2.5 lg:px-4 lg:py-2 rounded-lg ${
               searchVisible
                 ? "bg-purple-500/20"
                 : isDark
@@ -2001,16 +1969,9 @@ export default function DeckDetailScreen() {
             }`}
           >
             <Search
-              size={14}
+              size={18}
               color={searchVisible ? "#7C3AED" : isDark ? "#94a3b8" : "#64748b"}
             />
-            {isDesktop && (
-              <Text
-                className={`text-sm font-medium ${searchVisible ? "text-purple-500" : isDark ? "text-slate-300" : "text-slate-700"}`}
-              >
-                Search
-              </Text>
-            )}
           </Pressable>
 
           {/* Version Dropdown */}
@@ -2020,18 +1981,13 @@ export default function DeckDetailScreen() {
                 `/deck/${id}/versions?name=${encodeURIComponent(deck?.name || "")}`,
               )
             }
-            className={`flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg ${
+            className={`flex-row items-center gap-1.5 p-2.5 lg:px-4 lg:py-2 rounded-lg ${
               isDark
                 ? "bg-slate-800 lg:hover:bg-slate-700"
                 : "bg-white border border-slate-200 lg:hover:bg-slate-50"
             }`}
           >
-            <History size={14} color={isDark ? "#94a3b8" : "#64748b"} />
-            <Text
-              className={`text-xs lg:text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
-            >
-              Versions
-            </Text>
+            <History size={18} color={isDark ? "#94a3b8" : "#64748b"} />
           </Pressable>
         </View>
 
@@ -2043,12 +1999,9 @@ export default function DeckDetailScreen() {
                 `/deck/${id}/playtest?name=${encodeURIComponent(deck?.name || "")}`,
               )
             }
-            className="flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg bg-green-500/10 lg:hover:bg-green-500/20"
+            className="flex-row items-center gap-1.5 p-2.5 lg:px-4 lg:py-2 rounded-lg bg-green-500/10 lg:hover:bg-green-500/20"
           >
-            <Play size={14} color="#22c55e" />
-            <Text className="text-xs lg:text-sm font-medium text-green-500">
-              Playtest
-            </Text>
+            <Play size={18} color="#22c55e" />
           </Pressable>
 
           {/* Price Button */}
@@ -2058,12 +2011,9 @@ export default function DeckDetailScreen() {
                 `/deck/${id}/price?name=${encodeURIComponent(deck?.name || "")}`,
               )
             }
-            className="flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg bg-purple-500/10 lg:hover:bg-purple-500/20"
+            className="flex-row items-center gap-1.5 p-2.5 lg:px-4 lg:py-2 rounded-lg bg-purple-500/10 lg:hover:bg-purple-500/20"
           >
-            <DollarSign size={14} color="#7C3AED" />
-            <Text className="text-xs lg:text-sm font-medium text-purple-500">
-              Price
-            </Text>
+            <DollarSign size={18} color="#7C3AED" />
           </Pressable>
 
           {/* View Mode Dropdown */}
@@ -2080,24 +2030,19 @@ export default function DeckDetailScreen() {
                   setViewModeMenuVisible(true);
                 });
               }}
-              className={`flex-row items-center gap-1.5 px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg ${
+              className={`flex-row items-center gap-1.5 p-2.5 lg:px-4 lg:py-2 rounded-lg ${
                 isDark
                   ? "bg-slate-800 lg:hover:bg-slate-700"
                   : "bg-white border border-slate-200 lg:hover:bg-slate-50"
               }`}
             >
               {viewMode === "list" ? (
-                <List size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+                <List size={18} color={isDark ? "#94a3b8" : "#64748b"} />
               ) : viewMode === "grid" ? (
-                <Grid3X3 size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+                <Grid3X3 size={18} color={isDark ? "#94a3b8" : "#64748b"} />
               ) : (
-                <Layers size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+                <Layers size={18} color={isDark ? "#94a3b8" : "#64748b"} />
               )}
-              <Text
-                className={`text-xs lg:text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}
-              >
-                {VIEW_MODE_OPTIONS.find((o) => o.value === viewMode)?.label || "View"}
-              </Text>
             </Pressable>
           </View>
         </View>

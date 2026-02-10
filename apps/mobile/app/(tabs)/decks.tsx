@@ -139,83 +139,85 @@ function DeckGridItem({
   const primaryCommander = deck.commanders[0];
 
   return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={500}
-      className="mb-3 rounded-xl overflow-hidden transition-transform lg:hover:scale-105 lg:hover:shadow-xl lg:hover:z-10"
-      style={{ marginHorizontal: 4, height: 160 }}
-    >
-      {/* Full card background image */}
-      <View className="absolute inset-0">
-        {deck.commanderImageCrop ? (
-          <Image
-            source={{ uri: deck.commanderImageCrop }}
-            style={{
-              width: "100%",
-              height: "100%",
-              resizeMode: "cover",
-            }}
-          />
-        ) : (
-          <View
-            className={`w-full h-full items-center justify-center ${
-              isDark ? "bg-slate-800" : "bg-slate-200"
-            }`}
-          >
-            <Layers size={40} color={isDark ? "#64748b" : "#94a3b8"} />
+    <View style={{ width: '50%', height: 160, padding: 2 }}>
+      <Pressable
+        onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={500}
+        className="flex-1 rounded-xl overflow-hidden transition-transform lg:hover:scale-105 lg:hover:shadow-xl lg:hover:z-10"
+      >
+        {/* Full card background image */}
+        <View className="absolute inset-0">
+          {deck.commanderImageCrop ? (
+            <Image
+              source={{ uri: deck.commanderImageCrop }}
+              style={{
+                width: "100%",
+                height: "100%",
+                resizeMode: "cover",
+              }}
+            />
+          ) : (
+            <View
+              className={`w-full h-full items-center justify-center ${
+                isDark ? "bg-slate-800" : "bg-slate-200"
+              }`}
+            >
+              <Layers size={40} color={isDark ? "#64748b" : "#94a3b8"} />
+            </View>
+          )}
+        </View>
+
+        {/* Sync from Archidekt button - shown when status is waiting */}
+        {deck.syncStatus === "waiting" && (
+          <View className="absolute top-2 right-2">
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onSync(deck.archidektId);
+              }}
+              className="p-1.5 rounded-full"
+              style={{
+                backgroundColor: "rgba(0, 0, 0, 0.7)",
+              }}
+            >
+              <CloudDownload size={16} color="#7C3AED" />
+            </Pressable>
           </View>
         )}
-      </View>
 
-      {/* Sync from Archidekt button - shown when status is waiting */}
-      {deck.syncStatus === "waiting" && (
-        <View className="absolute top-2 right-2">
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation();
-              onSync(deck.archidektId);
-            }}
-            className="p-1.5 rounded-full"
-            style={{
-              backgroundColor: "rgba(0, 0, 0, 0.7)",
-            }}
-          >
-            <CloudDownload size={16} color="#7C3AED" />
-          </Pressable>
-        </View>
-      )}
+        <View
+          className="absolute bottom-0 left-0 right-0 p-2.5 justify-end"
+          style={{
+            backgroundColor: "rgba(0, 0, 0, 0.75)",
+            height: 80,
+          }}
+        >
+          {/* Commander name */}
+          {primaryCommander && (
+            <View className="flex-row items-center gap-1 mb-1">
+              <Crown size={10} color="#eab308" />
+              <Text className="text-xs text-white/70" numberOfLines={1}>
+                {primaryCommander}
+              </Text>
+            </View>
+          )}
 
-      <View
-        className="absolute bottom-0 left-0 right-0 p-2.5"
-        style={{
-          backgroundColor: "rgba(0, 0, 0, 0.75)",
-        }}
-      >
-        {/* Commander name */}
-        {primaryCommander && (
-          <View className="flex-row items-center gap-1 mb-1">
-            <Crown size={10} color="#eab308" />
-            <Text className="text-xs text-white/70" numberOfLines={1}>
-              {primaryCommander}
+          {/* Deck name */}
+          <Text className="text-sm font-semibold text-white" numberOfLines={1}>
+            {deck.name}
+          </Text>
+
+          {/* Color identity and card count */}
+          <View className="mt-1.5 flex-row items-center gap-1">
+            <ColorIdentityPills colors={deck.colors} isDark={true} />
+            <Text className="ml-1 text-xs text-white/60">
+              {deck.cardCount} cards
             </Text>
           </View>
-        )}
-
-        {/* Deck name */}
-        <Text className="text-sm font-semibold text-white" numberOfLines={2}>
-          {deck.name}
-        </Text>
-
-        {/* Color identity and card count */}
-        <View className="mt-1.5 flex-row items-center gap-1">
-          <ColorIdentityPills colors={deck.colors} isDark={true} />
-          <Text className="ml-1 text-xs text-white/60">
-            {deck.cardCount} cards
-          </Text>
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -592,7 +594,7 @@ export default function DecksScreen() {
         ) : (
           <ScrollView
             className="flex-1"
-            contentContainerClassName={`w-full max-w-content mx-auto px-4 lg:px-6 py-6`}
+            contentContainerClassName={`w-full max-w-content mx-auto p-1 lg:px-6 lg:py-6`}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -601,7 +603,7 @@ export default function DecksScreen() {
               />
             }
           >
-            <View className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            <View className="flex-row flex-wrap lg:gap-4">
               {decks.map((item) => (
                 <DeckGridItem
                   key={item.id}

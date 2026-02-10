@@ -305,6 +305,14 @@ export class AuthService {
       } catch {
         tokenValid = false;
       }
+
+      // Auto-refresh if token expired but stored credentials exist
+      if (!tokenValid) {
+        const newToken = await this.autoRefreshArchidektToken(userId);
+        if (newToken) {
+          tokenValid = true;
+        }
+      }
     }
 
     return {

@@ -14,7 +14,6 @@ export default function ProfileScreen() {
   const navigation = useNavigation();
 
   const [displayName, setDisplayName] = useState(user?.displayName || "");
-  const [email, setEmail] = useState(user?.email || "");
 
   const goBack = () => {
     navigation.dispatch(DrawerActions.jumpTo("index"));
@@ -54,7 +53,7 @@ export default function ProfileScreen() {
           <View className="relative">
             <View className="h-24 w-24 items-center justify-center rounded-full bg-purple-600">
               <Text className="text-3xl font-bold text-white">
-                {(displayName || email)?.charAt(0).toUpperCase() || "U"}
+                {(displayName || user?.email)?.charAt(0).toUpperCase() || "U"}
               </Text>
             </View>
             <Pressable
@@ -101,16 +100,12 @@ export default function ProfileScreen() {
               Email
             </Text>
             <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Enter your email"
-              placeholderTextColor={isDark ? "#64748b" : "#94a3b8"}
-              keyboardType="email-address"
-              autoCapitalize="none"
+              value={user?.email || ""}
+              editable={false}
               className={`rounded-lg border px-4 py-3 text-base ${
                 isDark
-                  ? "border-slate-700 bg-slate-800 text-white"
-                  : "border-slate-200 bg-white text-slate-900"
+                  ? "border-slate-700 bg-slate-800/50 text-slate-400"
+                  : "border-slate-200 bg-slate-50 text-slate-400"
               }`}
             />
           </View>

@@ -23,7 +23,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Spinner } from "~/components/Spinner";
 import { Button } from "~/components/ui/button";
 import { authApi, type ArchidektStatus } from "~/lib/api";
-import { cache, CACHE_KEYS, cachedFetch } from "~/lib/cache";
+import { cache, CACHE_KEYS } from "~/lib/cache";
 import { useAuth } from "~/contexts/AuthContext";
 import { showToast } from "~/lib/toast";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
@@ -149,11 +149,8 @@ export default function ConnectionsScreen() {
 
   const loadArchidektStatus = useCallback(async () => {
     try {
-      const result = await cachedFetch(
-        CACHE_KEYS.ARCHIDEKT_STATUS,
-        1, // 1 minute TTL
-        () => authApi.getArchidektStatus()
-      );
+      // Skip cache — backend auto-refreshes expired tokens, so always fetch fresh status
+      const result = await authApi.getArchidektStatus();
       if (result.data) {
         setArchidektStatus(result.data);
       }
