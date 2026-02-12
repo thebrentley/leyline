@@ -1548,6 +1548,12 @@ export default function CollectionScreen() {
     onViewableItemsChangedRef.current = onViewableItemsChanged;
   }, [onViewableItemsChanged]);
 
+  const stableOnViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: any[] }) => {
+      onViewableItemsChangedRef.current({ viewableItems });
+    }
+  ).current;
+
   const renderEmptyState = () => (
     <View className="flex-1 items-center justify-center px-6">
       <Text
@@ -1695,7 +1701,7 @@ export default function CollectionScreen() {
           }
           renderItem={renderListItem}
           getItemLayout={getListItemLayout}
-          onViewableItemsChanged={onViewableItemsChanged}
+          onViewableItemsChanged={stableOnViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
           // Virtual scrolling optimizations
           windowSize={21}
