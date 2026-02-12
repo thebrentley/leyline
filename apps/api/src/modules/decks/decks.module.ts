@@ -8,12 +8,14 @@ import { DeckCard } from '../../entities/deck-card.entity';
 import { DeckVersion } from '../../entities/deck-version.entity';
 import { CollectionCard } from '../../entities/collection-card.entity';
 import { ColorTag } from '../../entities/color-tag.entity';
+import { DeckScore } from '../../entities/deck-score.entity';
+import { PodMember } from '../../entities/pod-member.entity';
 import { CardsModule } from '../cards/cards.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Deck, DeckCard, DeckVersion, CollectionCard, ColorTag]),
+    TypeOrmModule.forFeature([Deck, DeckCard, DeckVersion, CollectionCard, ColorTag, DeckScore, PodMember]),
     CardsModule,
     forwardRef(() => AuthModule),
   ],

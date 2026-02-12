@@ -73,6 +73,8 @@ export interface CardFace {
 // Deck Types
 // =====================
 
+export type DeckVisibility = 'private' | 'public' | 'pod';
+
 export interface ColorTag {
   id: string;
   name: string;
@@ -85,6 +87,7 @@ export interface Deck {
   archidektId: number;
   name: string;
   format: string | null;
+  visibility: DeckVisibility;
   lastSyncedAt: Date;
   colorTags: ColorTag[];
   cards?: DeckCard[];
@@ -106,10 +109,23 @@ export interface DeckSummary {
   archidektId: number;
   name: string;
   format: string | null;
+  visibility: DeckVisibility;
   lastSyncedAt: Date;
   cardCount: number;
   commanders: string[];
   colors: string[];
+}
+
+export interface ExploreDeckSummary {
+  id: string;
+  name: string;
+  format: string | null;
+  cardCount: number;
+  commanders: string[];
+  colors: string[];
+  commanderImageCrop: string | null;
+  ownerName: string;
+  ownerId: string;
 }
 
 // =====================
@@ -374,6 +390,58 @@ export type PlaytestMessage =
  */
 export type PlaytestMessageType = PlaytestMessage['type'];
 
+// =====================
+// Deck Ranking Types
+// =====================
+
+export interface DeckScores {
+  power: number;
+  salt: number;
+  fear: number;
+  airtime: number;
+}
+
+export interface DeckScoreResponse {
+  scores: DeckScores;
+  layerBreakdown: {
+    cardBaseline: DeckScores;
+    tagInteraction: DeckScores;
+    combos: DeckScores;
+    commander: DeckScores;
+    density: DeckScores;
+    graph: DeckScores;
+  };
+  notableCards: {
+    highPower: string[];
+    highSalt: string[];
+    highFear: string[];
+    highAirtime: string[];
+    synergyHubs: string[];
+    comboCards: string[];
+  } | null;
+  detectedCombos: Array<{
+    cardNames: string[];
+    isGameWinning: boolean;
+    pieceCount: number;
+    description: string;
+  }> | null;
+  detectedEngines: Array<{
+    cards: string[];
+    description: string;
+  }> | null;
+  computedAt: string;
+  isStale: boolean;
+}
+
+export interface CardInsight {
+  cardName: string;
+  tags: string[];
+  baseline: DeckScores;
+  synergyCount: number;
+  isCombopiece: boolean;
+  isHub: boolean;
+}
+
 /**
  * Client-to-server events for playtesting
  */
@@ -389,4 +457,143 @@ export interface PlaytestServerEvents {
   'playtest:message': PlaytestMessage;
   'playtest:joined': { deckId: string; sessionId: string | null };
   'playtest:left': { deckId: string };
+}
+
+// =====================
+// Pod Types
+// =====================
+
+export type PodRole = 'owner' | 'admin' | 'member';
+export type InviteStatus = 'pending' | 'accepted' | 'declined';
+export type RsvpStatus = 'accepted' | 'declined';
+
+export interface PodSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  coverImage: string | null;
+  memberCount: number;
+  role: PodRole;
+  nextEventAt: string | null;
+  createdAt: string;
+}
+
+export interface PodDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  coverImage: string | null;
+  inviteCode: string | null;
+  memberCount: number;
+  role: PodRole;
+  members: PodMemberInfo[];
+  createdAt: string;
+}
+
+export interface PodMemberInfo {
+  id: string;
+  userId: string;
+  displayName: string | null;
+  email: string;
+  role: PodRole;
+  joinedAt: string;
+}
+
+export interface PodInviteInfo {
+  id: string;
+  pod: { id: string; name: string; description: string | null; memberCount: number };
+  inviter: { displayName: string | null; email: string };
+  createdAt: string;
+}
+
+export interface CreatePodDto {
+  name: string;
+  description?: string;
+}
+
+export interface InviteUserDto {
+  userId: string;
+}
+
+export interface RespondInviteDto {
+  accept: boolean;
+}
+
+export interface PodEventSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  location: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  createdBy: { displayName: string | null };
+  rsvpCounts: { accepted: number; declined: number; pending: number };
+  myRsvp: RsvpStatus | null;
+  createdAt: string;
+}
+
+export interface PodEventDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  location: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  createdBy: { id: string; displayName: string | null };
+  rsvps: EventRsvpInfo[];
+  notResponded: Array<{ userId: string; displayName: string | null; email: string; profilePicture: string | null }>;
+  createdAt: string;
+}
+
+export interface EventRsvpInfo {
+  userId: string;
+  displayName: string | null;
+  email: string;
+  profilePicture: string | null;
+  status: RsvpStatus;
+  comment: string | null;
+  updatedAt: string;
+}
+
+export interface CreatePodEventDto {
+  name: string;
+  description?: string;
+  location?: string;
+  startsAt: string;
+  endsAt?: string;
+}
+
+export interface UpdatePodEventDto {
+  name?: string;
+  description?: string;
+  location?: string;
+  startsAt?: string;
+  endsAt?: string;
+}
+
+export interface RsvpDto {
+  status: RsvpStatus;
+  comment?: string;
+}
+
+export interface UserSearchResult {
+  id: string;
+  displayName: string | null;
+  email: string;
+}
+
+export interface UserProfile {
+  id: string;
+  displayName: string | null;
+  email: string;
+  createdAt: string;
+  publicDecks: Array<{
+    id: string;
+    name: string;
+    format: string | null;
+    cardCount: number;
+    commanders: string[];
+    colors: string[];
+    commanderImageCrop: string | null;
+  }>;
 }

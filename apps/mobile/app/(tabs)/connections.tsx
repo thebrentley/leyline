@@ -57,10 +57,10 @@ function ConnectionCard({
           : "border-slate-200 bg-white active:bg-slate-50"
       }`}
     >
-      <View className="flex-row items-center gap-4">
+      <View className="flex-row items-center gap-3">
         {/* Logo */}
         <View
-          className={`h-14 w-14 items-center justify-center rounded-xl ${
+          className={`h-12 w-12 items-center justify-center rounded-xl ${
             isDark ? "bg-slate-800" : "bg-slate-100"
           }`}
         >
@@ -68,57 +68,57 @@ function ConnectionCard({
         </View>
 
         {/* Content */}
-        <View className="flex-1">
-          <Text
-            className={`text-lg font-semibold ${
-              isDark ? "text-white" : "text-slate-900"
-            }`}
-          >
-            {name}
-          </Text>
+        <View className="flex-1 gap-1">
+          <View className="flex-row items-center justify-between">
+            <Text
+              className={`text-base font-semibold ${
+                isDark ? "text-white" : "text-slate-900"
+              }`}
+            >
+              {name}
+            </Text>
+            <View className="flex-row items-center gap-2">
+              <View
+                className={`flex-row items-center gap-1.5 px-2 py-0.5 rounded-full ${
+                  status === "connected"
+                    ? "bg-purple-500/10"
+                    : status === "error"
+                      ? "bg-amber-500/10"
+                      : "bg-slate-500/10"
+                }`}
+              >
+                {status === "connected" ? (
+                  <Check size={12} color="#7C3AED" />
+                ) : status === "error" ? (
+                  <AlertCircle size={12} color="#f59e0b" />
+                ) : null}
+                <Text
+                  className={`text-xs font-medium ${
+                    status === "connected"
+                      ? "text-purple-500"
+                      : status === "error"
+                        ? "text-amber-500"
+                        : isDark
+                          ? "text-slate-400"
+                          : "text-slate-500"
+                  }`}
+                >
+                  {statusText ||
+                    (status === "connected"
+                      ? "Connected"
+                      : status === "error"
+                        ? "Error"
+                        : "Not connected")}
+                </Text>
+              </View>
+              <ChevronRight size={18} color={isDark ? "#475569" : "#cbd5e1"} />
+            </View>
+          </View>
           <Text
             className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}
           >
             {description}
           </Text>
-        </View>
-
-        {/* Status & Arrow */}
-        <View className="flex-row items-center gap-2">
-          <View
-            className={`flex-row items-center gap-1.5 px-2 py-1 rounded-full ${
-              status === "connected"
-                ? "bg-purple-500/10"
-                : status === "error"
-                  ? "bg-amber-500/10"
-                  : "bg-slate-500/10"
-            }`}
-          >
-            {status === "connected" ? (
-              <Check size={12} color="#7C3AED" />
-            ) : status === "error" ? (
-              <AlertCircle size={12} color="#f59e0b" />
-            ) : null}
-            <Text
-              className={`text-xs font-medium ${
-                status === "connected"
-                  ? "text-purple-500"
-                  : status === "error"
-                    ? "text-amber-500"
-                    : isDark
-                      ? "text-slate-400"
-                      : "text-slate-500"
-              }`}
-            >
-              {statusText ||
-                (status === "connected"
-                  ? "Connected"
-                  : status === "error"
-                    ? "Error"
-                    : "Not connected")}
-            </Text>
-          </View>
-          <ChevronRight size={20} color={isDark ? "#475569" : "#cbd5e1"} />
         </View>
       </View>
     </Pressable>

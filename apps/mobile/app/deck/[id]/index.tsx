@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import {
   AlertCircle,
   ArrowLeft,
+  BarChart3,
   Check,
   CheckCircle,
   ChevronDown,
@@ -11,12 +12,14 @@ import {
   Crown,
   DollarSign,
   FileDown,
+  Globe,
   Grid3X3,
   History,
   Layers,
   Library,
   Link,
   List,
+  Lock,
   MessageSquare,
   Minus,
   MoreVertical,
@@ -31,6 +34,7 @@ import {
   Sparkles,
   Trash2,
   Unlink,
+  Users,
   X,
 } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
@@ -65,9 +69,12 @@ import {
   authApi,
   cardsApi,
   decksApi,
+  deckRankingApi,
   type CardSearchResult,
   type DeckCard,
   type DeckDetail,
+  type DeckScores,
+  type DeckVisibility,
 } from "~/lib/api";
 import { cache, CACHE_KEYS, CACHE_TTL, cachedFetch } from "~/lib/cache";
 import { useResponsive } from "~/hooks/useResponsive";
@@ -246,41 +253,6 @@ const BASIC_LAND_INFO: Record<
 
 // Standard land order for display
 const STANDARD_LAND_ORDER = ["Plains", "Island", "Swamp", "Mountain", "Forest"];
-
-function ColorIdentityPills({
-  colors,
-  isDark,
-}: {
-  colors: string[];
-  isDark: boolean;
-}) {
-  if (colors.length === 0) {
-    return (
-      <View
-        className="h-5 w-5 rounded-full border"
-        style={{
-          backgroundColor: "#888",
-          borderColor: isDark ? "#475569" : "#cbd5e1",
-        }}
-      />
-    );
-  }
-
-  return (
-    <View className="flex-row gap-1">
-      {colors.map((color) => (
-        <View
-          key={color}
-          className="h-5 w-5 rounded-full border"
-          style={{
-            backgroundColor: MANA_COLORS[color] || "#888",
-            borderColor: isDark ? "#475569" : "#cbd5e1",
-          }}
-        />
-      ))}
-    </View>
-  );
-}
 
 function CardListItem({
   card,
@@ -710,6 +682,7 @@ export default function DeckDetailScreen() {
   const [actionLoading, setActionLoading] = useState(false);
   const [archidektConnected, setArchidektConnected] = useState(false);
   const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [deckScores, setDeckScores] = useState<DeckScores | null>(null);
 
   // Confirmation dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -898,6 +871,31 @@ export default function DeckDetailScreen() {
     });
   }, [deck?.name, id]);
 
+  const handleToggleVisibility = useCallback(async () => {
+    if (!deck) return;
+    // Cycle through: private → pod → public → private
+    let newVisibility: DeckVisibility;
+    if (deck.visibility === "private") {
+      newVisibility = "pod";
+    } else if (deck.visibility === "pod") {
+      newVisibility = "public";
+    } else {
+      newVisibility = "private";
+    }
+
+    const result = await decksApi.updateVisibility(deck.id, newVisibility);
+    if (result.error) {
+      showToast.error(result.error);
+    } else {
+      setDeck((prev) => (prev ? { ...prev, visibility: newVisibility } : prev));
+      const visibilityLabel =
+        newVisibility === "private" ? "private" :
+        newVisibility === "pod" ? "visible to pod members" :
+        "public";
+      showToast.success(`Deck is now ${visibilityLabel}`);
+    }
+  }, [deck]);
+
   const openMenu = useCallback(() => {
     menuButtonRef.current?.measure((x, y, width, height, pageX, pageY) => {
       setMenuPosition({ top: pageY + height + 4, right: 16 });
@@ -912,7 +910,16 @@ export default function DeckDetailScreen() {
     cache.get<ViewMode>(CACHE_KEYS.VIEW_MODE).then((mode) => {
       if (mode) setViewMode(mode);
     });
-  }, [loadDeck]);
+
+    // Load deck scores (fire-and-forget, non-blocking)
+    if (id) {
+      deckRankingApi.getScores(id).then((res) => {
+        if (res.data) {
+          setDeckScores(res.data.scores);
+        }
+      }).catch(() => {});
+    }
+  }, [loadDeck, id]);
 
   // Check Archidekt connection status
   useEffect(() => {
@@ -1359,15 +1366,17 @@ export default function DeckDetailScreen() {
     setSelectedCard(null);
   }, []);
 
-  // Long press to open action sheet
+  // Long press to open action sheet - owner only
   const handleCardLongPress = useCallback((card: DeckCard) => {
+    if (deck?.isReadOnly) return;
     setActionSheetCard(card);
     setActionSheetVisible(true);
-  }, []);
+  }, [deck?.isReadOnly]);
 
   // Right-click to open context menu (desktop)
   const handleCardRightClick = useCallback(
     (card: DeckCard, position: { x: number; y: number }) => {
+      if (deck?.isReadOnly) return;
       const { width: screenW, height: screenH } = Dimensions.get("window");
       const menuW = 280; // maxWidth of context menu
       const menuH = 350; // approximate max height of context menu
@@ -1377,7 +1386,7 @@ export default function DeckDetailScreen() {
         y: Math.max(8, Math.min(position.y, screenH - menuH - 8)),
       });
     },
-    [],
+    [deck?.isReadOnly],
   );
 
   const closeActionSheet = useCallback(() => {
@@ -1776,7 +1785,7 @@ export default function DeckDetailScreen() {
           {/* Mobile: Back arrow */}
           {!isDesktop && (
             <Pressable
-              onPress={() => router.push("/(tabs)/decks")}
+              onPress={() => router.push(deck?.isReadOnly ? "/(tabs)/explore" : "/(tabs)/decks")}
               className={`rounded-full p-2 ${
                 isDark ? "active:bg-slate-800" : "active:bg-slate-100"
               }`}
@@ -1789,13 +1798,13 @@ export default function DeckDetailScreen() {
             {isDesktop && (
               <View className="flex-row items-center gap-2 mb-1">
                 <Pressable
-                  onPress={() => router.push("/(tabs)/decks")}
+                  onPress={() => router.push(deck?.isReadOnly ? "/(tabs)/explore" : "/(tabs)/decks")}
                   className="hover:underline"
                 >
                   <Text
                     className={`text-sm ${isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"}`}
                   >
-                    My Decks
+                    {deck?.isReadOnly ? "Explore" : "My Decks"}
                   </Text>
                 </Pressable>
                 <Text
@@ -1811,20 +1820,43 @@ export default function DeckDetailScreen() {
                 </Text>
               </View>
             )}
-            <Text
-              className={`text-lg lg:text-2xl font-bold ${
-                isDark ? "text-white" : "text-slate-900"
-              }`}
-              numberOfLines={1}
-            >
-              {deck?.name || "Loading..."}
-            </Text>
+            <View className="flex-row items-center gap-2">
+              <Text
+                className={`text-lg lg:text-2xl font-bold ${
+                  isDark ? "text-white" : "text-slate-900"
+                }`}
+                numberOfLines={1}
+                style={{ flexShrink: 1 }}
+              >
+                {deck?.name || "Loading..."}
+              </Text>
+              {/* Visibility toggle - owner only */}
+              {deck && !deck.isReadOnly && (
+                <Pressable
+                  onPress={handleToggleVisibility}
+                  className={`rounded-full p-1.5 ${
+                    isDark ? "active:bg-slate-800" : "active:bg-slate-100"
+                  }`}
+                  accessibilityLabel={
+                    deck.visibility === "public"
+                      ? "Make deck visible to pod members"
+                      : deck.visibility === "pod"
+                      ? "Make deck private"
+                      : "Make deck visible to pod members"
+                  }
+                >
+                  {deck.visibility === "public" ? (
+                    <Globe size={16} color="#7C3AED" />
+                  ) : deck.visibility === "pod" ? (
+                    <Users size={16} color="#3B82F6" />
+                  ) : (
+                    <Lock size={16} color={isDark ? "#64748b" : "#94a3b8"} />
+                  )}
+                </Pressable>
+              )}
+            </View>
             {deck && (
               <View className="flex-row items-center gap-2 lg:gap-3 mt-0.5 lg:mt-1">
-                <ColorIdentityPills
-                  colors={deck.colorIdentity}
-                  isDark={isDark}
-                />
                 {deck.format && (
                   <Text
                     className={`text-xs lg:text-sm ${isDark ? "text-slate-500" : "text-slate-400"}`}
@@ -1837,35 +1869,46 @@ export default function DeckDetailScreen() {
                 >
                   {deck.cardCount} cards
                 </Text>
+                {deck.isReadOnly && deck.ownerName && (
+                  <Text
+                    className={`text-xs lg:text-sm ${isDark ? "text-slate-500" : "text-slate-400"}`}
+                  >
+                    by {deck.ownerName}
+                  </Text>
+                )}
               </View>
             )}
           </View>
         </View>
         <View className="flex-row items-center gap-1 lg:gap-2">
-          {/* Add Card from Scryfall */}
-          <Pressable
-            onPress={() => setScryfallSearchVisible(true)}
-            className={`flex-row items-center gap-1.5 rounded-full p-2 lg:px-3 lg:py-2 lg:rounded-lg ${
-              isDark
-                ? "active:bg-slate-800 lg:hover:bg-slate-800"
-                : "active:bg-slate-100 lg:hover:bg-slate-100"
-            } lg:bg-purple-500/10`}
-          >
-            <Plus size={20} color="#7C3AED" />
-          </Pressable>
-          {/* Color Tag Manager */}
-          <Pressable
-            onPress={() => setColorTagManagerVisible(true)}
-            className={`flex-row items-center gap-1.5 rounded-full p-2 lg:px-3 lg:py-2 lg:rounded-lg ${
-              isDark
-                ? "active:bg-slate-800 lg:hover:bg-slate-800 lg:bg-slate-800"
-                : "active:bg-slate-100 lg:hover:bg-slate-100 lg:bg-slate-100"
-            }`}
-          >
-            <Palette size={20} color={isDark ? "#94a3b8" : "#64748b"} />
-          </Pressable>
-          {/* AI Advisor Toggle - Desktop only */}
-          {isDesktop && (
+          {/* Add Card from Scryfall - owner only */}
+          {!deck?.isReadOnly && (
+            <Pressable
+              onPress={() => setScryfallSearchVisible(true)}
+              className={`flex-row items-center gap-1.5 rounded-full p-2 lg:px-3 lg:py-2 lg:rounded-lg ${
+                isDark
+                  ? "active:bg-slate-800 lg:hover:bg-slate-800"
+                  : "active:bg-slate-100 lg:hover:bg-slate-100"
+              } lg:bg-purple-500/10`}
+            >
+              <Plus size={20} color="#7C3AED" />
+            </Pressable>
+          )}
+          {/* Color Tag Manager - owner only */}
+          {!deck?.isReadOnly && (
+            <Pressable
+              onPress={() => setColorTagManagerVisible(true)}
+              className={`flex-row items-center gap-1.5 rounded-full p-2 lg:px-3 lg:py-2 lg:rounded-lg ${
+                isDark
+                  ? "active:bg-slate-800 lg:hover:bg-slate-800 lg:bg-slate-800"
+                  : "active:bg-slate-100 lg:hover:bg-slate-100 lg:bg-slate-100"
+              }`}
+            >
+              <Palette size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+            </Pressable>
+          )}
+          {/* AI Advisor Toggle - Desktop only, owner only */}
+          {isDesktop && !deck?.isReadOnly && (
             <Pressable
               onPress={() => setAdvisorPanelVisible(!advisorPanelVisible)}
               className={`flex-row items-center gap-1.5 rounded-full p-2 lg:px-3 lg:py-2 lg:rounded-lg ${
@@ -1887,36 +1930,38 @@ export default function DeckDetailScreen() {
               )}
             </Pressable>
           )}
-          {/* Menu */}
-          <View ref={menuButtonRef} collapsable={false}>
-            <Pressable
-              onPress={openMenu}
-              disabled={syncing}
-              className={`flex-row items-center gap-1.5 rounded-full p-2 lg:px-3 lg:py-2 lg:rounded-lg ${
-                isDark
-                  ? "active:bg-slate-800 lg:hover:bg-slate-800 lg:bg-slate-800"
-                  : "active:bg-slate-100 lg:hover:bg-slate-100 lg:bg-slate-100"
-              }`}
-            >
-              {syncing ? (
-                <Spinner
-                  size={20}
-                  strokeWidth={2}
-                  color="#7C3AED"
-                  backgroundColor={
-                    isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"
-                  }
-                />
-              ) : (
-                <>
-                  <MoreVertical
+          {/* Menu - owner only */}
+          {!deck?.isReadOnly && (
+            <View ref={menuButtonRef} collapsable={false}>
+              <Pressable
+                onPress={openMenu}
+                disabled={syncing}
+                className={`flex-row items-center gap-1.5 rounded-full p-2 lg:px-3 lg:py-2 lg:rounded-lg ${
+                  isDark
+                    ? "active:bg-slate-800 lg:hover:bg-slate-800 lg:bg-slate-800"
+                    : "active:bg-slate-100 lg:hover:bg-slate-100 lg:bg-slate-100"
+                }`}
+              >
+                {syncing ? (
+                  <Spinner
                     size={20}
-                    color={isDark ? "#94a3b8" : "#64748b"}
+                    strokeWidth={2}
+                    color="#7C3AED"
+                    backgroundColor={
+                      isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"
+                    }
                   />
-                </>
-              )}
-            </Pressable>
-          </View>
+                ) : (
+                  <>
+                    <MoreVertical
+                      size={20}
+                      color={isDark ? "#94a3b8" : "#64748b"}
+                    />
+                  </>
+                )}
+              </Pressable>
+            </View>
+          )}
         </View>
       </View>
 
@@ -1974,21 +2019,23 @@ export default function DeckDetailScreen() {
             />
           </Pressable>
 
-          {/* Version Dropdown */}
-          <Pressable
-            onPress={() =>
-              router.push(
-                `/deck/${id}/versions?name=${encodeURIComponent(deck?.name || "")}`,
-              )
-            }
-            className={`flex-row items-center gap-1.5 p-2.5 lg:px-4 lg:py-2 rounded-lg ${
-              isDark
-                ? "bg-slate-800 lg:hover:bg-slate-700"
-                : "bg-white border border-slate-200 lg:hover:bg-slate-50"
-            }`}
-          >
-            <History size={18} color={isDark ? "#94a3b8" : "#64748b"} />
-          </Pressable>
+          {/* Version Dropdown - owner only */}
+          {!deck?.isReadOnly && (
+            <Pressable
+              onPress={() =>
+                router.push(
+                  `/deck/${id}/versions?name=${encodeURIComponent(deck?.name || "")}`,
+                )
+              }
+              className={`flex-row items-center gap-1.5 p-2.5 lg:px-4 lg:py-2 rounded-lg ${
+                isDark
+                  ? "bg-slate-800 lg:hover:bg-slate-700"
+                  : "bg-white border border-slate-200 lg:hover:bg-slate-50"
+              }`}
+            >
+              <History size={18} color={isDark ? "#94a3b8" : "#64748b"} />
+            </Pressable>
+          )}
         </View>
 
         <View className="flex-row items-center gap-2 lg:gap-3">
@@ -2004,6 +2051,18 @@ export default function DeckDetailScreen() {
             <Play size={18} color="#22c55e" />
           </Pressable>
 
+          {/* Ranking Button */}
+          <Pressable
+            onPress={() =>
+              router.push(
+                `/deck/${id}/ranking?name=${encodeURIComponent(deck?.name || "")}`,
+              )
+            }
+            className="flex-row items-center gap-1.5 p-2.5 lg:px-4 lg:py-2 rounded-lg bg-purple-500/10 lg:hover:bg-purple-500/20"
+          >
+            <BarChart3 size={18} color="#a855f7" />
+          </Pressable>
+
           {/* Price Button */}
           <Pressable
             onPress={() =>
@@ -2011,7 +2070,7 @@ export default function DeckDetailScreen() {
                 `/deck/${id}/price?name=${encodeURIComponent(deck?.name || "")}`,
               )
             }
-            className="flex-row items-center gap-1.5 p-2.5 lg:px-4 lg:py-2 rounded-lg bg-purple-500/10 lg:hover:bg-purple-500/20"
+            className="flex-row items-center gap-1.5 p-2.5 lg:px-4 lg:py-2 rounded-lg bg-blue-500/10 lg:hover:bg-blue-500/20"
           >
             <DollarSign size={18} color="#7C3AED" />
           </Pressable>
@@ -4529,8 +4588,8 @@ export default function DeckDetailScreen() {
         </Pressable>
       )}
 
-      {/* Floating Chat Button (FAB) */}
-      {!isDesktop && (
+      {/* Floating Chat Button (FAB) - owner only */}
+      {!isDesktop && !deck?.isReadOnly && (
         <Pressable
           onPress={() => setChatPanelVisible(true)}
           className="absolute bottom-6 right-6 h-14 w-14 rounded-full bg-purple-500 items-center justify-center shadow-lg"

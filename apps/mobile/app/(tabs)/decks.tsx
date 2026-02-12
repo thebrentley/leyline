@@ -30,6 +30,7 @@ import { Spinner } from "~/components/Spinner";
 import { Button } from "~/components/ui/button";
 import { useSocket } from "~/contexts/SocketContext";
 import { authApi, decksApi, type DeckSummary, type DeckSyncStatus } from "~/lib/api";
+import { DeckScoreChip } from "~/components/ranking/DeckScoreChip";
 import { showToast } from "~/lib/toast";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { CreateDeckDialog } from "~/components/ui/CreateDeckDialog";
@@ -126,12 +127,14 @@ function ColorIdentityPills({
 function DeckGridItem({
   deck,
   isDark,
+  isDesktop,
   onPress,
   onLongPress,
   onSync,
 }: {
   deck: DeckSummary;
   isDark: boolean;
+  isDesktop: boolean;
   onPress: () => void;
   onLongPress: () => void;
   onSync: (archidektId: number) => void;
@@ -139,7 +142,7 @@ function DeckGridItem({
   const primaryCommander = deck.commanders[0];
 
   return (
-    <View style={{ width: '50%', height: 160, padding: 2 }}>
+    <View style={{ width: isDesktop ? '25%' : '50%', height: 160, padding: 2 }}>
       <Pressable
         onPress={onPress}
         onLongPress={onLongPress}
@@ -167,6 +170,17 @@ function DeckGridItem({
             </View>
           )}
         </View>
+
+        {/* Score chip overlay */}
+        {deck.scores && (
+          <View className="absolute top-2 left-2 z-10">
+            <DeckScoreChip
+              deckId={deck.id}
+              deckName={deck.name}
+              scores={deck.scores}
+            />
+          </View>
+        )}
 
         {/* Sync from Archidekt button - shown when status is waiting */}
         {deck.syncStatus === "waiting" && (
@@ -603,12 +617,13 @@ export default function DecksScreen() {
               />
             }
           >
-            <View className="flex-row flex-wrap lg:gap-4">
+            <View className="flex-row flex-wrap">
               {decks.map((item) => (
                 <DeckGridItem
                   key={item.id}
                   deck={item}
                   isDark={isDark}
+                  isDesktop={isDesktop}
                   onPress={() => handleDeckPress(item.id)}
                   onLongPress={() => handleDeleteDeck(item)}
                   onSync={handleSyncDeck}

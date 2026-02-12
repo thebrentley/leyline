@@ -1,13 +1,26 @@
 import { useColorScheme } from "nativewind";
 import { Text, View } from "react-native";
-import Svg, { Defs, FeGaussianBlur, FeMerge, FeMergeNode, Filter, LinearGradient, Path, Stop, Text as SvgText } from "react-native-svg";
+import Svg, {
+  Defs,
+  FeGaussianBlur,
+  FeMerge,
+  FeMergeNode,
+  Filter,
+  LinearGradient,
+  Path,
+  Stop,
+  Text as SvgText,
+} from "react-native-svg";
 
 interface LeylineLogoProps {
   size?: "small" | "medium" | "large";
   showTagline?: boolean;
 }
 
-export function LeylineLogo({ size = "large", showTagline = true }: LeylineLogoProps) {
+export function LeylineLogo({
+  size = "large",
+  showTagline = true,
+}: LeylineLogoProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
 
@@ -16,7 +29,7 @@ export function LeylineLogo({ size = "large", showTagline = true }: LeylineLogoP
   const taglineSize = 11 * scale;
 
   return (
-    <View className="flex-col items-center">
+    <View className="flex-col items-left">
       <Svg viewBox="0 0 300 80" width={width} height={(80 / 300) * width}>
         <Defs>
           <LinearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">

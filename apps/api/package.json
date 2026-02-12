@@ -17,7 +17,8 @@
     "migration:run": "npm run typeorm -- migration:run -d src/database/data-source.ts",
     "migration:revert": "npm run typeorm -- migration:revert -d src/database/data-source.ts",
     "sync:scryfall": "ts-node scripts/sync-scryfall.ts",
-    "import-tokens": "ts-node src/scripts/import-tokens.ts"
+    "import-tokens": "ts-node src/scripts/import-tokens.ts",
+    "tag-cards": "ts-node -r tsconfig-paths/register src/scripts/run-bulk-tagging.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

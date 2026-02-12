@@ -1,21 +1,24 @@
-import { router, usePathname } from "expo-router";
+import { router, usePathname, useFocusEffect } from "expo-router";
 import {
+  ChevronDown,
   ChevronsLeft,
   ChevronsRight,
   ChevronRight,
+  Compass,
   Home,
   Layers,
   Library,
   Link2,
-  LogOut,
   Moon,
+  Users,
 } from "lucide-react-native";
-import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
-import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
+import { useState, useCallback } from "react";
+import { Image, Pressable, ScrollView, Text, View } from "react-native";
 import { StyledSwitch } from "~/components/ui/StyledSwitch";
 import { useAuth } from "~/contexts/AuthContext";
 import { usePersistedColorScheme } from "~/hooks/usePersistedColorScheme";
+import { podsApi, type PodSummary } from "~/lib/api";
+import { LeylineLogo } from "~/components/brand/LeylineLogo";
 
 interface SidebarItemProps {
   icon: React.ReactNode;
@@ -96,12 +99,20 @@ function Divider({ isDark }: { isDark: boolean }) {
 
 export function DesktopSidebar() {
   const { isDark, toggleColorScheme } = usePersistedColorScheme();
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const pathname = usePathname();
   const iconColor = isDark ? "#94a3b8" : "#64748b";
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       return localStorage.getItem("sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [pods, setPods] = useState<PodSummary[]>([]);
+  const [podsExpanded, setPodsExpanded] = useState(() => {
+    try {
+      return localStorage.getItem("pods_expanded") === "true";
     } catch {
       return false;
     }
@@ -114,23 +125,40 @@ export function DesktopSidebar() {
       localStorage.setItem("sidebar_collapsed", String(next));
     } catch {}
   };
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const loadPods = useCallback(async () => {
+    const result = await podsApi.list();
+    if (result.data) {
+      setPods(result.data);
+    }
+  }, []);
 
-  const handleLogout = () => {
-    setShowLogoutConfirm(true);
-  };
+  useFocusEffect(
+    useCallback(() => {
+      loadPods();
+    }, [loadPods])
+  );
 
   // Determine current route from pathname
   const getCurrentRoute = () => {
     if (pathname === "/" || pathname === "/(tabs)") return "index";
     if (pathname.includes("/decks")) return "decks";
+    if (pathname.includes("/explore")) return "explore";
     if (pathname.includes("/collection")) return "collection";
+    if (pathname.includes("/pods") || pathname.includes("/pod/")) return "pods";
     if (pathname.includes("/profile")) return "profile";
     if (pathname.includes("/connections")) return "connections";
     return "";
   };
 
   const currentRoute = getCurrentRoute();
+
+  // Extract current pod ID from pathname
+  const getCurrentPodId = () => {
+    const match = pathname.match(/\/pod\/([^\/]+)/);
+    return match ? match[1] : null;
+  };
+
+  const currentPodId = getCurrentPodId();
 
   return (
     <View
@@ -144,61 +172,21 @@ export function DesktopSidebar() {
       }`}
     >
       <ScrollView showsVerticalScrollIndicator={false} className="flex-1">
-        {/* User Profile Header */}
-        <Pressable
-          onPress={() => router.push("/(tabs)/profile")}
-          className={`mb-4 mt-6 flex-row items-center ${
-            isCollapsed ? "justify-center py-3" : "gap-3 px-6 py-3"
-          } ${
-            isDark
-              ? "hover:bg-slate-800/50 active:bg-slate-800/50"
-              : "hover:bg-slate-50 active:bg-slate-50"
-          }`}
-          {...(isCollapsed
-            ? ({
-                title:
-                  user?.displayName ||
-                  user?.email?.split("@")[0] ||
-                  "Profile",
-              } as any)
-            : {})}
-        >
-          {/* Avatar */}
-          <View
-            className={`${isCollapsed ? "h-10 w-10" : "h-12 w-12"} items-center justify-center rounded-full bg-purple-600`}
-          >
+        {/* Logo */}
+        {isCollapsed ? (
+          <View className="items-center justify-center py-4">
             <Text
-              className={`${isCollapsed ? "text-base" : "text-lg"} font-bold text-white`}
+              className="text-xl font-light text-purple-500"
+              style={{ letterSpacing: 2 }}
             >
-              {(user?.displayName || user?.email)?.charAt(0).toUpperCase() ||
-                "U"}
+              L
             </Text>
           </View>
-          {/* Name & Edit */}
-          {!isCollapsed && (
-            <View className="flex-1">
-              <Text
-                className={`text-base font-semibold ${
-                  isDark ? "text-white" : "text-slate-900"
-                }`}
-                numberOfLines={1}
-              >
-                {user?.displayName || user?.email?.split("@")[0] || "User"}
-              </Text>
-              <View className="flex-row items-center gap-1">
-                <Text
-                  className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}
-                >
-                  Edit profile
-                </Text>
-                <ChevronRight
-                  size={12}
-                  color={isDark ? "#94a3b8" : "#64748b"}
-                />
-              </View>
-            </View>
-          )}
-        </Pressable>
+        ) : (
+          <View className="px-6 py-4">
+            <LeylineLogo size="small" showTagline={false} />
+          </View>
+        )}
 
         <Divider isDark={isDark} />
 
@@ -245,6 +233,192 @@ export function DesktopSidebar() {
             isActive={currentRoute === "collection"}
             isCollapsed={isCollapsed}
           />
+
+          <SidebarItem
+            icon={
+              <Compass
+                size={20}
+                color={currentRoute === "explore" ? "#7C3AED" : iconColor}
+              />
+            }
+            label="Explore"
+            onPress={() => router.push("/(tabs)/explore")}
+            isDark={isDark}
+            isActive={currentRoute === "explore"}
+            isCollapsed={isCollapsed}
+          />
+
+          {/* Pods Accordion */}
+          {isCollapsed ? (
+            <View>
+              <Pressable
+                onPress={() => router.push("/(tabs)/pods")}
+                className={`items-center justify-center py-3 transition-colors ${
+                  currentRoute === "pods" && !currentPodId
+                    ? isDark
+                      ? "bg-slate-800"
+                      : "bg-slate-100"
+                    : isDark
+                      ? "hover:bg-slate-800/50 active:bg-slate-800/50"
+                      : "hover:bg-slate-50 active:bg-slate-50"
+                }`}
+                {...({ title: "Pods" } as any)}
+              >
+                <Users
+                  size={20}
+                  color={currentRoute === "pods" ? "#7C3AED" : iconColor}
+                />
+              </Pressable>
+              {pods.map((pod) => (
+                <Pressable
+                  key={pod.id}
+                  onPress={() => router.push(`/pod/${pod.id}`)}
+                  className={`items-center justify-center py-2 transition-colors ${
+                    currentPodId === pod.id
+                      ? isDark
+                        ? "bg-slate-800"
+                        : "bg-slate-100"
+                      : isDark
+                        ? "hover:bg-slate-800/50 active:bg-slate-800/50"
+                        : "hover:bg-slate-50 active:bg-slate-50"
+                  }`}
+                  {...({ title: pod.name } as any)}
+                >
+                  {pod.coverImage ? (
+                    <Image
+                      source={{ uri: pod.coverImage }}
+                      className="h-7 w-7 rounded-full"
+                      resizeMode="cover"
+                      style={currentPodId === pod.id ? { borderWidth: 2, borderColor: "#7C3AED" } : undefined}
+                    />
+                  ) : (
+                    <View
+                      className={`h-7 w-7 items-center justify-center rounded-full ${
+                        currentPodId === pod.id ? "bg-purple-500" : "bg-purple-600"
+                      }`}
+                      style={currentPodId === pod.id ? { borderWidth: 2, borderColor: "#7C3AED" } : undefined}
+                    >
+                      <Text className="text-[10px] font-bold text-white">
+                        {pod.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <>
+              <Pressable
+                onPress={() => setPodsExpanded((prev) => {
+                  const next = !prev;
+                  try { localStorage.setItem("pods_expanded", String(next)); } catch {}
+                  return next;
+                })}
+                className={`flex-row items-center justify-between px-6 py-3 transition-colors ${
+                  currentRoute === "pods"
+                    ? isDark
+                      ? "bg-slate-800"
+                      : "bg-slate-100"
+                    : isDark
+                      ? "hover:bg-slate-800/50 active:bg-slate-800/50"
+                      : "hover:bg-slate-50 active:bg-slate-50"
+                }`}
+              >
+                <View className="flex-row items-center gap-3">
+                  <Users
+                    size={20}
+                    color={currentRoute === "pods" ? "#7C3AED" : iconColor}
+                  />
+                  <Text
+                    className={`text-sm ${
+                      currentRoute === "pods"
+                        ? "font-semibold text-purple-500"
+                        : isDark
+                          ? "text-white"
+                          : "text-slate-900"
+                    }`}
+                  >
+                    Pods
+                  </Text>
+                </View>
+                {podsExpanded ? (
+                  <ChevronDown size={16} color={isDark ? "#475569" : "#cbd5e1"} />
+                ) : (
+                  <ChevronRight size={16} color={isDark ? "#475569" : "#cbd5e1"} />
+                )}
+              </Pressable>
+              {podsExpanded && (
+                <View className="pb-1">
+                  {/* All Pods link */}
+                  <Pressable
+                    onPress={() => router.push("/(tabs)/pods")}
+                    className={`flex-row items-center gap-2 pl-12 pr-4 py-2 ${
+                      currentRoute === "pods" && !currentPodId
+                        ? isDark
+                          ? "bg-slate-800"
+                          : "bg-slate-100"
+                        : isDark
+                          ? "hover:bg-slate-800/50 active:bg-slate-800/50"
+                          : "hover:bg-slate-50 active:bg-slate-50"
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs ${
+                        currentRoute === "pods" && !currentPodId
+                          ? "font-semibold text-purple-500"
+                          : isDark
+                            ? "text-slate-400"
+                            : "text-slate-500"
+                      }`}
+                    >
+                      All Pods
+                    </Text>
+                  </Pressable>
+                  {pods.map((pod) => (
+                    <Pressable
+                      key={pod.id}
+                      onPress={() => router.push(`/pod/${pod.id}`)}
+                      className={`flex-row items-center gap-2.5 pl-12 pr-4 py-2 ${
+                        currentPodId === pod.id
+                          ? isDark
+                            ? "bg-slate-800"
+                            : "bg-slate-100"
+                          : isDark
+                            ? "hover:bg-slate-800/50 active:bg-slate-800/50"
+                            : "hover:bg-slate-50 active:bg-slate-50"
+                      }`}
+                    >
+                      {pod.coverImage ? (
+                        <Image
+                          source={{ uri: pod.coverImage }}
+                          className="h-6 w-6 rounded-full"
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View className="h-6 w-6 items-center justify-center rounded-full bg-purple-600">
+                          <Text className="text-[10px] font-bold text-white">
+                            {pod.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      <Text
+                        className={`text-sm flex-1 ${
+                          currentPodId === pod.id
+                            ? "font-semibold text-purple-500"
+                            : isDark
+                              ? "text-slate-300"
+                              : "text-slate-700"
+                        }`}
+                        numberOfLines={1}
+                      >
+                        {pod.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </>
+          )}
         </View>
 
         <Divider isDark={isDark} />
@@ -310,30 +484,56 @@ export function DesktopSidebar() {
           </View>
         )}
 
-        <Divider isDark={isDark} />
-
-        {/* Log out */}
-        <Pressable
-          onPress={handleLogout}
-          className={`flex-row items-center ${
-            isCollapsed ? "justify-center py-3" : "gap-3 px-6 py-3"
-          } ${
-            isDark
-              ? "hover:bg-slate-800/50 active:bg-slate-800/50"
-              : "hover:bg-slate-50 active:bg-slate-50"
-          }`}
-          {...(isCollapsed ? ({ title: "Log out" } as any) : {})}
-        >
-          <LogOut size={20} color={iconColor} />
-          {!isCollapsed && (
-            <Text
-              className={`text-sm ${isDark ? "text-white" : "text-slate-900"}`}
-            >
-              Log out
-            </Text>
-          )}
-        </Pressable>
       </ScrollView>
+
+      {/* User Profile */}
+      <Pressable
+        onPress={() => router.push("/(tabs)/profile")}
+        className={`flex-row items-center border-t ${
+          isCollapsed ? "justify-center py-3" : "gap-3 px-4 py-3"
+        } ${
+          isDark
+            ? "border-slate-800 hover:bg-slate-800/50 active:bg-slate-800/50"
+            : "border-slate-200 hover:bg-slate-50 active:bg-slate-50"
+        }`}
+        {...(isCollapsed
+          ? ({
+              title:
+                user?.displayName ||
+                user?.email?.split("@")[0] ||
+                "Profile",
+            } as any)
+          : {})}
+      >
+        {user?.profilePicture ? (
+          <Image
+            source={{ uri: user.profilePicture }}
+            className={`${isCollapsed ? "h-8 w-8" : "h-9 w-9"} rounded-full`}
+            resizeMode="cover"
+          />
+        ) : (
+          <View
+            className={`${isCollapsed ? "h-8 w-8" : "h-9 w-9"} items-center justify-center rounded-full bg-purple-600`}
+          >
+            <Text className="text-sm font-bold text-white">
+              {(user?.displayName || user?.email)?.charAt(0).toUpperCase() ||
+                "U"}
+            </Text>
+          </View>
+        )}
+        {!isCollapsed && (
+          <View className="flex-1">
+            <Text
+              className={`text-sm font-medium ${
+                isDark ? "text-white" : "text-slate-900"
+              }`}
+              numberOfLines={1}
+            >
+              {user?.displayName || user?.email?.split("@")[0] || "User"}
+            </Text>
+          </View>
+        )}
+      </Pressable>
 
       {/* Collapse/Expand Toggle */}
       <Pressable
@@ -355,20 +555,6 @@ export function DesktopSidebar() {
       </Pressable>
 
 
-      {/* Logout Confirmation */}
-      <ConfirmDialog
-        visible={showLogoutConfirm}
-        title="Log out"
-        message="Are you sure you want to log out?"
-        confirmText="Log out"
-        cancelText="Cancel"
-        destructive={true}
-        onConfirm={() => {
-          setShowLogoutConfirm(false);
-          signOut();
-        }}
-        onCancel={() => setShowLogoutConfirm(false)}
-      />
     </View>
   );
 }

@@ -7,3 +7,12 @@ export { CreateSettingsTable1738200000000 } from "./1738200000000-CreateSettings
 export { AddCommanderAnalysis1738300000000 } from "./1738300000000-AddCommanderAnalysis";
 export { CreateTokensTable1738400000000 } from "./1738400000000-CreateTokensTable";
 export { ColorTagsToEntity1738400000000 } from "./1738400000000-ColorTagsToEntity";
+export { CreateDeckRankingTables1739000000000 } from "./1739000000000-CreateDeckRankingTables";
+export { AddDeckVisibility1739100000000 } from "./1739100000000-AddDeckVisibility";
+export { CreatePodTables1739200000000 } from "./1739200000000-CreatePodTables";
+export { AddPodVisibility1739300000000 } from "./1739300000000-AddPodVisibility";
+export { CreateOfflineMemberTables1739400000000 } from "./1739400000000-CreateOfflineMemberTables";
+export { AddProfilePicture1739500000000 } from "./1739500000000-AddProfilePicture";
+export { AddEventStatus1739600000000 } from "./1739600000000-AddEventStatus";
+export { AddOwnerRole1739700000000 } from "./1739700000000-AddOwnerRole";
+export { AddPodCoverImage1739800000000 } from "./1739800000000-AddPodCoverImage";

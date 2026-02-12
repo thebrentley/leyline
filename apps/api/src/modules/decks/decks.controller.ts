@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { DecksService } from './decks.service';
@@ -39,6 +40,7 @@ export class DecksController {
       archidektId: deck.archidektId,
       name: deck.name,
       format: deck.format,
+      visibility: deck.visibility,
       lastSyncedAt: deck.lastSyncedAt,
       syncStatus: deck.syncStatus,
       syncError: deck.syncError,
@@ -60,12 +62,43 @@ export class DecksController {
     return this.syncQueueService.getQueueStatus();
   }
 
+  @Get('explore')
+  async exploreDecks(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('name') name?: string,
+    @Query('commander') commander?: string,
+    @Query('cardName') cardName?: string,
+    @Query('colors') colors?: string,
+    @Query('format') format?: string,
+  ) {
+    return this.decksService.explorePublicDecks({
+      page: page ? parseInt(page, 10) : undefined,
+      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+      name: name || undefined,
+      commander: commander || undefined,
+      cardName: cardName || undefined,
+      colors: colors ? colors.split(',').filter(Boolean) : undefined,
+      format: format || undefined,
+    });
+  }
+
   @Get(':id')
   async getDeck(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.decksService.getDeckWithCards(id, user.userId);
+    return this.decksService.getPublicDeckWithCards(id, user.userId);
+  }
+
+  @Patch(':id/visibility')
+  async updateVisibility(
+    @Param('id') id: string,
+    @Body() body: { visibility: 'private' | 'public' | 'pod' },
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    await this.decksService.updateVisibility(id, user.userId, body.visibility);
+    return { success: true, visibility: body.visibility };
   }
 
   @Post('sync/:archidektId')

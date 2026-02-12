@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { LogOut, Settings, User } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { useAuth } from "~/contexts/AuthContext";
 
@@ -25,13 +25,21 @@ export function UserMenu() {
       {/* Avatar Button */}
       <Pressable
         onPress={() => setIsOpen(!isOpen)}
-        className={`h-10 w-10 items-center justify-center rounded-full bg-purple-600 ${
-          isDark ? "hover:bg-purple-700" : "hover:bg-purple-500"
+        className={`h-10 w-10 items-center justify-center rounded-full ${
+          user?.profilePicture ? "" : `bg-purple-600 ${isDark ? "hover:bg-purple-700" : "hover:bg-purple-500"}`
         }`}
       >
-        <Text className="text-base font-bold text-white">
-          {(user?.displayName || user?.email)?.charAt(0).toUpperCase() || "U"}
-        </Text>
+        {user?.profilePicture ? (
+          <Image
+            source={{ uri: user.profilePicture }}
+            className="h-10 w-10 rounded-full"
+            resizeMode="cover"
+          />
+        ) : (
+          <Text className="text-base font-bold text-white">
+            {(user?.displayName || user?.email)?.charAt(0).toUpperCase() || "U"}
+          </Text>
+        )}
       </Pressable>
 
       {/* Dropdown Menu */}

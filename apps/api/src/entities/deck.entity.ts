@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  OneToOne,
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
@@ -12,8 +13,10 @@ import { User } from './user.entity';
 import { DeckCard } from './deck-card.entity';
 import { ChatSession } from './chat-session.entity';
 import { ColorTag } from './color-tag.entity';
+import { DeckScore } from './deck-score.entity';
 
 export type DeckSyncStatus = 'waiting' | 'syncing' | 'synced' | 'error';
+export type DeckVisibility = 'private' | 'public' | 'pod';
 
 @Entity('decks')
 export class Deck {
@@ -44,6 +47,9 @@ export class Deck {
   @Column({ name: 'sync_error', type: 'text', nullable: true })
   syncError: string | null;
 
+  @Column({ type: 'varchar', default: 'private' })
+  visibility: DeckVisibility;
+
   @OneToMany(() => ColorTag, (tag) => tag.deck, { cascade: true })
   colorTags: ColorTag[];
 
@@ -62,4 +68,7 @@ export class Deck {
 
   @OneToMany(() => ChatSession, (session) => session.deck)
   chatSessions: ChatSession[];
+
+  @OneToOne(() => DeckScore, (score) => score.deck)
+  deckScore?: DeckScore;
 }

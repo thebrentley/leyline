@@ -13,8 +13,10 @@
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
+    "@react-native-community/datetimepicker": "^8.6.0",
     "@react-native-ml-kit/text-recognition": "^2.0.0",
     "@react-navigation/drawer": "^7.7.13",
+    "@types/react-datepicker": "^6.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "expo": "~54.0.32",
@@ -35,6 +37,7 @@
     "lucide-react-native": "^0.562.0",
     "nativewind": "^4.2.1",
     "react": "19.1.0",
+    "react-datepicker": "^9.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-document-scanner-plugin": "^2.0.4",

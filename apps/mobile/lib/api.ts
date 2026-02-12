@@ -66,6 +66,7 @@ export interface User {
   id: string;
   email: string;
   displayName: string | null;
+  profilePicture: string | null;
   archidektId: number | null;
   archidektUsername: string | null;
   archidektConnectedAt: string | null;
@@ -91,12 +92,14 @@ export interface ColorTag {
 }
 
 export type DeckSyncStatus = "waiting" | "syncing" | "synced" | "error";
+export type DeckVisibility = "private" | "public" | "pod";
 
 export interface DeckSummary {
   id: string;
   archidektId: number | null;
   name: string;
   format: string | null;
+  visibility: DeckVisibility;
   cardCount: number;
   commanders: string[];
   commanderImageCrop: string | null; // Art only (cropped)
@@ -105,6 +108,28 @@ export interface DeckSummary {
   lastSyncedAt: string | null;
   syncStatus: DeckSyncStatus;
   syncError: string | null;
+  scores: DeckScores | null;
+}
+
+export interface ExploreDeckSummary {
+  id: string;
+  name: string;
+  format: string | null;
+  cardCount: number;
+  commanders: string[];
+  colors: string[];
+  commanderImageCrop: string | null;
+  ownerName: string;
+  ownerId: string;
+  scores: DeckScores | null;
+}
+
+export interface ExploreFilters {
+  name?: string;
+  commander?: string;
+  cardName?: string;
+  colors?: string[];
+  format?: string;
 }
 
 export interface DeckCard {
@@ -139,6 +164,7 @@ export interface DeckDetail {
   name: string;
   format: string | null;
   description: string | null;
+  visibility?: DeckVisibility;
   colorTags: ColorTag[];
   colorIdentity: string[];
   lastSyncedAt: string | null;
@@ -150,6 +176,9 @@ export interface DeckDetail {
   commanders: DeckCard[];
   mainboard: DeckCard[];
   sideboard: DeckCard[];
+  isReadOnly?: boolean;
+  ownerName?: string;
+  ownerId?: string;
 }
 
 export interface VersionCard {
@@ -278,6 +307,16 @@ export const authApi = {
     return request<User>("/auth/me");
   },
 
+  async updateProfile(updates: {
+    displayName?: string;
+    profilePicture?: string;
+  }): Promise<ApiResponse<User>> {
+    return request<User>("/auth/profile", {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    });
+  },
+
   async connectArchidekt(
     username: string,
     password: string,
@@ -304,6 +343,36 @@ export const authApi = {
 export const decksApi = {
   async list(): Promise<ApiResponse<DeckSummary[]>> {
     return request<DeckSummary[]>("/decks");
+  },
+
+  async explore(
+    filters?: ExploreFilters & { page?: number; pageSize?: number },
+  ): Promise<ApiResponse<PaginatedResponse<ExploreDeckSummary>>> {
+    const params = new URLSearchParams();
+    if (filters?.page) params.set("page", filters.page.toString());
+    if (filters?.pageSize) params.set("pageSize", filters.pageSize.toString());
+    if (filters?.name) params.set("name", filters.name);
+    if (filters?.commander) params.set("commander", filters.commander);
+    if (filters?.cardName) params.set("cardName", filters.cardName);
+    if (filters?.colors?.length) params.set("colors", filters.colors.join(","));
+    if (filters?.format) params.set("format", filters.format);
+    const query = params.toString();
+    return request<PaginatedResponse<ExploreDeckSummary>>(
+      `/decks/explore${query ? `?${query}` : ""}`,
+    );
+  },
+
+  async updateVisibility(
+    deckId: string,
+    visibility: DeckVisibility,
+  ): Promise<ApiResponse<{ success: boolean; visibility: DeckVisibility }>> {
+    return request<{ success: boolean; visibility: DeckVisibility }>(
+      `/decks/${deckId}/visibility`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ visibility }),
+      },
+    );
   },
 
   async create(name: string): Promise<ApiResponse<DeckSummary>> {
@@ -884,6 +953,481 @@ export const advisorApi = {
       method: "PATCH",
       body: JSON.stringify(updates),
     });
+  },
+};
+
+// =====================
+// Deck Ranking Types
+// =====================
+
+export interface DeckScores {
+  power: number;
+  salt: number;
+  fear: number;
+  airtime: number;
+}
+
+export interface DeckScoreResponse {
+  scores: DeckScores;
+  layerBreakdown: {
+    cardBaseline: DeckScores;
+    tagInteraction: DeckScores;
+    combos: DeckScores;
+    commander: DeckScores;
+    density: DeckScores;
+    graph: DeckScores;
+  };
+  notableCards: {
+    highPower: string[];
+    highSalt: string[];
+    highFear: string[];
+    highAirtime: string[];
+    synergyHubs: string[];
+    comboCards: string[];
+  } | null;
+  detectedCombos: Array<{
+    cardNames: string[];
+    isGameWinning: boolean;
+    pieceCount: number;
+    description: string;
+  }> | null;
+  detectedEngines: Array<{
+    cards: string[];
+    description: string;
+  }> | null;
+  computedAt: string;
+  isStale: boolean;
+}
+
+// =====================
+// Deck Ranking API
+// =====================
+
+export const deckRankingApi = {
+  async getScores(deckId: string): Promise<ApiResponse<DeckScoreResponse>> {
+    return request<DeckScoreResponse>(`/deck-ranking/${deckId}/scores`);
+  },
+
+  async recompute(deckId: string): Promise<ApiResponse<DeckScoreResponse>> {
+    return request<DeckScoreResponse>(`/deck-ranking/${deckId}/recompute`, {
+      method: 'POST',
+    });
+  },
+};
+
+// ==================== Pod Types ====================
+
+export type PodRole = "owner" | "admin" | "member";
+export type RsvpStatus = "accepted" | "declined";
+
+export interface PodSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  coverImage: string | null;
+  memberCount: number;
+  role: PodRole;
+  nextEventAt: string | null;
+  createdAt: string;
+}
+
+export interface PodDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  coverImage: string | null;
+  inviteCode: string | null;
+  memberCount: number;
+  role: PodRole;
+  members: Array<{
+    id: string;
+    userId: string;
+    displayName: string | null;
+    email: string;
+    profilePicture: string | null;
+    role: PodRole;
+    joinedAt: string;
+  }>;
+  pendingInvites?: Array<{
+    id: string;
+    displayName: string | null;
+    email: string;
+    invitedAt: string;
+  }>;
+  createdAt: string;
+}
+
+export interface PodInviteInfo {
+  id: string;
+  pod: {
+    id: string;
+    name: string;
+    description: string | null;
+    memberCount: number;
+  };
+  inviter: { displayName: string | null; email: string };
+  createdAt: string;
+}
+
+export interface PodEventSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  location: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  createdBy: { displayName: string | null };
+  rsvpCounts: { accepted: number; declined: number; pending: number };
+  myRsvp: RsvpStatus | null;
+  createdAt: string;
+}
+
+export interface PodEventDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  location: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  createdBy: { id: string; displayName: string | null };
+  rsvps: Array<{
+    userId: string;
+    displayName: string | null;
+    email: string;
+    profilePicture: string | null;
+    status: RsvpStatus;
+    comment: string | null;
+    updatedAt: string;
+  }>;
+  offlineRsvps: Array<{
+    offlineMemberId: string;
+    name: string;
+    status: RsvpStatus;
+    comment: string | null;
+    setBy: { id: string; displayName: string | null };
+    updatedAt: string;
+  }>;
+  notResponded: Array<{ userId: string; displayName: string | null; email: string; profilePicture: string | null }>;
+  offlineNotResponded: Array<{ offlineMemberId: string; name: string }>;
+  createdAt: string;
+}
+
+export interface PodOfflineMember {
+  id: string;
+  name: string;
+  email: string | null;
+  notes: string | null;
+  linkedUserId: string | null;
+  linkedUser: {
+    id: string;
+    email: string;
+    displayName: string | null;
+  } | null;
+  linkedAt: string | null;
+  createdAt: string;
+}
+
+export interface PodUserProfile {
+  id: string;
+  displayName: string | null;
+  email: string;
+  profilePicture: string | null;
+  createdAt: string;
+  publicDecks: Array<{
+    id: string;
+    name: string;
+    format: string | null;
+    cardCount: number;
+    commanders: string[];
+    colors: string[];
+    commanderImageCrop: string | null;
+    scores: DeckScores | null;
+  }>;
+}
+
+// ==================== Pods API ====================
+
+export const podsApi = {
+  // Pod CRUD
+  async list(): Promise<ApiResponse<PodSummary[]>> {
+    return request<PodSummary[]>("/pods");
+  },
+
+  async get(podId: string): Promise<ApiResponse<PodDetail>> {
+    return request<PodDetail>(`/pods/${podId}`);
+  },
+
+  async create(
+    name: string,
+    description?: string,
+  ): Promise<ApiResponse<PodSummary>> {
+    return request<PodSummary>("/pods", {
+      method: "POST",
+      body: JSON.stringify({ name, description }),
+    });
+  },
+
+  async update(
+    podId: string,
+    data: { name?: string; description?: string; coverImage?: string },
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request("/pods/" + podId, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deletePod(podId: string): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/${podId}`, { method: "DELETE" });
+  },
+
+  // Invite code
+  async joinByCode(
+    inviteCode: string,
+  ): Promise<ApiResponse<{ podId: string; podName: string; role: string }>> {
+    return request(`/pods/join/${inviteCode}`, { method: "POST" });
+  },
+
+  async regenerateInviteCode(
+    podId: string,
+  ): Promise<ApiResponse<{ inviteCode: string }>> {
+    return request(`/pods/${podId}/invite-code/regenerate`, { method: "POST" });
+  },
+
+  // Direct invites
+  async inviteUser(
+    podId: string,
+    userId: string,
+  ): Promise<ApiResponse<{ id: string }>> {
+    return request(`/pods/${podId}/invites`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    });
+  },
+
+  async getPendingInvites(): Promise<ApiResponse<PodInviteInfo[]>> {
+    return request<PodInviteInfo[]>("/pods/invites/pending");
+  },
+
+  async respondToInvite(
+    inviteId: string,
+    accept: boolean,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/invites/${inviteId}/respond`, {
+      method: "POST",
+      body: JSON.stringify({ accept }),
+    });
+  },
+
+  // Members
+  async removeMember(
+    podId: string,
+    userId: string,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/${podId}/members/${userId}`, { method: "DELETE" });
+  },
+
+  async promoteMember(
+    podId: string,
+    userId: string,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/${podId}/members/${userId}/promote`, {
+      method: "PATCH",
+    });
+  },
+
+  async demoteMember(
+    podId: string,
+    userId: string,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/${podId}/members/${userId}/demote`, {
+      method: "PATCH",
+    });
+  },
+
+  async leavePod(podId: string): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/${podId}/leave`, { method: "POST" });
+  },
+
+  // User search & profile
+  async searchUsers(
+    query: string,
+  ): Promise<
+    ApiResponse<
+      Array<{ id: string; displayName: string | null; email: string }>
+    >
+  > {
+    return request(`/pods/users/search?q=${encodeURIComponent(query)}`);
+  },
+
+  async getUserProfile(userId: string): Promise<ApiResponse<PodUserProfile>> {
+    return request<PodUserProfile>(`/pods/users/${userId}/profile`);
+  },
+
+  // Events
+  async listEvents(
+    podId: string,
+    upcoming?: boolean,
+  ): Promise<ApiResponse<PodEventSummary[]>> {
+    const params = upcoming ? "?upcoming=true" : "";
+    return request<PodEventSummary[]>(`/pods/${podId}/events${params}`);
+  },
+
+  async getEvent(
+    podId: string,
+    eventId: string,
+  ): Promise<ApiResponse<PodEventDetail>> {
+    return request<PodEventDetail>(`/pods/${podId}/events/${eventId}`);
+  },
+
+  async createEvent(
+    podId: string,
+    data: {
+      name: string;
+      description?: string;
+      location?: string;
+      startsAt: string;
+      endsAt?: string;
+    },
+  ): Promise<ApiResponse<PodEventSummary>> {
+    return request(`/pods/${podId}/events`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateEvent(
+    podId: string,
+    eventId: string,
+    data: {
+      name?: string;
+      description?: string;
+      location?: string;
+      startsAt?: string;
+      endsAt?: string;
+    },
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/${podId}/events/${eventId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteEvent(
+    podId: string,
+    eventId: string,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/${podId}/events/${eventId}`, { method: "DELETE" });
+  },
+
+  async rsvp(
+    podId: string,
+    eventId: string,
+    status: RsvpStatus,
+    comment?: string,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/${podId}/events/${eventId}/rsvp`, {
+      method: "POST",
+      body: JSON.stringify({ status, comment }),
+    });
+  },
+
+  async removeRsvp(
+    podId: string,
+    eventId: string,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/${podId}/events/${eventId}/rsvp`, {
+      method: "DELETE",
+    });
+  },
+
+  // Offline Members
+  async addOfflineMember(
+    podId: string,
+    data: { name: string; email?: string; notes?: string },
+  ): Promise<ApiResponse<PodOfflineMember>> {
+    return request<PodOfflineMember>(`/pods/${podId}/offline-members`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async listOfflineMembers(
+    podId: string,
+  ): Promise<ApiResponse<PodOfflineMember[]>> {
+    return request<PodOfflineMember[]>(`/pods/${podId}/offline-members`);
+  },
+
+  async updateOfflineMember(
+    podId: string,
+    offlineMemberId: string,
+    data: { name?: string; email?: string; notes?: string },
+  ): Promise<ApiResponse<PodOfflineMember>> {
+    return request<PodOfflineMember>(
+      `/pods/${podId}/offline-members/${offlineMemberId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
+  async removeOfflineMember(
+    podId: string,
+    offlineMemberId: string,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request<{ success: true }>(
+      `/pods/${podId}/offline-members/${offlineMemberId}`,
+      {
+        method: "DELETE",
+      },
+    );
+  },
+
+  async linkOfflineMember(
+    podId: string,
+    offlineMemberId: string,
+    userId: string,
+  ): Promise<
+    ApiResponse<{ id: string; linkedUserId: string; linkedAt: string }>
+  > {
+    return request<{ id: string; linkedUserId: string; linkedAt: string }>(
+      `/pods/${podId}/offline-members/${offlineMemberId}/link`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ userId }),
+      },
+    );
+  },
+
+  // Offline RSVPs
+  async setOfflineRsvp(
+    podId: string,
+    eventId: string,
+    offlineMemberId: string,
+    status: RsvpStatus,
+    comment?: string,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request<{ success: true }>(
+      `/pods/${podId}/events/${eventId}/offline-rsvps/${offlineMemberId}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ status, comment }),
+      },
+    );
+  },
+
+  async removeOfflineRsvp(
+    podId: string,
+    eventId: string,
+    offlineMemberId: string,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request<{ success: true }>(
+      `/pods/${podId}/events/${eventId}/offline-rsvps/${offlineMemberId}`,
+      {
+        method: "DELETE",
+      },
+    );
   },
 };
 

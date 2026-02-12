@@ -9,6 +9,15 @@ import {
   AddCommanderAnalysis1738300000000,
   CreateTokensTable1738400000000,
   ColorTagsToEntity1738400000000,
+  CreateDeckRankingTables1739000000000,
+  AddDeckVisibility1739100000000,
+  CreatePodTables1739200000000,
+  AddPodVisibility1739300000000,
+  CreateOfflineMemberTables1739400000000,
+  AddProfilePicture1739500000000,
+  AddEventStatus1739600000000,
+  AddOwnerRole1739700000000,
+  AddPodCoverImage1739800000000,
 } from "./migrations";
 
 config();
@@ -22,6 +31,15 @@ export const migrations = [
   AddCommanderAnalysis1738300000000,
   CreateTokensTable1738400000000,
   ColorTagsToEntity1738400000000,
+  CreateDeckRankingTables1739000000000,
+  AddDeckVisibility1739100000000,
+  CreatePodTables1739200000000,
+  AddPodVisibility1739300000000,
+  CreateOfflineMemberTables1739400000000,
+  AddProfilePicture1739500000000,
+  AddEventStatus1739600000000,
+  AddOwnerRole1739700000000,
+  AddPodCoverImage1739800000000,
 ];
 
 export const AppDataSource = new DataSource({

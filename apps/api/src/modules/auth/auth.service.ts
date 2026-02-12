@@ -32,6 +32,7 @@ export interface SanitizedUser {
   id: string;
   email: string;
   displayName: string | null;
+  profilePicture: string | null;
   archidektId: number | null;
   archidektUsername: string | null;
   archidektConnectedAt: Date | null;
@@ -136,6 +137,28 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
+    return this.sanitizeUser(user);
+  }
+
+  async updateProfile(
+    userId: string,
+    updates: { displayName?: string; profilePicture?: string },
+  ): Promise<SanitizedUser> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (updates.displayName !== undefined) {
+      user.displayName = updates.displayName || null;
+    }
+
+    if (updates.profilePicture !== undefined) {
+      user.profilePicture = updates.profilePicture || null;
+    }
+
+    await this.userRepository.save(user);
+
     return this.sanitizeUser(user);
   }
 
@@ -452,6 +475,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
+      profilePicture: user.profilePicture,
       archidektId: archidektSettings.archidektId,
       archidektUsername: archidektSettings.archidektUsername,
       archidektConnectedAt: archidektSettings.archidektConnectedAt,

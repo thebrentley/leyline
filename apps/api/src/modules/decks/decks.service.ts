@@ -16,6 +16,8 @@ import {
 } from "../../entities/deck-version.entity";
 import { CollectionCard } from "../../entities/collection-card.entity";
 import { ColorTag } from "../../entities/color-tag.entity";
+import { DeckScore } from "../../entities/deck-score.entity";
+import { PodMember } from "../../entities/pod-member.entity";
 import { CardsService } from "../cards/cards.service";
 import { AuthService } from "../auth/auth.service";
 
@@ -61,6 +63,10 @@ export class DecksService {
     private collectionRepository: Repository<CollectionCard>,
     @InjectRepository(ColorTag)
     private colorTagRepository: Repository<ColorTag>,
+    @InjectRepository(DeckScore)
+    private deckScoreRepository: Repository<DeckScore>,
+    @InjectRepository(PodMember)
+    private podMemberRepository: Repository<PodMember>,
     private cardsService: CardsService,
     @Inject(forwardRef(() => AuthService))
     private authService: AuthService,
@@ -78,6 +84,46 @@ export class DecksService {
       );
     }
     this.lastArchidektRequest = Date.now();
+  }
+
+  /**
+   * Check if two users share any pods
+   */
+  private async usersSharePod(userId1: string, userId2: string): Promise<boolean> {
+    if (userId1 === userId2) return true;
+
+    // Get all pods for user1
+    const user1Pods = await this.podMemberRepository.find({
+      where: { userId: userId1 },
+      select: ['podId'],
+    });
+
+    if (user1Pods.length === 0) return false;
+
+    const podIds = user1Pods.map(m => m.podId);
+
+    // Check if user2 is in any of those pods
+    const sharedMembership = await this.podMemberRepository.findOne({
+      where: {
+        userId: userId2,
+        podId: podIds.length > 0
+          ? podIds.length === 1
+            ? podIds[0]
+            : (undefined as any) // TypeORM's In() will be used in the real implementation
+          : undefined,
+      },
+    });
+
+    // Better approach using query builder for IN clause
+    if (podIds.length === 0) return false;
+
+    const count = await this.podMemberRepository
+      .createQueryBuilder('pm')
+      .where('pm.userId = :userId2', { userId2 })
+      .andWhere('pm.podId IN (:...podIds)', { podIds })
+      .getCount();
+
+    return count > 0;
   }
 
   /**
@@ -110,6 +156,16 @@ export class DecksService {
       where: { userId },
       order: { updatedAt: "DESC" },
     });
+
+    // Batch-fetch all deck scores in one query
+    const deckIds = decks.map((d) => d.id);
+    const allScores = deckIds.length > 0
+      ? await this.deckScoreRepository
+          .createQueryBuilder("ds")
+          .where("ds.deck_id IN (:...deckIds)", { deckIds })
+          .getMany()
+      : [];
+    const scoresByDeckId = new Map(allScores.map((s) => [s.deckId, s]));
 
     return Promise.all(
       decks.map(async (deck) => {
@@ -149,11 +205,14 @@ export class DecksService {
           console.log(`[Deck ${deck.name}] No commanders found`);
         }
 
+        const score = scoresByDeckId.get(deck.id);
+
         return {
           id: deck.id,
           archidektId: deck.archidektId,
           name: deck.name,
           format: deck.format,
+          visibility: deck.visibility,
           lastSyncedAt: deck.lastSyncedAt,
           syncStatus: deck.syncStatus,
           syncError: deck.syncError,
@@ -162,6 +221,9 @@ export class DecksService {
           commanderImageCrop: primaryCommander?.imageArtCrop || null,
           commanderImageFull: primaryCommander?.imageNormal || null,
           colors: this.extractColors(commanders),
+          scores: score
+            ? { power: score.power, salt: score.salt, fear: score.fear, airtime: score.airtime }
+            : null,
         };
       }),
     );
@@ -317,6 +379,7 @@ export class DecksService {
       name: deck.name,
       format: deck.format,
       description: deck.description,
+      visibility: deck.visibility,
       colorTags: (deck.colorTags || []).map((t) => ({
         id: t.id,
         name: t.name,
@@ -332,6 +395,7 @@ export class DecksService {
       commanders,
       mainboard,
       sideboard,
+      isReadOnly: false,
     };
   }
 
@@ -1385,6 +1449,284 @@ export class DecksService {
       }
     }
     return Array.from(colors);
+  }
+
+  // ==================== Visibility & Explore ====================
+
+  /**
+   * Update deck visibility (private/public/pod)
+   */
+  async updateVisibility(
+    deckId: string,
+    userId: string,
+    visibility: "private" | "public" | "pod",
+  ): Promise<void> {
+    const deck = await this.deckRepository.findOne({
+      where: { id: deckId, userId },
+    });
+
+    if (!deck) {
+      throw new NotFoundException("Deck not found");
+    }
+
+    deck.visibility = visibility;
+    await this.deckRepository.save(deck);
+  }
+
+  /**
+   * Browse public decks with filters
+   */
+  async explorePublicDecks(options: {
+    page?: number;
+    pageSize?: number;
+    name?: string;
+    commander?: string;
+    cardName?: string;
+    colors?: string[];
+    format?: string;
+  }) {
+    const page = options.page || 1;
+    const pageSize = Math.min(options.pageSize || 20, 50);
+    const skip = (page - 1) * pageSize;
+
+    const qb = this.deckRepository
+      .createQueryBuilder("deck")
+      .leftJoin("deck.user", "user")
+      .leftJoin("deck.deckScore", "deckScore")
+      .where("deck.visibility = :visibility", { visibility: "public" })
+      .addSelect(["user.displayName", "user.email"])
+      .addSelect(["deckScore.power", "deckScore.salt", "deckScore.fear", "deckScore.airtime"]);
+
+    // Deck name search
+    if (options.name) {
+      qb.andWhere("LOWER(deck.name) LIKE LOWER(:deckName)", {
+        deckName: `%${options.name}%`,
+      });
+    }
+
+    // Format filter
+    if (options.format) {
+      qb.andWhere("LOWER(deck.format) = LOWER(:format)", {
+        format: options.format,
+      });
+    }
+
+    // Commander name filter
+    if (options.commander) {
+      qb.andWhere(
+        `deck.id IN (
+          SELECT dc.deck_id FROM deck_cards dc
+          JOIN cards c ON dc.scryfall_id = c.scryfall_id
+          WHERE dc.is_commander = true
+          AND LOWER(c.name) LIKE LOWER(:commanderName)
+        )`,
+        { commanderName: `%${options.commander}%` },
+      );
+    }
+
+    // Contains card name filter
+    if (options.cardName) {
+      qb.andWhere(
+        `deck.id IN (
+          SELECT dc.deck_id FROM deck_cards dc
+          JOIN cards c ON dc.scryfall_id = c.scryfall_id
+          WHERE LOWER(c.name) LIKE LOWER(:containsCardName)
+        )`,
+        { containsCardName: `%${options.cardName}%` },
+      );
+    }
+
+    // Color identity filter: exclude decks with commander colors outside selection
+    if (options.colors && options.colors.length > 0) {
+      qb.andWhere(
+        `deck.id NOT IN (
+          SELECT DISTINCT dc.deck_id FROM deck_cards dc
+          JOIN cards c ON dc.scryfall_id = c.scryfall_id,
+          LATERAL unnest(c.color_identity) AS ci(color)
+          WHERE dc.is_commander = true
+          AND ci.color NOT IN (${options.colors.map((_, i) => `:color${i}`).join(",")})
+        )`,
+        options.colors.reduce(
+          (params, color, i) => ({ ...params, [`color${i}`]: color }),
+          {} as Record<string, string>,
+        ),
+      );
+    }
+
+    qb.orderBy("deck.updatedAt", "DESC").skip(skip).take(pageSize);
+
+    const [decks, total] = await qb.getManyAndCount();
+
+    if (decks.length === 0) {
+      return { data: [], total: 0, page, pageSize, totalPages: 0 };
+    }
+
+    const deckIds = decks.map((d) => d.id);
+
+    // Bulk-fetch commanders
+    const commanders = await this.deckCardRepository
+      .createQueryBuilder("dc")
+      .leftJoinAndSelect("dc.card", "card")
+      .where("dc.deckId IN (:...deckIds)", { deckIds })
+      .andWhere("dc.isCommander = true")
+      .getMany();
+
+    // Bulk-fetch card counts
+    const cardCounts = await this.deckCardRepository
+      .createQueryBuilder("dc")
+      .select("dc.deckId", "deckId")
+      .addSelect("SUM(dc.quantity)", "count")
+      .where("dc.deckId IN (:...deckIds)", { deckIds })
+      .groupBy("dc.deckId")
+      .getRawMany();
+
+    const commandersByDeck = new Map<string, DeckCard[]>();
+    for (const cmd of commanders) {
+      if (!commandersByDeck.has(cmd.deckId)) {
+        commandersByDeck.set(cmd.deckId, []);
+      }
+      commandersByDeck.get(cmd.deckId)!.push(cmd);
+    }
+
+    const countByDeck = new Map<string, number>();
+    for (const row of cardCounts) {
+      countByDeck.set(row.deckId, parseInt(row.count, 10));
+    }
+
+    const data = decks.map((deck) => {
+      const deckCommanders = commandersByDeck.get(deck.id) || [];
+      const primaryCommander = deckCommanders[0]?.card;
+      return {
+        id: deck.id,
+        name: deck.name,
+        format: deck.format,
+        cardCount: countByDeck.get(deck.id) || 0,
+        commanders: deckCommanders.map((c) => c.card?.name).filter(Boolean),
+        colors: this.extractColors(deckCommanders),
+        commanderImageCrop: primaryCommander?.imageArtCrop || null,
+        ownerName:
+          deck.user?.displayName || deck.user?.email?.split("@")[0] || "Unknown",
+        ownerId: deck.userId,
+        scores: deck.deckScore
+          ? {
+              power: deck.deckScore.power,
+              salt: deck.deckScore.salt,
+              fear: deck.deckScore.fear,
+              airtime: deck.deckScore.airtime,
+            }
+          : null,
+      };
+    });
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  /**
+   * Get a deck with cards — supports owner access, public viewer access, and pod member access
+   */
+  async getPublicDeckWithCards(deckId: string, requestingUserId: string) {
+    // First try as owner
+    const ownedDeck = await this.deckRepository.findOne({
+      where: { id: deckId, userId: requestingUserId },
+    });
+
+    if (ownedDeck) {
+      const result = await this.getDeckWithCards(deckId, requestingUserId);
+      return { ...result, visibility: ownedDeck.visibility, isReadOnly: false };
+    }
+
+    // Not the owner — check visibility permissions
+    const deck = await this.deckRepository.findOne({
+      where: { id: deckId },
+      relations: ["cards", "cards.card", "cards.colorTagEntity", "colorTags", "user"],
+    });
+
+    if (!deck) {
+      throw new NotFoundException("Deck not found");
+    }
+
+    // Check if user has permission to view this deck
+    const canView =
+      deck.visibility === "public" ||
+      (deck.visibility === "pod" && await this.usersSharePod(deck.userId, requestingUserId));
+
+    if (!canView) {
+      throw new NotFoundException("Deck not found");
+    }
+
+    const commanders: any[] = [];
+    const mainboard: any[] = [];
+    const sideboard: any[] = [];
+
+    for (const deckCard of deck.cards) {
+      const cardData = {
+        id: deckCard.id,
+        scryfallId: deckCard.scryfallId,
+        name: deckCard.card?.name || "Unknown",
+        quantity: deckCard.quantity,
+        setCode: deckCard.card?.setCode,
+        collectorNumber: deckCard.card?.collectorNumber,
+        isCommander: deckCard.isCommander,
+        categories: deckCard.categories,
+        imageUrl: deckCard.card?.imageNormal,
+        imageSmall: deckCard.card?.imageSmall,
+        imageArtCrop: deckCard.card?.imageArtCrop,
+        manaCost: deckCard.card?.manaCost,
+        typeLine: deckCard.card?.typeLine,
+        colors: deckCard.card?.colors,
+        colorIdentity: deckCard.card?.colorIdentity,
+        rarity: deckCard.card?.rarity,
+        priceUsd: deckCard.card?.priceUsd,
+      };
+
+      if (deckCard.isCommander) {
+        commanders.push(cardData);
+      } else if (
+        deckCard.categories.some((c) => c.toLowerCase() === "sideboard")
+      ) {
+        sideboard.push(cardData);
+      } else {
+        mainboard.push(cardData);
+      }
+    }
+
+    const colorIdentity = this.extractColors(
+      deck.cards.filter((c) => c.isCommander),
+    );
+
+    return {
+      id: deck.id,
+      archidektId: deck.archidektId,
+      name: deck.name,
+      format: deck.format,
+      description: deck.description,
+      visibility: deck.visibility,
+      colorTags: (deck.colorTags || []).map((t) => ({
+        id: t.id,
+        name: t.name,
+        color: t.color,
+      })),
+      colorIdentity,
+      lastSyncedAt: deck.lastSyncedAt,
+      syncStatus: deck.syncStatus,
+      syncError: deck.syncError,
+      createdAt: deck.createdAt,
+      updatedAt: deck.updatedAt,
+      cardCount: deck.cards.reduce((sum, c) => sum + c.quantity, 0),
+      commanders,
+      mainboard,
+      sideboard,
+      isReadOnly: true,
+      ownerName:
+        deck.user?.displayName || deck.user?.email?.split("@")[0] || "Unknown",
+      ownerId: deck.userId,
+    };
   }
 
   // ==================== Version History ====================

@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Delete,
+  Patch,
   Body,
   UseGuards,
 } from '@nestjs/common';
@@ -45,6 +46,16 @@ class ConnectArchidektDto {
   password: string;
 }
 
+class UpdateProfileDto {
+  @IsOptional()
+  @IsString()
+  displayName?: string;
+
+  @IsOptional()
+  @IsString()
+  profilePicture?: string;
+}
+
 // ==================== Controller ====================
 
 @Controller('auth')
@@ -67,6 +78,15 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async getMe(@CurrentUser() user: CurrentUserPayload) {
     return this.authService.getMe(user.userId);
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(user.userId, dto);
   }
 
   // ========== Archidekt Connection ==========

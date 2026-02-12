@@ -10,6 +10,7 @@ import { Deck } from './deck.entity';
 import { CollectionCard } from './collection-card.entity';
 import { ChatSession } from './chat-session.entity';
 import { Setting } from './setting.entity';
+import { PodMember } from './pod-member.entity';
 
 @Entity('users')
 export class User {
@@ -25,6 +26,9 @@ export class User {
 
   @Column({ name: 'display_name', type: 'varchar', nullable: true })
   displayName: string | null;
+
+  @Column({ name: 'profile_picture', type: 'text', nullable: true })
+  profilePicture: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
@@ -43,4 +47,7 @@ export class User {
 
   @OneToMany(() => Setting, (setting) => setting.user)
   settings: Setting[];
+
+  @OneToMany(() => PodMember, (member) => member.user)
+  podMemberships: PodMember[];
 }

@@ -2,27 +2,30 @@ import {
   DrawerContentComponentProps,
   DrawerContentScrollView,
 } from "@react-navigation/drawer";
-import { Slot } from "expo-router";
+import { router, Slot, useFocusEffect } from "expo-router";
 import { Drawer } from "expo-router/drawer";
 import {
+  ChevronDown,
   ChevronRight,
+  Compass,
   Home,
   Layers,
   Library,
   Link2,
-  LogOut,
   Moon,
+  Users,
 } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
-import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useCallback, useState } from "react";
+import { Image, Pressable, Text, View } from "react-native";
 import { StyledSwitch } from "~/components/ui/StyledSwitch";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { useAuth } from "~/contexts/AuthContext";
 import { useResponsive } from "~/hooks/useResponsive";
 import { DesktopSidebar } from "~/components/web/DesktopSidebar";
 import { usePersistedColorScheme } from "~/hooks/usePersistedColorScheme";
+import { podsApi, type PodSummary } from "~/lib/api";
+import { LeylineLogo } from "~/components/brand/LeylineLogo";
 
 interface DrawerItemProps {
   icon: React.ReactNode;
@@ -79,14 +82,28 @@ function Divider({ isDark }: { isDark: boolean }) {
 
 function CustomDrawerContent(props: DrawerContentComponentProps) {
   const { isDark, toggleColorScheme } = usePersistedColorScheme();
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const iconColor = isDark ? "#94a3b8" : "#64748b";
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [pods, setPods] = useState<PodSummary[]>([]);
+  const [podsExpanded, setPodsExpanded] = useState(() => {
+    try {
+      return localStorage.getItem("pods_expanded") === "true";
+    } catch {
+      return false;
+    }
+  });
 
-  const handleLogout = () => {
-    setShowLogoutConfirm(true);
-  };
+  const loadPods = useCallback(async () => {
+    const result = await podsApi.list();
+    if (result.data) setPods(result.data);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadPods();
+    }, [loadPods]),
+  );
 
   const currentRoute = props.state.routes[props.state.index]?.name;
 
@@ -97,36 +114,10 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         contentContainerStyle={{ paddingTop: insets.top }}
         showsVerticalScrollIndicator={false}
       >
-        {/* User Profile Header */}
-        <Pressable
-          onPress={() => props.navigation.navigate("profile")}
-          className={`mb-6 flex-row items-center gap-4 px-6 py-4 ${
-            isDark ? "active:bg-slate-800/50" : "active:bg-slate-50"
-          }`}
-        >
-          {/* Avatar */}
-          <View className="h-14 w-14 items-center justify-center rounded-full bg-purple-600">
-            <Text className="text-xl font-bold text-white">
-              {(user?.displayName || user?.email)?.charAt(0).toUpperCase() || "U"}
-            </Text>
-          </View>
-          {/* Name & Edit */}
-          <View className="flex-1">
-            <Text
-              className={`text-lg font-semibold ${
-                isDark ? "text-white" : "text-slate-900"
-              }`}
-            >
-              {user?.displayName || user?.email?.split("@")[0] || "User"}
-            </Text>
-            <View className="flex-row items-center gap-1">
-              <Text className={isDark ? "text-slate-400" : "text-slate-500"}>
-                Edit profile
-              </Text>
-              <ChevronRight size={14} color={isDark ? "#94a3b8" : "#64748b"} />
-            </View>
-          </View>
-        </Pressable>
+        {/* Logo */}
+        <View className="px-6 py-6">
+          <LeylineLogo size="small" showTagline={false} />
+        </View>
 
         <Divider isDark={isDark} />
 
@@ -156,6 +147,106 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           isDark={isDark}
           isActive={currentRoute === "collection"}
         />
+        <Divider isDark={isDark} />
+
+        <DrawerItem
+          icon={<Compass size={24} color={currentRoute === "explore" ? "#7C3AED" : iconColor} />}
+          label="Explore"
+          onPress={() => props.navigation.navigate("explore")}
+          isDark={isDark}
+          isActive={currentRoute === "explore"}
+        />
+        <Divider isDark={isDark} />
+
+        {/* Pods Accordion */}
+        <Pressable
+          onPress={() => setPodsExpanded((prev) => {
+            const next = !prev;
+            try { localStorage.setItem("pods_expanded", String(next)); } catch {}
+            return next;
+          })}
+          className={`flex-row items-center justify-between px-6 py-4 ${
+            currentRoute === "pods"
+              ? isDark
+                ? "bg-slate-800"
+                : "bg-slate-100"
+              : isDark
+                ? "active:bg-slate-800/50"
+                : "active:bg-slate-50"
+          }`}
+        >
+          <View className="flex-row items-center gap-4">
+            <Users size={24} color={currentRoute === "pods" ? "#7C3AED" : iconColor} />
+            <Text
+              className={`text-base ${
+                currentRoute === "pods"
+                  ? "font-semibold text-purple-500"
+                  : isDark
+                    ? "text-white"
+                    : "text-slate-900"
+              }`}
+            >
+              Pods
+            </Text>
+          </View>
+          {podsExpanded ? (
+            <ChevronDown size={20} color={isDark ? "#475569" : "#cbd5e1"} />
+          ) : (
+            <ChevronRight size={20} color={isDark ? "#475569" : "#cbd5e1"} />
+          )}
+        </Pressable>
+        {podsExpanded && (
+          <View className={`pb-2 ${isDark ? "bg-slate-900/50" : "bg-slate-50/50"}`}>
+            {/* All Pods link */}
+            <Pressable
+              onPress={() => {
+                props.navigation.navigate("pods");
+                props.navigation.closeDrawer();
+              }}
+              className={`flex-row items-center gap-3 pl-14 pr-6 py-3 ${
+                isDark ? "active:bg-slate-800/50" : "active:bg-slate-50"
+              }`}
+            >
+              <Text
+                className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}
+              >
+                All Pods
+              </Text>
+            </Pressable>
+            {pods.map((pod) => (
+              <Pressable
+                key={pod.id}
+                onPress={() => {
+                  router.push(`/pod/${pod.id}`);
+                  props.navigation.closeDrawer();
+                }}
+                className={`flex-row items-center gap-3 pl-14 pr-6 py-3 ${
+                  isDark ? "active:bg-slate-800/50" : "active:bg-slate-50"
+                }`}
+              >
+                {pod.coverImage ? (
+                  <Image
+                    source={{ uri: pod.coverImage }}
+                    className="h-7 w-7 rounded-full"
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View className="h-7 w-7 items-center justify-center rounded-full bg-purple-600">
+                    <Text className="text-xs font-bold text-white">
+                      {pod.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <Text
+                  className={`text-sm flex-1 ${isDark ? "text-white" : "text-slate-900"}`}
+                  numberOfLines={1}
+                >
+                  {pod.name}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
         <Divider isDark={isDark} />
 
         {/* Settings Section */}
@@ -198,34 +289,43 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         </View>
         <Divider isDark={isDark} />
 
-        {/* Log out */}
-        <Pressable
-          onPress={handleLogout}
-          className={`flex-row items-center gap-4 px-6 py-4 ${
-            isDark ? "active:bg-slate-800/50" : "active:bg-slate-50"
-          }`}
-        >
-          <LogOut size={24} color={iconColor} />
-          <Text className={`text-base ${isDark ? "text-white" : "text-slate-900"}`}>
-            Log out
-          </Text>
-        </Pressable>
       </DrawerContentScrollView>
 
-      {/* Logout Confirmation */}
-      <ConfirmDialog
-        visible={showLogoutConfirm}
-        title="Log out"
-        message="Are you sure you want to log out?"
-        confirmText="Log out"
-        cancelText="Cancel"
-        destructive={true}
-        onConfirm={() => {
-          setShowLogoutConfirm(false);
-          signOut();
-        }}
-        onCancel={() => setShowLogoutConfirm(false)}
-      />
+      {/* User Profile */}
+      <Pressable
+        onPress={() => props.navigation.navigate("profile")}
+        className={`flex-row items-center gap-3 px-6 py-4 border-t ${
+          isDark
+            ? "border-slate-800 active:bg-slate-800/50"
+            : "border-slate-200 active:bg-slate-50"
+        }`}
+      >
+        {user?.profilePicture ? (
+          <Image
+            source={{ uri: user.profilePicture }}
+            className="h-10 w-10 rounded-full"
+            resizeMode="cover"
+          />
+        ) : (
+          <View className="h-10 w-10 items-center justify-center rounded-full bg-purple-600">
+            <Text className="text-sm font-bold text-white">
+              {(user?.displayName || user?.email)?.charAt(0).toUpperCase() || "U"}
+            </Text>
+          </View>
+        )}
+        <View className="flex-1">
+          <Text
+            className={`text-base font-semibold ${
+              isDark ? "text-white" : "text-slate-900"
+            }`}
+            numberOfLines={1}
+          >
+            {user?.displayName || user?.email?.split("@")[0] || "User"}
+          </Text>
+        </View>
+        <ChevronRight size={16} color={isDark ? "#475569" : "#cbd5e1"} />
+      </Pressable>
+
     </View>
   );
 }
@@ -279,6 +379,18 @@ export default function DrawerLayout() {
         name="collection"
         options={{
           drawerLabel: "Collection",
+        }}
+      />
+      <Drawer.Screen
+        name="explore"
+        options={{
+          drawerLabel: "Explore",
+        }}
+      />
+      <Drawer.Screen
+        name="pods"
+        options={{
+          drawerLabel: "Pods",
         }}
       />
       <Drawer.Screen
