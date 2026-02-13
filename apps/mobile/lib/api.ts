@@ -317,6 +317,15 @@ export const authApi = {
     });
   },
 
+  async deleteAccount(
+    password: string,
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return request<{ success: boolean }>("/auth/account", {
+      method: "DELETE",
+      body: JSON.stringify({ password }),
+    });
+  },
+
   async connectArchidekt(
     username: string,
     password: string,

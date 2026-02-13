@@ -10,6 +10,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string) => Promise<void>;
   signOut: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -138,6 +139,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  async function deleteAccount(password: string) {
+    const response = await authApi.deleteAccount(password);
+
+    if (response.error) {
+      throw new Error(response.error);
+    }
+
+    await secureStorage.deleteItem(USER_KEY);
+    await secureStorage.deleteItem(TOKEN_KEY);
+    setToken(null);
+    setUser(null);
+  }
+
   async function refreshUser() {
     try {
       const response = await authApi.getMe();
@@ -152,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, isLoading, signIn, signUp, signOut, refreshUser }}
+      value={{ user, token, isLoading, signIn, signUp, signOut, deleteAccount, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

@@ -1,9 +1,10 @@
 import { DrawerActions, useNavigation } from "@react-navigation/native";
-import { Camera, LogOut, Menu } from "lucide-react-native";
+import { Camera, LogOut, Menu, Trash2 } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useState } from "react";
 import {
   Image,
+  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -22,7 +23,7 @@ import { showToast } from "~/lib/toast";
 export default function ProfileScreen() {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
-  const { user, refreshUser, signOut } = useAuth();
+  const { user, refreshUser, signOut, deleteAccount } = useAuth();
   const navigation = useNavigation();
   const { isDesktop } = useResponsive();
 
@@ -33,6 +34,10 @@ export default function ProfileScreen() {
   const [showPicker, setShowPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const openDrawer = () => {
     navigation.dispatch(DrawerActions.openDrawer());
@@ -52,6 +57,24 @@ export default function ProfileScreen() {
       showToast.error(result.error || "Failed to update profile");
     }
     setSaving(false);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      setDeleteError("Password is required");
+      return;
+    }
+
+    setDeleting(true);
+    setDeleteError("");
+
+    try {
+      await deleteAccount(deletePassword);
+    } catch (error: any) {
+      setDeleteError(error.message || "Failed to delete account");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const cardBorder = isDark ? "border-slate-800" : "border-slate-200";
@@ -254,6 +277,33 @@ export default function ProfileScreen() {
                 </Pressable>
               </View>
             </View>
+
+            {/* Delete Account */}
+            <View className={isDesktop ? "mt-4" : "mt-4 pb-8"}>
+              <View
+                className={
+                  isDesktop
+                    ? `rounded-xl border p-2 ${cardBorder}`
+                    : ""
+                }
+              >
+                <Pressable
+                  onPress={() => {
+                    setDeletePassword("");
+                    setDeleteError("");
+                    setShowDeleteConfirm(true);
+                  }}
+                  className={`flex-row items-center gap-2 rounded-lg py-3 ${
+                    isDesktop ? "px-4" : "justify-center"
+                  } ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
+                >
+                  <Trash2 size={18} color="#ef4444" />
+                  <Text className="text-sm font-medium text-red-500">
+                    Delete Account
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -263,6 +313,82 @@ export default function ProfileScreen() {
         onClose={() => setShowPicker(false)}
         onSelect={(imageUrl) => setProfilePicture(imageUrl)}
       />
+
+      <Modal
+        visible={showDeleteConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !deleting && setShowDeleteConfirm(false)}
+      >
+        <Pressable
+          className="flex-1 bg-black/50 items-center justify-center p-4"
+          onPress={() => !deleting && setShowDeleteConfirm(false)}
+        >
+          <Pressable
+            className={`w-full max-w-sm rounded-2xl p-6 ${isDark ? "bg-slate-800" : "bg-white"}`}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text
+              className={`text-xl font-semibold mb-2 ${isDark ? "text-white" : "text-slate-900"}`}
+            >
+              Delete Account
+            </Text>
+            <Text
+              className={`text-base mb-4 ${isDark ? "text-slate-300" : "text-slate-600"}`}
+            >
+              This will permanently delete your account and all your data
+              including decks, collection, and chat history. This action cannot
+              be undone.
+            </Text>
+            <Text
+              className={`text-sm font-medium mb-2 ${isDark ? "text-slate-400" : "text-slate-500"}`}
+            >
+              Enter your password to confirm
+            </Text>
+            <TextInput
+              value={deletePassword}
+              onChangeText={(text) => {
+                setDeletePassword(text);
+                setDeleteError("");
+              }}
+              placeholder="Password"
+              placeholderTextColor={isDark ? "#64748b" : "#94a3b8"}
+              secureTextEntry
+              editable={!deleting}
+              className={`rounded-lg border px-4 py-3 text-base mb-2 ${
+                isDark
+                  ? "border-slate-700 bg-slate-900 text-white"
+                  : "border-slate-200 bg-slate-50 text-slate-900"
+              }`}
+            />
+            {deleteError ? (
+              <Text className="text-sm text-red-500 mb-2">{deleteError}</Text>
+            ) : null}
+            <View className="flex-row gap-3 mt-4">
+              <Pressable
+                className={`flex-1 py-3 px-4 rounded-lg ${isDark ? "bg-slate-700" : "bg-slate-200"}`}
+                onPress={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+              >
+                <Text
+                  className={`text-center font-medium ${isDark ? "text-white" : "text-slate-900"}`}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                className={`flex-1 py-3 px-4 rounded-lg bg-red-600 ${deleting ? "opacity-50" : ""}`}
+                onPress={handleDeleteAccount}
+                disabled={deleting}
+              >
+                <Text className="text-center font-medium text-white">
+                  {deleting ? "Deleting..." : "Delete"}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <ConfirmDialog
         visible={showLogoutConfirm}

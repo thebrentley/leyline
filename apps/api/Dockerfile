@@ -27,9 +27,6 @@ WORKDIR /app
 # Copy node_modules from builder (hoisted by npm workspaces)
 COPY --from=builder /app/node_modules ./node_modules
 
-# Copy workspace-level node_modules (non-hoisted packages)
-COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
-
 # Copy built assets
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist

@@ -56,6 +56,12 @@ class UpdateProfileDto {
   profilePicture?: string;
 }
 
+class DeleteAccountDto {
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}
+
 // ==================== Controller ====================
 
 @Controller('auth')
@@ -87,6 +93,16 @@ export class AuthController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.authService.updateProfile(user.userId, dto);
+  }
+
+  @Delete('account')
+  @UseGuards(JwtAuthGuard)
+  async deleteAccount(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: DeleteAccountDto,
+  ) {
+    await this.authService.deleteAccount(user.userId, dto.password);
+    return { success: true };
   }
 
   // ========== Archidekt Connection ==========

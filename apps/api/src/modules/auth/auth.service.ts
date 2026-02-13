@@ -162,6 +162,20 @@ export class AuthService {
     return this.sanitizeUser(user);
   }
 
+  async deleteAccount(userId: string, password: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid password');
+    }
+
+    await this.userRepository.remove(user);
+  }
+
   // ==================== Archidekt Connection ====================
 
   async connectArchidekt(
