@@ -7,6 +7,7 @@ import { PodEvent } from '../../entities/pod-event.entity';
 import { EventRsvp } from '../../entities/event-rsvp.entity';
 import { PodOfflineMember } from '../../entities/pod-offline-member.entity';
 import { EventOfflineRsvp } from '../../entities/event-offline-rsvp.entity';
+import { PodGameResult } from '../../entities/pod-game-result.entity';
 import { User } from '../../entities/user.entity';
 import { Deck } from '../../entities/deck.entity';
 import { DeckCard } from '../../entities/deck-card.entity';
@@ -15,6 +16,7 @@ import { PodsService } from './pods.service';
 import { PodsEventsService } from './pods-events.service';
 import { PodsOfflineMembersService } from './pods-offline-members.service';
 import { PodsEventsCronService } from './pods-events-cron.service';
+import { DecksModule } from '../decks/decks.module';
 
 @Module({
   imports: [
@@ -26,10 +28,12 @@ import { PodsEventsCronService } from './pods-events-cron.service';
       EventRsvp,
       PodOfflineMember,
       EventOfflineRsvp,
+      PodGameResult,
       User,
       Deck,
       DeckCard,
     ]),
+    DecksModule,
   ],
   controllers: [PodsController],
   providers: [PodsService, PodsEventsService, PodsOfflineMembersService, PodsEventsCronService],

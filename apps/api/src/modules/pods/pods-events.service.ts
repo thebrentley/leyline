@@ -10,6 +10,7 @@ import { EventRsvp, RsvpStatus } from '../../entities/event-rsvp.entity';
 import { EventOfflineRsvp } from '../../entities/event-offline-rsvp.entity';
 import { PodOfflineMember } from '../../entities/pod-offline-member.entity';
 import { PodMember } from '../../entities/pod-member.entity';
+import { PodGameResult } from '../../entities/pod-game-result.entity';
 import { PodsService } from './pods.service';
 
 @Injectable()
@@ -20,6 +21,7 @@ export class PodsEventsService {
     @InjectRepository(EventOfflineRsvp) private offlineRsvpRepo: Repository<EventOfflineRsvp>,
     @InjectRepository(PodOfflineMember) private offlineMemberRepo: Repository<PodOfflineMember>,
     @InjectRepository(PodMember) private memberRepo: Repository<PodMember>,
+    @InjectRepository(PodGameResult) private gameResultRepo: Repository<PodGameResult>,
     private podsService: PodsService,
   ) {}
 
@@ -292,5 +294,46 @@ export class PodsEventsService {
 
     await this.rsvpRepo.remove(rsvp);
     return { success: true };
+  }
+
+  async saveGameResult(
+    podId: string,
+    eventId: string,
+    userId: string,
+    data: {
+      startedAt: string;
+      endedAt: string;
+      winnerUserId: string | null;
+      players: Array<{
+        userId: string | null;
+        deckName: string | null;
+        deckId: string | null;
+        finalLife: number;
+        finalPoison: number;
+        finalCommanderTax: number;
+        commanderDamage: { [playerId: number]: number };
+        deathOrder: number | null;
+        isWinner: boolean;
+      }>;
+    },
+  ) {
+    await this.podsService.requireMembership(podId, userId);
+
+    const event = await this.eventRepo.findOne({
+      where: { id: eventId, podId },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const result = this.gameResultRepo.create({
+      podEventId: eventId,
+      createdById: userId,
+      startedAt: new Date(data.startedAt),
+      endedAt: new Date(data.endedAt),
+      winnerUserId: data.winnerUserId,
+      players: data.players,
+    });
+
+    await this.gameResultRepo.save(result);
+    return { success: true, id: result.id };
   }
 }

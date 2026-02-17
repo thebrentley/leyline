@@ -16,3 +16,4 @@ export { AddProfilePicture1739500000000 } from "./1739500000000-AddProfilePictur
 export { AddEventStatus1739600000000 } from "./1739600000000-AddEventStatus";
 export { AddOwnerRole1739700000000 } from "./1739700000000-AddOwnerRole";
 export { AddPodCoverImage1739800000000 } from "./1739800000000-AddPodCoverImage";
+export { CreatePodGameResults1739900000000 } from "./1739900000000-CreatePodGameResults";

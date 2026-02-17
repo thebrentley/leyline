@@ -1438,6 +1438,42 @@ export const podsApi = {
       },
     );
   },
+
+  async getMemberDecks(
+    podId: string,
+    userId: string,
+  ): Promise<ApiResponse<DeckSummary[]>> {
+    return request<DeckSummary[]>(`/pods/${podId}/members/${userId}/decks`);
+  },
+
+  async saveGameResult(
+    podId: string,
+    eventId: string,
+    data: {
+      startedAt: string;
+      endedAt: string;
+      winnerUserId: string | null;
+      players: Array<{
+        userId: string | null;
+        deckName: string | null;
+        deckId: string | null;
+        finalLife: number;
+        finalPoison: number;
+        finalCommanderTax: number;
+        commanderDamage: { [playerId: number]: number };
+        deathOrder: number | null;
+        isWinner: boolean;
+      }>;
+    },
+  ): Promise<ApiResponse<{ success: true; id: string }>> {
+    return request<{ success: true; id: string }>(
+      `/pods/${podId}/events/${eventId}/game-results`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    );
+  },
 };
 
 export { API_URL };

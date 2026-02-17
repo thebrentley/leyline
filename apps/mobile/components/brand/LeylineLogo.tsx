@@ -13,7 +13,7 @@ import Svg, {
 } from "react-native-svg";
 
 interface LeylineLogoProps {
-  size?: "small" | "medium" | "large";
+  size?: "small" | "medium" | "large" | number;
   showTagline?: boolean;
 }
 
@@ -24,7 +24,9 @@ export function LeylineLogo({
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
 
-  const scale = size === "large" ? 1 : size === "medium" ? 0.7 : 0.5;
+  const scale = typeof size === "number"
+    ? size / 280
+    : size === "large" ? 1 : size === "medium" ? 0.7 : 0.5;
   const width = 280 * scale;
   const taglineSize = 11 * scale;
 

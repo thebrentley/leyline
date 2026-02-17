@@ -6,6 +6,7 @@ import {
   Check,
   MapPin,
   MessageSquare,
+  Play,
   UserX,
   X,
 } from "lucide-react-native";
@@ -13,6 +14,7 @@ import { useColorScheme } from "nativewind";
 import { useCallback, useState } from "react";
 import {
   Image,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -22,6 +24,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { podsApi, type PodEventDetail, type RsvpStatus } from "~/lib/api";
+import { useAuth } from "~/contexts/AuthContext";
 import { showToast } from "~/lib/toast";
 import { useResponsive } from "~/hooks/useResponsive";
 import { DesktopSidebar } from "~/components/web/DesktopSidebar";
@@ -34,6 +37,7 @@ export default function EventDetailScreen() {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const { isDesktop } = useResponsive();
+  const { user } = useAuth();
   const [event, setEvent] = useState<PodEventDetail | null>(null);
   const [podName, setPodName] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
@@ -48,7 +52,11 @@ export default function EventDetailScreen() {
       podsApi.getEvent(id, eventId),
       podsApi.get(id),
     ]);
-    if (eventResult.data) setEvent(eventResult.data);
+    if (eventResult.data) {
+      setEvent(eventResult.data);
+      const myRsvp = eventResult.data.rsvps.find((r) => r.userId === user?.id);
+      setMyStatus(myRsvp?.status ?? null);
+    }
     if (podResult.data) {
       setPodName(podResult.data.name);
       setIsAdmin(podResult.data.role === "admin" || podResult.data.role === "owner");
@@ -208,6 +216,37 @@ export default function EventDetailScreen() {
               </Text>
             )}
           </View>
+
+          {/* Start Game - native only */}
+          {Platform.OS !== 'web' && (
+            <Pressable
+              onPress={() => {
+                const allGoing = [
+                  ...going.map((r) => ({
+                    name: r.displayName || r.email || "Unknown",
+                    profilePicture: r.profilePicture,
+                    userId: r.userId,
+                  })),
+                  ...offlineGoing.map((r) => ({
+                    name: r.name,
+                    profilePicture: null as string | null,
+                    userId: null as string | null,
+                  })),
+                ];
+                if (allGoing.length >= 2) {
+                  router.push(
+                    `/life-counter?players=${encodeURIComponent(JSON.stringify(allGoing.slice(0, 4)))}&podId=${id}&eventId=${eventId}`
+                  );
+                } else {
+                  router.push("/life-counter");
+                }
+              }}
+              className="flex-row items-center justify-center gap-2 rounded-xl bg-green-600 py-3 active:bg-green-700"
+            >
+              <Play size={20} color="#ffffff" />
+              <Text className="text-base font-bold text-white">Start Game</Text>
+            </Pressable>
+          )}
 
           {/* RSVP Section */}
           <View

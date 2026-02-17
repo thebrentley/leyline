@@ -348,4 +348,46 @@ export class PodsController {
       user.userId,
     );
   }
+
+  // ==================== Member Decks ====================
+
+  @Get(':podId/members/:userId/decks')
+  async getMemberDecks(
+    @Param('podId') podId: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.podsService.getMemberDecks(podId, user.userId, userId);
+  }
+
+  // ==================== Game Results ====================
+
+  @Post(':podId/events/:eventId/game-results')
+  async saveGameResult(
+    @Param('podId') podId: string,
+    @Param('eventId') eventId: string,
+    @Body()
+    body: {
+      startedAt: string;
+      endedAt: string;
+      winnerName: string;
+      players: Array<{
+        name: string;
+        finalLife: number;
+        finalPoison: number;
+        finalCommanderTax: number;
+        commanderDamage: { [playerId: number]: number };
+        deathOrder: number | null;
+        isWinner: boolean;
+      }>;
+    },
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.podsEventsService.saveGameResult(
+      podId,
+      eventId,
+      user.userId,
+      body,
+    );
+  }
 }

@@ -1,8 +1,8 @@
 import { DrawerActions, useNavigation } from "@react-navigation/native";
 import { useRouter } from "expo-router";
-import { Layers, Menu, Search } from "lucide-react-native";
+import { Layers, Menu, Search, Activity } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "~/components/ui/button";
 import { useAuth } from "~/contexts/AuthContext";
@@ -52,7 +52,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Quick Actions */}
-        <View className="gap-4 lg:gap-6 w-full max-w-content mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2">
+        <View className="gap-4 lg:gap-6 w-full max-w-content mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           <Pressable
             onPress={() => router.push("/(tabs)/decks")}
             className={`rounded-xl p-6 transition-transform lg:hover:scale-105 lg:hover:shadow-xl ${
@@ -98,6 +98,31 @@ export default function HomeScreen() {
               Search for the best prices on your cards
             </Text>
           </Pressable>
+
+          {Platform.OS !== 'web' && (
+            <Pressable
+              onPress={() => router.push("/life-counter")}
+              className={`rounded-xl p-6 transition-transform lg:hover:scale-105 lg:hover:shadow-xl ${
+                isDark ? "bg-slate-900 lg:hover:bg-slate-800" : "bg-slate-50 lg:hover:bg-slate-100"
+              }`}
+            >
+              <View className="mb-4 h-12 w-12 items-center justify-center rounded-lg bg-green-500/10">
+                <Activity size={24} color="#22c55e" />
+              </View>
+              <Text
+                className={`mb-2 text-xl font-semibold ${
+                  isDark ? "text-white" : "text-slate-900"
+                }`}
+              >
+                Life Counter
+              </Text>
+              <Text
+                className={`${isDark ? "text-slate-400" : "text-slate-500"}`}
+              >
+                Track life, poison, and commander damage
+              </Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </SafeAreaView>

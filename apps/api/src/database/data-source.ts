@@ -18,6 +18,7 @@ import {
   AddEventStatus1739600000000,
   AddOwnerRole1739700000000,
   AddPodCoverImage1739800000000,
+  CreatePodGameResults1739900000000,
 } from "./migrations";
 
 config();
@@ -40,6 +41,7 @@ export const migrations = [
   AddEventStatus1739600000000,
   AddOwnerRole1739700000000,
   AddPodCoverImage1739800000000,
+  CreatePodGameResults1739900000000,
 ];
 
 export const AppDataSource = new DataSource({

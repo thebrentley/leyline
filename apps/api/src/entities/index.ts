@@ -18,3 +18,4 @@ export { PodMember } from './pod-member.entity';
 export { PodInvite } from './pod-invite.entity';
 export { PodEvent } from './pod-event.entity';
 export { EventRsvp } from './event-rsvp.entity';
+export { PodGameResult } from './pod-game-result.entity';

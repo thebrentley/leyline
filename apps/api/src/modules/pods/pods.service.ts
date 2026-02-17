@@ -15,6 +15,7 @@ import { User } from '../../entities/user.entity';
 import { Deck } from '../../entities/deck.entity';
 import { DeckCard } from '../../entities/deck-card.entity';
 import { PodOfflineMember } from '../../entities/pod-offline-member.entity';
+import { DecksService } from '../decks/decks.service';
 
 @Injectable()
 export class PodsService {
@@ -26,6 +27,7 @@ export class PodsService {
     @InjectRepository(Deck) private deckRepo: Repository<Deck>,
     @InjectRepository(DeckCard) private deckCardRepo: Repository<DeckCard>,
     @InjectRepository(PodOfflineMember) private offlineMemberRepo: Repository<PodOfflineMember>,
+    private decksService: DecksService,
   ) {}
 
   // ==================== Helpers ====================
@@ -582,5 +584,12 @@ export class PodsService {
       createdAt: user.createdAt.toISOString(),
       publicDecks,
     };
+  }
+
+  async getMemberDecks(podId: string, requestingUserId: string, targetUserId: string) {
+    await this.requireMembership(podId, requestingUserId);
+    const allDecks = await this.decksService.getUserDecks(targetUserId);
+    if (requestingUserId === targetUserId) return allDecks;
+    return allDecks.filter((d) => d.visibility === 'public' || d.visibility === 'pod');
   }
 }
