@@ -2,17 +2,21 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
+  Switch,
   Text,
   TextInput,
   View,
   useColorScheme,
 } from "react-native";
-import { Check, Search, UserPlus, UserX, X } from "lucide-react-native";
+import { Check, Mail, Search, UserPlus, X } from "lucide-react-native";
 import { podsApi } from "~/lib/api";
 import { showToast } from "~/lib/toast";
+import { KEYBOARD_ACCESSORY_ID, KeyboardDoneAccessory } from "~/components/ui/KeyboardDoneAccessory";
 
 interface SearchResult {
   id: string;
@@ -47,6 +51,7 @@ export function AddMemberDialog({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
+  const [sendInvite, setSendInvite] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSearch = useCallback(async (text: string) => {
@@ -56,12 +61,12 @@ export function AddMemberDialog({
       return;
     }
     setSearching(true);
-    const result = await podsApi.searchUsers(text);
+    const result = await podsApi.searchUsers(text, podId);
     if (result.data) {
       setResults(result.data);
     }
     setSearching(false);
-  }, []);
+  }, [podId]);
 
   const handleInvite = async (userId: string) => {
     const result = await podsApi.inviteUser(podId, userId);
@@ -86,14 +91,21 @@ export function AddMemberDialog({
       notes: notes.trim() || undefined,
     });
 
-    setSubmitting(false);
-
     if (result.data) {
-      showToast.success("Offline member added!");
-      setName("");
-      setEmail("");
-      setNotes("");
+      if (sendInvite && email.trim()) {
+        const emailResult = await podsApi.inviteByEmail(podId, email.trim());
+        if (emailResult.data) {
+          showToast.success("Member added & invite sent!");
+        } else {
+          showToast.success("Member added, but invite email failed");
+        }
+      } else {
+        showToast.success("Offline member added!");
+      }
+      setSubmitting(false);
+      handleClose();
     } else {
+      setSubmitting(false);
       showToast.error(result.error || "Failed to add offline member");
     }
   };
@@ -105,6 +117,7 @@ export function AddMemberDialog({
     setName("");
     setEmail("");
     setNotes("");
+    setSendInvite(false);
     setActiveTab("search");
     onClose();
   };
@@ -116,6 +129,10 @@ export function AddMemberDialog({
       animationType="fade"
       onRequestClose={handleClose}
     >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1"
+      >
       <Pressable
         className="flex-1 bg-black/50 items-center justify-center p-4"
         onPress={handleClose}
@@ -124,7 +141,7 @@ export function AddMemberDialog({
           className={`w-full max-w-sm rounded-2xl p-6 ${
             isDark ? "bg-slate-800" : "bg-white"
           }`}
-          onPress={(e) => e.stopPropagation()}
+          onPress={() => {}}
           style={{ maxHeight: 520 }}
         >
           {/* Header */}
@@ -193,7 +210,7 @@ export function AddMemberDialog({
                   : ""
               }`}
             >
-              <UserX
+              <UserPlus
                 size={14}
                 color={
                   activeTab === "offline"
@@ -216,7 +233,7 @@ export function AddMemberDialog({
                       : "text-slate-500"
                 }`}
               >
-                Add Offline
+                Offline
               </Text>
             </Pressable>
           </View>
@@ -241,6 +258,7 @@ export function AddMemberDialog({
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoFocus
+                  inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
                 />
                 {searching && <ActivityIndicator size="small" />}
               </View>
@@ -324,7 +342,7 @@ export function AddMemberDialog({
                 with a matching email, they'll be linked automatically.
               </Text>
 
-              <ScrollView contentContainerStyle={{ gap: 16 }}>
+              <ScrollView contentContainerStyle={{ gap: 16 }} keyboardShouldPersistTaps="handled">
                 <View>
                   <Text
                     className={`text-sm font-medium mb-2 ${
@@ -344,6 +362,7 @@ export function AddMemberDialog({
                         : "border-slate-300 bg-slate-100 text-slate-900"
                     }`}
                     autoCapitalize="words"
+                    inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
                   />
                 </View>
 
@@ -357,7 +376,10 @@ export function AddMemberDialog({
                   </Text>
                   <TextInput
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={(text) => {
+                      setEmail(text);
+                      if (!text.trim()) setSendInvite(false);
+                    }}
                     placeholder="email@example.com"
                     placeholderTextColor={isDark ? "#475569" : "#94a3b8"}
                     className={`rounded-lg border px-3 py-2.5 text-base ${
@@ -368,14 +390,34 @@ export function AddMemberDialog({
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType="email-address"
+                    inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
                   />
-                  <Text
-                    className={`text-xs mt-1 ${
-                      isDark ? "text-slate-500" : "text-slate-400"
-                    }`}
-                  >
-                    For auto-linking when they join
-                  </Text>
+                </View>
+
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center gap-2 flex-1">
+                    <Mail size={14} color={isDark ? "#94a3b8" : "#64748b"} />
+                    <Text
+                      className={`text-sm ${
+                        !email.trim()
+                          ? isDark
+                            ? "text-slate-600"
+                            : "text-slate-300"
+                          : isDark
+                            ? "text-slate-300"
+                            : "text-slate-700"
+                      }`}
+                    >
+                      Send invite email
+                    </Text>
+                  </View>
+                  <Switch
+                    value={sendInvite}
+                    onValueChange={setSendInvite}
+                    disabled={!email.trim()}
+                    trackColor={{ false: isDark ? "#334155" : "#cbd5e1", true: "#a855f7" }}
+                    thumbColor={sendInvite ? "#ffffff" : "#f4f4f5"}
+                  />
                 </View>
 
                 <View>
@@ -398,6 +440,7 @@ export function AddMemberDialog({
                     }`}
                     multiline
                     numberOfLines={3}
+                    inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
                     textAlignVertical="top"
                   />
                 </View>
@@ -439,6 +482,8 @@ export function AddMemberDialog({
           )}
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
+      <KeyboardDoneAccessory />
     </Modal>
   );
 }

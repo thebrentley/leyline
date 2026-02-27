@@ -36,6 +36,12 @@ export class User {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
+  @Column({ name: 'reset_token', type: 'varchar', nullable: true, unique: true })
+  resetToken: string | null;
+
+  @Column({ name: 'reset_token_expires_at', type: 'timestamp', nullable: true })
+  resetTokenExpiresAt: Date | null;
+
   @OneToMany(() => Deck, (deck) => deck.user)
   decks: Deck[];
 

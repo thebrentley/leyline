@@ -2,6 +2,7 @@ import { useColorScheme } from "nativewind";
 import * as React from "react";
 import { TextInput, type TextInputProps } from "react-native";
 import { cn } from "~/lib/utils";
+import { KEYBOARD_ACCESSORY_ID } from "./KeyboardDoneAccessory";
 
 interface InputProps extends TextInputProps {
   className?: string;
@@ -15,6 +16,7 @@ const Input = React.forwardRef<TextInput, InputProps>(
     return (
       <TextInput
         ref={ref}
+        inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         className={cn(
           "h-12 w-full rounded-lg border px-4 text-base",
           isDark

@@ -1,4 +1,5 @@
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, router, Stack } from "expo-router";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -8,10 +9,9 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { GlassSheet } from "~/components/ui/GlassSheet";
 import { useColorScheme } from "nativewind";
 import {
-  ArrowLeft,
   ChevronDown,
   ChevronRight,
   RefreshCcw,
@@ -61,14 +61,6 @@ export default function DeckRankingScreen() {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(["scores"]),
   );
-
-  const goBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.push(`/deck/${id}`);
-    }
-  };
 
   const loadScores = useCallback(
     async (force = false) => {
@@ -130,58 +122,51 @@ export default function DeckRankingScreen() {
     });
   };
 
-  // Shared header for loading/error states
-  const stateHeader = (
-    <View className="px-4 lg:px-6 mb-4 mt-2 lg:mt-4">
+  // Shared header for loading/error states - Desktop only (mobile uses native Stack header)
+  const stateHeader = isDesktop ? (
+    <View className="px-6 mb-4 mt-4">
       <View className="flex-row items-center flex-1">
-        {!isDesktop && (
-          <Pressable onPress={goBack} className="mr-3">
-            <ArrowLeft size={24} color={isDark ? "#94a3b8" : "#64748b"} />
-          </Pressable>
-        )}
         <View className="flex-1">
-          {isDesktop && (
-            <View className="flex-row items-center gap-2 mb-1">
-              <Pressable
-                onPress={() => router.push("/(tabs)/decks")}
-                className="hover:underline"
-              >
-                <Text
-                  className={`text-sm ${isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"}`}
-                >
-                  My Decks
-                </Text>
-              </Pressable>
+          <View className="flex-row items-center gap-2 mb-1">
+            <Pressable
+              onPress={() => router.push("/(tabs)/decks")}
+              className="hover:underline"
+            >
               <Text
-                className={`text-sm ${isDark ? "text-slate-600" : "text-slate-300"}`}
+                className={`text-sm ${isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"}`}
               >
-                /
+                My Decks
               </Text>
-              <Pressable
-                onPress={() => router.push(`/deck/${id}`)}
-                className="hover:underline"
-              >
-                <Text
-                  className={`text-sm ${isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"}`}
-                  numberOfLines={1}
-                >
-                  {name ? decodeURIComponent(name) : "Deck"}
-                </Text>
-              </Pressable>
+            </Pressable>
+            <Text
+              className={`text-sm ${isDark ? "text-slate-600" : "text-slate-300"}`}
+            >
+              /
+            </Text>
+            <Pressable
+              onPress={() => router.push(`/deck/${id}`)}
+              className="hover:underline"
+            >
               <Text
-                className={`text-sm ${isDark ? "text-slate-600" : "text-slate-300"}`}
+                className={`text-sm ${isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"}`}
+                numberOfLines={1}
               >
-                /
+                {name ? decodeURIComponent(name) : "Deck"}
               </Text>
-              <Text
-                className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}
-              >
-                Ranking
-              </Text>
-            </View>
-          )}
+            </Pressable>
+            <Text
+              className={`text-sm ${isDark ? "text-slate-600" : "text-slate-300"}`}
+            >
+              /
+            </Text>
+            <Text
+              className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}
+            >
+              Ranking
+            </Text>
+          </View>
           <Text
-            className={`text-xl lg:text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
+            className={`text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
             numberOfLines={1}
           >
             Deck Ranking
@@ -189,10 +174,10 @@ export default function DeckRankingScreen() {
         </View>
       </View>
     </View>
-  );
+  ) : null;
 
-  // Loading or error: show header + status below
-  if (loading || error || !scores) {
+  // Loading or error: desktop early return only
+  if ((loading || error || !scores) && isDesktop) {
     const statusBody = loading ? (
       <View className="flex-1 items-center justify-center">
         <ActivityIndicator size="large" color="#a855f7" />
@@ -230,51 +215,26 @@ export default function DeckRankingScreen() {
       </View>
     );
 
-    if (isDesktop) {
-      return (
-        <View className="flex-1 flex-row">
-          <DesktopSidebar />
-          <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
-            {content}
-          </View>
-        </View>
-      );
-    }
     return (
-      <SafeAreaView
-        className={isDark ? "bg-slate-950 flex-1" : "bg-white flex-1"}
-      >
-        {content}
-      </SafeAreaView>
+      <View className="flex-1 flex-row">
+        <Stack.Screen options={{ headerShown: false }} />
+        <DesktopSidebar />
+        <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+          {content}
+        </View>
+      </View>
     );
   }
 
   // Main page content
-  const pageContent = (
-    <ScrollView
-      className="flex-1"
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            loadScores();
-          }}
-        />
-      }
-    >
-      {/* Header */}
-      <View className="px-4 lg:px-6 mb-4 mt-2 lg:mt-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center flex-1">
-            {!isDesktop && (
-              <Pressable onPress={goBack} className="mr-3">
-                <ArrowLeft size={24} color={isDark ? "#94a3b8" : "#64748b"} />
-              </Pressable>
-            )}
-            <View className="flex-1">
-              {/* Desktop: Breadcrumb */}
-              {isDesktop && (
+  const pageContent = !scores ? null : (
+    <>
+      {/* Header - Desktop only (mobile uses native Stack header) */}
+      {isDesktop && (
+        <View className="px-6 mb-4 mt-4">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center flex-1">
+              <View className="flex-1">
                 <View className="flex-row items-center gap-2 mb-1">
                   <Pressable
                     onPress={() => router.push("/(tabs)/decks")}
@@ -313,36 +273,36 @@ export default function DeckRankingScreen() {
                     Ranking
                   </Text>
                 </View>
-              )}
-              <Text
-                className={`text-xl lg:text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
-                numberOfLines={1}
-              >
-                Deck Ranking
-              </Text>
+                <Text
+                  className={`text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
+                  numberOfLines={1}
+                >
+                  Deck Ranking
+                </Text>
+              </View>
             </View>
+            <Pressable
+              onPress={handleRecompute}
+              disabled={recomputing}
+              className={`ml-2 px-3 py-2 rounded-lg ${isDark ? "bg-slate-800" : "bg-slate-100"}`}
+            >
+              {recomputing ? (
+                <ActivityIndicator size="small" color="#a855f7" />
+              ) : (
+                <RefreshCcw size={18} color="#a855f7" />
+              )}
+            </Pressable>
           </View>
-          <Pressable
-            onPress={handleRecompute}
-            disabled={recomputing}
-            className={`ml-2 px-3 py-2 rounded-lg ${isDark ? "bg-slate-800" : "bg-slate-100"}`}
-          >
-            {recomputing ? (
-              <ActivityIndicator size="small" color="#a855f7" />
-            ) : (
-              <RefreshCcw size={18} color="#a855f7" />
-            )}
-          </Pressable>
         </View>
+      )}
 
-        {scores.isStale && (
-          <View className="mt-2 bg-yellow-500/20 px-3 py-2 rounded-lg">
-            <Text className="text-yellow-600 text-xs">
-              Scores are outdated. Tap refresh to recompute.
-            </Text>
-          </View>
-        )}
-      </View>
+      {scores.isStale && (
+        <View className="mx-4 lg:mx-6 mt-2 bg-yellow-500/20 px-3 py-2 rounded-lg">
+          <Text className="text-yellow-600 text-xs">
+            Scores are outdated. Tap refresh to recompute.
+          </Text>
+        </View>
+      )}
 
       {/* Radar Chart */}
       <View className="px-4 lg:px-6 mb-6">
@@ -408,7 +368,7 @@ export default function DeckRankingScreen() {
           </View>
 
           {expandedSections.has("layers") && (
-            <View className="mt-4 space-y-4">
+            <View className="mt-4 gap-4">
               {Object.entries(scores.layerBreakdown).map(
                 ([layer, layerScores]) => (
                   <View
@@ -477,7 +437,7 @@ export default function DeckRankingScreen() {
             </View>
 
             {expandedSections.has("notable") && (
-              <View className="mt-4 space-y-3">
+              <View className="mt-4 gap-3">
                 {scores.notableCards.highPower.length > 0 && (
                   <View>
                     <Text
@@ -677,27 +637,79 @@ export default function DeckRankingScreen() {
           Computed {new Date(scores.computedAt).toLocaleString()}
         </Text>
       </View>
-    </ScrollView>
+    </>
   );
 
   // Desktop Layout
   if (isDesktop) {
     return (
       <View className="flex-1 flex-row">
+        <Stack.Screen options={{ headerShown: false }} />
         <DesktopSidebar />
         <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
-          {pageContent}
+          <ScrollView
+            className="flex-1"
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => {
+                  setRefreshing(true);
+                  loadScores();
+                }}
+              />
+            }
+          >
+            {pageContent}
+          </ScrollView>
         </View>
       </View>
     );
   }
 
-  // Mobile Layout
+  // Mobile Layout - GlassSheet inline inside transparentModal (presentation set in _layout)
   return (
-    <SafeAreaView
-      className={isDark ? "bg-slate-950 flex-1" : "bg-white flex-1"}
-    >
-      {pageContent}
-    </SafeAreaView>
+    <GlassSheet visible={true} onDismiss={() => router.back()} isDark={isDark} snapPoints={["90%"]} inline>
+      <BottomSheetScrollView contentContainerStyle={loading || error || !scores ? { flex: 1 } : { paddingBottom: 32 }}>
+        {loading ? (
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator size="large" color="#a855f7" />
+            <Text className={`mt-4 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+              Computing deck scores...
+            </Text>
+            <Text className={`mt-1 text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+              This continues in the background if you leave
+            </Text>
+          </View>
+        ) : error || !scores ? (
+          <View className="flex-1 items-center justify-center">
+            <Text className={`text-center ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+              {error || "Failed to load scores"}
+            </Text>
+            <Pressable
+              onPress={() => loadScores()}
+              className="mt-4 bg-purple-500 px-6 py-3 rounded-lg"
+            >
+              <Text className="text-white font-semibold">Retry</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <View className={`flex-row items-center justify-between px-4 py-3 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
+              <Text className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                Deck Ranking
+              </Text>
+              <Pressable onPress={handleRecompute} disabled={recomputing} hitSlop={8}>
+                {recomputing ? (
+                  <ActivityIndicator size="small" color="#a855f7" />
+                ) : (
+                  <RefreshCcw size={20} color="#a855f7" />
+                )}
+              </Pressable>
+            </View>
+            {pageContent}
+          </>
+        )}
+      </BottomSheetScrollView>
+    </GlassSheet>
   );
 }

@@ -90,6 +90,8 @@ export const GRAPH_SCORING = {
   engineClusterMinSize: 4,
   engineClusterAirtimeBonus: 10,
   engineClusterCap: 20,
+  clusterEdgeMinWeight: 4,        // min edge weight for label propagation clustering
+  clusterOverlapMinEdges: 2,      // min strong edges into a cluster for overlap membership
 } as const;
 
 /** Final score is clamped to this range */

@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { User } from './user.entity';
 import { Card } from './card.entity';
+import { CollectionFolder } from './collection-folder.entity';
 
 export interface LinkedDeckCard {
   deckId: string;
@@ -50,6 +51,9 @@ export class CollectionCard {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
+  @Column({ name: 'folder_id', nullable: true })
+  folderId: string | null;
+
   @ManyToOne(() => User, (user) => user.collection, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user: User;
@@ -57,4 +61,8 @@ export class CollectionCard {
   @ManyToOne(() => Card, (card) => card.collectionCards, { eager: true })
   @JoinColumn({ name: 'scryfall_id', referencedColumnName: 'scryfallId' })
   card: Card;
+
+  @ManyToOne(() => CollectionFolder, (folder) => folder.cards, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'folder_id' })
+  folder: CollectionFolder;
 }

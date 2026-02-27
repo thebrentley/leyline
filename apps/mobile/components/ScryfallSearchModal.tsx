@@ -1,3 +1,4 @@
+import { BottomSheetView } from "@gorhom/bottom-sheet";
 import { Search, X } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useCallback, useState } from "react";
@@ -5,13 +6,14 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  Modal,
   Pressable,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 import { Spinner } from "~/components/Spinner";
+import { GlassSheet } from "~/components/ui/GlassSheet";
 import { cardsApi, collectionApi, type CardSearchResult } from "~/lib/api";
 
 interface ScryfallSearchModalProps {
@@ -168,13 +170,8 @@ export function ScryfallSearchModal({
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={handleClose}
-    >
-      <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+    <GlassSheet visible={visible} onDismiss={handleClose} isDark={isDark}>
+      <BottomSheetView style={{ flex: 1 }}>
         {/* Header */}
         <View className="flex-row items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800">
           <Text
@@ -212,6 +209,7 @@ export function ScryfallSearchModal({
               onChangeText={handleQueryChange}
               autoFocus
               autoCorrect={false}
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
             />
             {searchQuery.length > 0 && (
               <Pressable onPress={() => handleQueryChange("")}>
@@ -261,7 +259,7 @@ export function ScryfallSearchModal({
             )}
           />
         )}
-      </View>
-    </Modal>
+      </BottomSheetView>
+    </GlassSheet>
   );
 }

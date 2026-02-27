@@ -5,12 +5,20 @@ import {
   Delete,
   Patch,
   Body,
+  Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { IsString, IsNotEmpty, IsEmail, MinLength, IsOptional } from 'class-validator';
 import { AuthService } from './auth.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
+import {
+  resetPasswordFormHtml,
+  resetPasswordResultHtml,
+} from '../email/templates/password-reset.template';
 
 // ==================== DTOs ====================
 
@@ -62,11 +70,45 @@ class DeleteAccountDto {
   password: string;
 }
 
+class ForgotPasswordDto {
+  @IsEmail()
+  email: string;
+}
+
+class ResetPasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+
+  @IsString()
+  @MinLength(8)
+  password: string;
+}
+
+class RegisterPushTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+
+  @IsOptional()
+  @IsString()
+  platform?: string;
+}
+
+class UnregisterPushTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+}
+
 // ==================== Controller ====================
 
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private notificationsService: NotificationsService,
+  ) {}
 
   // ========== Local Auth ==========
 
@@ -102,6 +144,75 @@ export class AuthController {
     @Body() dto: DeleteAccountDto,
   ) {
     await this.authService.deleteAccount(user.userId, dto.password);
+    return { success: true };
+  }
+
+  // ========== Password Reset ==========
+
+  @Post('forgot-password')
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.authService.forgotPassword(dto.email);
+    return { message: 'If an account exists with that email, a reset link has been sent.' };
+  }
+
+  @Get('reset-password')
+  async showResetForm(
+    @Query('token') token: string,
+    @Res() res: Response,
+  ) {
+    if (!token) {
+      return res.type('text/html').send(
+        resetPasswordResultHtml({ success: false, message: 'Invalid reset link.' }),
+      );
+    }
+
+    const user = await this.authService.validateResetToken(token);
+    if (!user) {
+      return res.type('text/html').send(
+        resetPasswordResultHtml({ success: false, message: 'This reset link has expired or is invalid.' }),
+      );
+    }
+
+    const apiBaseUrl = this.authService.getApiBaseUrl();
+    return res.type('text/html').send(
+      resetPasswordFormHtml({ token, apiBaseUrl }),
+    );
+  }
+
+  @Post('reset-password')
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+    @Res() res: Response,
+  ) {
+    const result = await this.authService.resetPassword(dto.token, dto.password);
+    return res.type('text/html').send(
+      resetPasswordResultHtml(result),
+    );
+  }
+
+  // ========== Push Notifications ==========
+
+  @Post('push-token')
+  @UseGuards(JwtAuthGuard)
+  async registerPushToken(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: RegisterPushTokenDto,
+  ) {
+    await this.notificationsService.registerToken(
+      user.userId,
+      dto.token,
+      dto.platform,
+    );
+    return { success: true };
+  }
+
+  @Delete('push-token')
+  @UseGuards(JwtAuthGuard)
+  async unregisterPushToken(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: UnregisterPushTokenDto,
+  ) {
+    await this.notificationsService.unregisterToken(user.userId, dto.token);
     return { success: true };
   }
 

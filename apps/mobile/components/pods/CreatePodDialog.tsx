@@ -7,6 +7,7 @@ import {
   TextInput,
   useColorScheme,
 } from "react-native";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 
 interface CreatePodDialogProps {
   visible: boolean;
@@ -94,6 +95,7 @@ export function CreatePodDialog({
                     : "border-slate-300 bg-slate-100 text-slate-900"
                 }`}
                 autoFocus
+                inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
               />
             </View>
 
@@ -117,6 +119,7 @@ export function CreatePodDialog({
                     : "border-slate-300 bg-slate-100 text-slate-900"
                 }`}
                 style={{ minHeight: 60, textAlignVertical: "top" }}
+                inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
               />
             </View>
           </View>

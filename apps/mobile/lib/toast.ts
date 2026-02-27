@@ -33,4 +33,20 @@ export const showToast = {
       position: 'bottom',
     });
   },
+
+  cardScan: (card: {
+    name: string;
+    setName: string;
+    setCode: string;
+    collectorNumber: string;
+    imageSmall?: string;
+  }) => {
+    Toast.show({
+      type: 'cardScan',
+      props: card,
+      visibilityTime: 2000,
+      autoHide: true,
+      position: 'bottom',
+    });
+  },
 };

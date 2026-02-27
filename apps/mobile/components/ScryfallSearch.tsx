@@ -8,6 +8,7 @@ import {
   Keyboard,
   Modal,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -16,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cardsApi, type CardSearchResult } from "~/lib/api";
 import { showToast } from "~/lib/toast";
 import { useResponsive } from "~/hooks/useResponsive";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 import { useSearchState } from "~/hooks/useSearchState";
 import { AdvancedSearchPanel } from "~/components/filters/AdvancedSearchPanel";
 import {
@@ -81,6 +83,7 @@ export function ScryfallSearch({
   // Advanced search state
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedSearchFilters>({ ...EMPTY_ADVANCED_FILTERS });
+
 
   const searchCards = useCallback(
     async (searchQuery: string, pageNum = 1) => {
@@ -278,9 +281,10 @@ export function ScryfallSearch({
 
   // Content view (shared between modal and panel)
   const content = (
-    <View
-      className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}
+    <Pressable
+      className={`flex-1 overflow-hidden ${isDark ? "bg-slate-950" : "bg-white"}`}
       style={isDesktop ? {} : { paddingTop: insets.top }}
+      onPress={Keyboard.dismiss}
     >
         {/* Header */}
         <View
@@ -334,6 +338,7 @@ export function ScryfallSearch({
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!advancedSearchOpen}
+                inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
               />
               {query.length > 0 && !advancedSearchOpen && (
                 <Pressable onPress={() => setQuery("")}>
@@ -611,6 +616,7 @@ export function ScryfallSearch({
             data={results}
             keyExtractor={(item) => item.scryfallId}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             renderItem={({ item }) => {
               const isInDeck = existingCardIds.has(item.scryfallId);
               return (
@@ -730,24 +736,28 @@ export function ScryfallSearch({
             }
           />
         )}
-      </View>
+      </Pressable>
   );
 
-  // Card Detail Modal
+  // Card Detail Dialog (desktop) / Sheet (mobile)
   const detailModal = detailCard && (
-    <Modal
-      visible={!!detailCard}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={handleCloseDetailModal}
-      statusBarTranslucent
-    >
-      <View className="flex-1 bg-black/80">
+      <Modal
+        visible={!!detailCard}
+        transparent={true}
+        animationType={isDesktop ? "fade" : "slide"}
+        onRequestClose={handleCloseDetailModal}
+        statusBarTranslucent
+      >
+      <View className="flex-1 bg-black/60">
+        {/* Backdrop tap to close */}
         <Pressable
           onPress={handleCloseDetailModal}
           className="flex-1"
-        >
-          <View className="flex-1 items-center justify-center p-6">
+        />
+
+        {isDesktop ? (
+          // Desktop: centered dialog with horizontal layout
+          <View className="absolute inset-0 items-center justify-center p-6" pointerEvents="box-none">
             <Pressable onPress={(e) => e.stopPropagation()}>
               <View
                 className={`w-full max-w-2xl rounded-lg overflow-hidden ${
@@ -766,7 +776,6 @@ export function ScryfallSearch({
                   </Pressable>
                 </View>
 
-                {/* Horizontal layout with image on left and content on right */}
                 <View className="flex-row p-6 gap-6">
                   {/* Card image */}
                   <View className="flex-shrink-0">
@@ -796,51 +805,27 @@ export function ScryfallSearch({
                   {/* Card details */}
                   <View className="flex-1 justify-between">
                     <View>
-                      <Text
-                        className={`text-2xl font-bold mb-3 ${
-                          isDark ? "text-white" : "text-slate-900"
-                        }`}
-                      >
+                      <Text className={`text-2xl font-bold mb-3 ${isDark ? "text-white" : "text-slate-900"}`}>
                         {detailCard.name}
                       </Text>
-
                       {detailCard.manaCost && (
-                        <Text
-                          className={`text-base mb-3 ${
-                            isDark ? "text-slate-300" : "text-slate-700"
-                          }`}
-                        >
+                        <Text className={`text-base mb-3 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
                           {detailCard.manaCost}
                         </Text>
                       )}
-
                       {detailCard.typeLine && (
-                        <Text
-                          className={`text-base mb-4 ${
-                            isDark ? "text-slate-400" : "text-slate-600"
-                          }`}
-                        >
+                        <Text className={`text-base mb-4 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                           {detailCard.typeLine}
                         </Text>
                       )}
-
                       <View className="mb-4">
-                        <Text
-                          className={`text-sm ${
-                            isDark ? "text-slate-400" : "text-slate-500"
-                          }`}
-                        >
+                        <Text className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                           {detailCard.setName}
                         </Text>
-                        <Text
-                          className={`text-sm ${
-                            isDark ? "text-slate-400" : "text-slate-500"
-                          }`}
-                        >
+                        <Text className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                           {detailCard.setCode?.toUpperCase()} #{detailCard.collectorNumber}
                         </Text>
                       </View>
-
                       <View className="flex-row items-center justify-between mb-4">
                         <Text
                           className={`text-base capitalize ${
@@ -861,19 +846,12 @@ export function ScryfallSearch({
                           </Text>
                         )}
                       </View>
-
                       {detailCard.priceUsdFoil && (
-                        <Text
-                          className={`text-base mb-4 ${
-                            isDark ? "text-slate-400" : "text-slate-500"
-                          }`}
-                        >
+                        <Text className={`text-base mb-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                           Foil: ${detailCard.priceUsdFoil}
                         </Text>
                       )}
                     </View>
-
-                    {/* Add button */}
                     <Pressable
                       onPress={() => handleAddCardDirectly(detailCard)}
                       disabled={addingCardId === detailCard.scryfallId}
@@ -896,9 +874,130 @@ export function ScryfallSearch({
               </View>
             </Pressable>
           </View>
-        </Pressable>
+        ) : (
+          // Mobile: bottom sheet
+          <View
+            className={`rounded-t-2xl overflow-hidden ${
+              isDark ? "bg-slate-900" : "bg-white"
+            }`}
+          >
+            {/* Drag handle */}
+            <View className="items-center pt-3 pb-2">
+              <View className={`w-10 h-1 rounded-full ${isDark ? "bg-slate-600" : "bg-slate-300"}`} />
+            </View>
+
+            {/* Close button row */}
+            <View className="flex-row items-center justify-between px-4 pb-2">
+              <Text className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                Card Details
+              </Text>
+              <Pressable
+                onPress={handleCloseDetailModal}
+                className={`p-2 rounded-full ${isDark ? "bg-slate-800" : "bg-slate-100"}`}
+              >
+                <X size={18} color={isDark ? "#94a3b8" : "#64748b"} />
+              </Pressable>
+            </View>
+
+            <ScrollView className="px-4" contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}>
+              {/* Card image */}
+              <View className="items-center mb-4">
+                {detailCard.imageUrl ? (
+                  <Image
+                    source={{ uri: detailCard.imageUrl }}
+                    className="w-56 h-80 rounded-lg"
+                    resizeMode="contain"
+                  />
+                ) : (
+                  <View
+                    className={`w-56 h-80 rounded-lg items-center justify-center ${
+                      isDark ? "bg-slate-800" : "bg-slate-200"
+                    }`}
+                  >
+                    <Text className={`text-base ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                      No Image Available
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Card info */}
+              <Text className={`text-xl font-bold mb-1 ${isDark ? "text-white" : "text-slate-900"}`}>
+                {detailCard.name}
+              </Text>
+
+              {detailCard.manaCost && (
+                <Text className={`text-base mb-1 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                  {detailCard.manaCost}
+                </Text>
+              )}
+
+              {detailCard.typeLine && (
+                <Text className={`text-sm mb-3 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                  {detailCard.typeLine}
+                </Text>
+              )}
+
+              <View className="flex-row items-center justify-between mb-2">
+                <View>
+                  <Text className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                    {detailCard.setName}
+                  </Text>
+                  <Text className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                    {detailCard.setCode?.toUpperCase()} #{detailCard.collectorNumber}
+                  </Text>
+                </View>
+                <Text
+                  className={`text-sm capitalize ${
+                    detailCard.rarity === "mythic"
+                      ? "text-orange-500 font-semibold"
+                      : detailCard.rarity === "rare"
+                      ? "text-yellow-500 font-semibold"
+                      : detailCard.rarity === "uncommon"
+                      ? isDark ? "text-slate-300" : "text-slate-600"
+                      : isDark ? "text-slate-400" : "text-slate-500"
+                  }`}
+                >
+                  {detailCard.rarity}
+                </Text>
+              </View>
+
+              <View className="flex-row items-center gap-3 mb-4">
+                {detailCard.priceUsd && (
+                  <Text className="text-lg text-purple-500 font-bold">
+                    ${detailCard.priceUsd}
+                  </Text>
+                )}
+                {detailCard.priceUsdFoil && (
+                  <Text className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                    Foil: ${detailCard.priceUsdFoil}
+                  </Text>
+                )}
+              </View>
+
+              {/* Add button */}
+              <Pressable
+                onPress={() => handleAddCardDirectly(detailCard)}
+                disabled={addingCardId === detailCard.scryfallId}
+                className={`py-3 rounded-lg ${
+                  addingCardId === detailCard.scryfallId
+                    ? "bg-slate-600"
+                    : "bg-purple-500 active:bg-purple-600"
+                }`}
+              >
+                {addingCardId === detailCard.scryfallId ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text className="text-white text-center font-semibold text-base">
+                    Add to {title.includes("Collection") ? "Collection" : "Deck"}
+                  </Text>
+                )}
+              </Pressable>
+            </ScrollView>
+          </View>
+        )}
       </View>
-    </Modal>
+      </Modal>
   );
 
   // On desktop, render as a fixed right panel
@@ -929,17 +1028,16 @@ export function ScryfallSearch({
 
   // On mobile, render as a modal
   return (
-    <>
-      <Modal
-        visible={visible}
-        transparent={false}
-        animationType="slide"
-        onRequestClose={handleClose}
-        statusBarTranslucent
-      >
-        {content}
-      </Modal>
+    <Modal
+      visible={visible}
+      transparent={false}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={handleClose}
+      statusBarTranslucent
+    >
+      {content}
       {detailModal}
-    </>
+    </Modal>
   );
 }

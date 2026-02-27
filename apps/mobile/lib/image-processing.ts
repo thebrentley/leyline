@@ -18,21 +18,13 @@ export async function cropImage(
   region: CropRegion
 ): Promise<string> {
   try {
-    // Note: react-native-document-scanner-plugin returns base64 data
-    // We need to handle that differently than regular URIs
-
-    // For percentage-based cropping, we'd need to know image dimensions first
-    // Since expo-image-manipulator doesn't provide a way to get dimensions,
-    // we'll use a simpler approach: just return the original for now
-    // OCR will still work on the full image, just slightly less efficiently
-
-    // In a production app, you could use expo-image-size to get dimensions first
-    // or use a different image manipulation library
-
-    return uri; // Return original image for now
-  } catch (error) {
-    console.error("Error cropping image:", error);
-    return uri; // Return original if cropping fails
+    // WARNING: Cropping is NOT implemented — returning full image.
+    // OCR runs on the entire camera frame, which may pick up noise.
+    console.warn("[CardScan:IMG] cropImage is a NO-OP — returning original image. Region requested:", region);
+    return uri;
+  } catch (error: any) {
+    console.error("[CardScan:IMG] cropImage error:", error?.message || error);
+    return uri;
   }
 }
 
@@ -71,11 +63,10 @@ export async function cropToSetCode(uri: string): Promise<string> {
  */
 export async function preprocessForOCR(uri: string): Promise<string> {
   try {
-    // Apply preprocessing steps
+    console.log("[CardScan:IMG] preprocessForOCR input:", uri.substring(0, 50) + "...");
     const result = await manipulateAsync(
       uri,
       [
-        // Resize to optimal width for OCR (800-1000px)
         { resize: { width: 900 } },
       ],
       {
@@ -84,9 +75,10 @@ export async function preprocessForOCR(uri: string): Promise<string> {
       }
     );
 
+    console.log("[CardScan:IMG] preprocessForOCR output:", result.uri.substring(0, 50) + "...", { width: result.width, height: result.height });
     return result.uri;
-  } catch (error) {
-    console.error("Error preprocessing image:", error);
+  } catch (error: any) {
+    console.error("[CardScan:IMG] preprocessForOCR ERROR:", error?.message || error);
     return uri;
   }
 }
@@ -99,9 +91,15 @@ export async function preprocessForOCR(uri: string): Promise<string> {
 export function base64ToUri(base64: string): string {
   // If it's already a URI, return it
   if (base64.startsWith("file://") || base64.startsWith("http")) {
+    console.log("[CardScan:IMG] base64ToUri: already a URI:", base64.substring(0, 60) + "...");
     return base64;
   }
 
-  // expo-image-manipulator can handle base64 directly
+  if (base64.startsWith("data:")) {
+    console.log("[CardScan:IMG] base64ToUri: already a data URI");
+    return base64;
+  }
+
+  console.log("[CardScan:IMG] base64ToUri: converting raw base64 to data URI, length:", base64.length);
   return `data:image/jpeg;base64,${base64}`;
 }

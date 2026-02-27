@@ -13,9 +13,12 @@ import {
   View,
 } from "react-native";
 import EventSource from "react-native-sse";
+import { MANA_COLORS_WITH_TEXT } from "~/components/deck/deck-detail-constants";
 import { Button } from "~/components/ui/button";
 import { useResponsive } from "~/hooks/useResponsive";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { API_URL, cardsApi, type CardSearchResult, type DeckCard, type DeckChange } from "~/lib/api";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 import { secureStorage } from "~/lib/storage";
 
 interface SubChatMessage {
@@ -58,6 +61,7 @@ function SubChatInput({
         }`}
         editable={!loading}
         onSubmitEditing={handleSend}
+        inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
       />
       <Pressable
         onPress={handleSend}
@@ -117,6 +121,7 @@ function SubChatInputCompact({
         }`}
         editable={!loading}
         onSubmitEditing={handleSend}
+        inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
       />
       <Pressable
         onPress={handleSend}
@@ -169,14 +174,6 @@ interface CardDetailModalProps {
   changeContext?: ChangeContext;
 }
 
-// Mana symbol colors
-const MANA_COLORS: Record<string, { bg: string; text: string }> = {
-  W: { bg: "#F9FAF4", text: "#211D15" },
-  U: { bg: "#0E68AB", text: "#FFFFFF" },
-  B: { bg: "#150B00", text: "#FFFFFF" },
-  R: { bg: "#D3202A", text: "#FFFFFF" },
-  G: { bg: "#00733E", text: "#FFFFFF" },
-};
 
 function ManaCostDisplay({ manaCost }: { manaCost?: string }) {
   if (!manaCost) return null;
@@ -188,7 +185,7 @@ function ManaCostDisplay({ manaCost }: { manaCost?: string }) {
     <View className="flex-row gap-1">
       {symbols.map((symbol, index) => {
         const code = symbol.replace(/[{}]/g, "");
-        const colors = MANA_COLORS[code];
+        const colors = MANA_COLORS_WITH_TEXT[code];
         const isNumber = /^\d+$/.test(code);
 
         return (
@@ -223,6 +220,7 @@ export function CardDetailModal({
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const { isDesktop } = useResponsive();
+  const insets = useSafeAreaInsets();
 
   // Sub-chat state for change discussion
   const [subChatMessages, setSubChatMessages] = useState<SubChatMessage[]>([]);
@@ -426,9 +424,9 @@ Explain in 2-3 sentences why this card specifically fits (or doesn't fit) the de
         </Pressable>
       </Modal>
     ) : (
-      <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-        <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
-          <View className="flex-row items-center justify-end px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`} style={{ paddingTop: insets.top }}>
+          <View className={`flex-row items-center justify-end px-4 py-3 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
             <Pressable onPress={onClose} className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}>
               <X size={24} color={isDark ? "#94a3b8" : "#64748b"} />
             </Pressable>
@@ -666,86 +664,84 @@ Explain in 2-3 sentences why this card specifically fits (or doesn't fit) the de
             </Pressable>
           </View>
         ) : (
-          <View className={`rounded-xl overflow-hidden ${isDark ? "bg-slate-800/50" : "bg-purple-50/50"}`}>
-            <ScrollView
-              className="max-h-64"
-              contentContainerStyle={{ padding: 12 }}
-              keyboardShouldPersistTaps="handled"
-              removeClippedSubviews={false}
-              scrollEventThrottle={16}
-            >
-              {/* Only show assistant messages in the chat (hide the auto-generated user prompt) */}
-              {subChatMessages
-                .filter((msg, idx) => !(idx === 0 && msg.role === "user"))
-                .map((msg) => (
+          <View>
+            {/* Messages rendered inline in parent scroll */}
+            {subChatMessages
+              .filter((msg, idx) => !(idx === 0 && msg.role === "user"))
+              .map((msg) => (
+                <View
+                  key={msg.id}
+                  className={`mb-3 ${msg.role === "user" ? "items-end" : "items-start"}`}
+                >
                   <View
-                    key={msg.id}
-                    className={`mb-2 ${msg.role === "user" ? "items-end" : "items-start"}`}
+                    className={`rounded-xl px-4 py-3 ${
+                      msg.role === "user"
+                        ? "bg-purple-600"
+                        : isDark
+                          ? "bg-slate-800"
+                          : "bg-slate-100"
+                    }`}
                   >
-                    <View
-                      className={`max-w-[85%] rounded-lg px-3 py-2 ${
+                    {msg.role === "assistant" && (
+                      <View className="flex-row items-center gap-1.5 mb-1.5">
+                        <Bot size={12} color="#7C3AED" />
+                        <Text className="text-xs text-purple-400 font-medium">Advisor</Text>
+                      </View>
+                    )}
+                    {msg.role === "user" && (
+                      <View className="flex-row items-center gap-1.5 mb-1.5 justify-end">
+                        <Text className="text-xs text-purple-200 font-medium">You</Text>
+                        <User size={12} color="#e9d5ff" />
+                      </View>
+                    )}
+                    <Text
+                      className={`text-sm leading-relaxed ${
                         msg.role === "user"
-                          ? "bg-purple-600"
+                          ? "text-white"
                           : isDark
-                            ? "bg-slate-700"
-                            : "bg-white"
+                            ? "text-slate-300"
+                            : "text-slate-700"
                       }`}
                     >
-                      {msg.role === "assistant" && (
-                        <View className="flex-row items-center gap-1 mb-1">
-                          <Bot size={10} color="#7C3AED" />
-                          <Text className="text-[10px] text-purple-400">Advisor</Text>
-                        </View>
-                      )}
-                      <Text
-                        className={`text-sm leading-relaxed ${
-                          msg.role === "user"
-                            ? "text-white"
-                            : isDark
-                              ? "text-slate-300"
-                              : "text-slate-700"
-                        }`}
-                      >
-                        {msg.content}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-
-              {/* Streaming content */}
-              {streamingContent && (
-                <View className="mb-2 items-start">
-                  <View className={`max-w-[85%] rounded-lg px-3 py-2 ${isDark ? "bg-slate-700" : "bg-white"}`}>
-                    <View className="flex-row items-center gap-1 mb-1">
-                      <Bot size={10} color="#7C3AED" />
-                      <Text className="text-[10px] text-purple-400">Advisor</Text>
-                    </View>
-                    <Text className={`text-sm leading-relaxed ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                      {streamingContent}
-                      <Text className="text-purple-400">▊</Text>
+                      {msg.content}
                     </Text>
                   </View>
                 </View>
-              )}
+              ))}
 
-              {/* Loading indicator for initial load */}
-              {subChatLoading && !streamingContent && subChatMessages.length <= 1 && (
-                <View className="flex-row items-center gap-2 py-2">
-                  <ActivityIndicator size="small" color="#7C3AED" />
-                  <Text className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                    Analyzing...
+            {/* Streaming content */}
+            {streamingContent && (
+              <View className="mb-3 items-start">
+                <View className={`rounded-xl px-4 py-3 ${isDark ? "bg-slate-800" : "bg-slate-100"}`}>
+                  <View className="flex-row items-center gap-1.5 mb-1.5">
+                    <Bot size={12} color="#7C3AED" />
+                    <Text className="text-xs text-purple-400 font-medium">Advisor</Text>
+                  </View>
+                  <Text className={`text-sm leading-relaxed ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                    {streamingContent}
+                    <Text className="text-purple-400">▊</Text>
                   </Text>
                 </View>
-              )}
+              </View>
+            )}
 
-              {/* Error */}
-              {subChatError && (
-                <Text className="text-sm text-red-400 py-2">{subChatError}</Text>
-              )}
-            </ScrollView>
+            {/* Loading indicator */}
+            {subChatLoading && !streamingContent && subChatMessages.length <= 1 && (
+              <View className={`flex-row items-center gap-2 rounded-xl px-4 py-3 ${isDark ? "bg-slate-800" : "bg-slate-100"}`}>
+                <ActivityIndicator size="small" color="#7C3AED" />
+                <Text className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                  Analyzing...
+                </Text>
+              </View>
+            )}
 
-            {/* Input area */}
-            <View className={`flex-row items-center gap-2 p-2 border-t ${isDark ? "border-slate-700" : "border-purple-100"}`}>
+            {/* Error */}
+            {subChatError && (
+              <Text className="text-sm text-red-400 py-2">{subChatError}</Text>
+            )}
+
+            {/* Follow-up input */}
+            <View className={`flex-row items-center gap-2 mt-3 pt-3 border-t ${isDark ? "border-slate-700" : "border-slate-200"}`}>
               <SubChatInputCompact
                 onSend={sendSubChatMessage}
                 loading={subChatLoading}
@@ -1047,19 +1043,19 @@ Explain in 2-3 sentences why this card specifically fits (or doesn't fit) the de
     );
   }
 
-  // Mobile layout - full screen sheet
+  // Mobile layout - Modal that overlays on top of any open bottom sheets
   return (
     <Modal
       visible={visible}
+      transparent
       animationType="slide"
-      presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+      <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`} style={{ paddingTop: insets.top }}>
         {/* Header */}
-        <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+        <View className={`flex-row items-center justify-between px-4 py-3 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
           <Text
-            className={`text-lg font-semibold ${
+            className={`text-lg font-semibold flex-1 ${
               isDark ? "text-white" : "text-slate-900"
             }`}
             numberOfLines={1}
@@ -1078,7 +1074,8 @@ Explain in 2-3 sentences why this card specifically fits (or doesn't fit) the de
 
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ padding: 24, alignItems: "center" }}
+          contentContainerStyle={{ padding: 24, alignItems: "center", paddingBottom: Math.max(24, insets.bottom) }}
+          keyboardShouldPersistTaps="handled"
         >
           {/* Card Image */}
           {imageUrl ? (
@@ -1111,7 +1108,10 @@ Explain in 2-3 sentences why this card specifically fits (or doesn't fit) the de
 
         {/* Actions */}
         {onAddToCollection && (
-          <View className="px-6 py-4 border-t border-slate-200 dark:border-slate-800">
+          <View
+            className={`px-6 py-4 border-t ${isDark ? "border-slate-800" : "border-slate-200"}`}
+            style={{ paddingBottom: Math.max(16, insets.bottom) }}
+          >
             <Button onPress={onAddToCollection}>
               <Text className="font-semibold text-white">Add to Collection</Text>
             </Button>

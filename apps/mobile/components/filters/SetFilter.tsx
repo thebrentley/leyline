@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useColorScheme } from 'nativewind';
 import { ChevronDown, ChevronUp, X } from 'lucide-react-native';
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 import { cardsApi } from '~/lib/api';
 
 interface SetOption {
@@ -251,6 +252,7 @@ export function SetFilter({ values, onChange }: SetFilterProps) {
             className={`flex-1 ${isDark ? 'text-white' : 'text-slate-900'}`}
             autoCapitalize="none"
             autoCorrect={false}
+            inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
           />
           {dropdownOpen ? (
             <ChevronUp size={18} color={isDark ? '#64748b' : '#94a3b8'} />

@@ -238,7 +238,7 @@ export const INTERACTION_RULES_SEED: RuleSeed[] = [
   },
   {
     tagA: 'forced-sacrifice', tagB: 'forced-sacrifice',
-    modifiers: { power: 1, salt: 3, fear: 1, airtime: 0 },
+    modifiers: { power: 2, salt: 4, fear: 3, airtime: 0 },
     interactionType: 'synergy',
     description: 'Repeated forced sacrifice grinds opponents down',
   },
@@ -367,6 +367,80 @@ export const INTERACTION_RULES_SEED: RuleSeed[] = [
     modifiers: { power: 3, salt: 2, fear: 2, airtime: 0 },
     interactionType: 'synergy',
     description: 'Asymmetric wipe + rebuild with tokens',
+  },
+
+  // === Annihilator / Big Mana Threats ===
+  {
+    tagA: 'annihilator', tagB: 'annihilator',
+    modifiers: { power: 3, salt: 5, fear: 4, airtime: 1 },
+    interactionType: 'engine',
+    description: 'Multiple annihilator threats compound permanent denial into lockout',
+  },
+  {
+    tagA: 'annihilator', tagB: 'mana-rock',
+    modifiers: { power: 2, salt: 1, fear: 2, airtime: 0 },
+    interactionType: 'synergy',
+    description: 'Artifact ramp accelerates annihilator threats',
+  },
+  {
+    tagA: 'annihilator', tagB: 'cost-reducer',
+    modifiers: { power: 3, salt: 2, fear: 2, airtime: 0 },
+    interactionType: 'synergy',
+    description: 'Cost reduction makes annihilator threats land earlier',
+  },
+  {
+    tagA: 'annihilator', tagB: 'evasion-grant',
+    modifiers: { power: 2, salt: 2, fear: 3, airtime: 0 },
+    interactionType: 'synergy',
+    description: 'Evasion ensures annihilator triggers connect',
+  },
+  {
+    tagA: 'annihilator', tagB: 'extra-combat',
+    modifiers: { power: 3, salt: 4, fear: 4, airtime: 1 },
+    interactionType: 'engine',
+    description: 'Extra combats double annihilator sacrifice triggers',
+  },
+  {
+    tagA: 'annihilator', tagB: 'hexproof-shroud',
+    modifiers: { power: 2, salt: 2, fear: 3, airtime: 0 },
+    interactionType: 'synergy',
+    description: 'Protected annihilator threats are nearly impossible to answer',
+  },
+  {
+    tagA: 'annihilator', tagB: 'indestructible-grant',
+    modifiers: { power: 2, salt: 2, fear: 3, airtime: 0 },
+    interactionType: 'synergy',
+    description: 'Indestructible annihilator threats survive removal and keep attacking',
+  },
+  {
+    tagA: 'annihilator', tagB: 'board-wipe-asymmetric',
+    modifiers: { power: 2, salt: 3, fear: 2, airtime: 0 },
+    interactionType: 'synergy',
+    description: 'Asymmetric wipes clear blockers for annihilator attacks',
+  },
+  {
+    tagA: 'big-mana-payoff', tagB: 'mana-rock',
+    modifiers: { power: 2, salt: 0, fear: 1, airtime: 0 },
+    interactionType: 'synergy',
+    description: 'Ramp into game-ending threats',
+  },
+  {
+    tagA: 'big-mana-payoff', tagB: 'mana-doubler',
+    modifiers: { power: 3, salt: 0, fear: 2, airtime: 0 },
+    interactionType: 'synergy',
+    description: 'Mana doublers enable casting the biggest threats ahead of curve',
+  },
+  {
+    tagA: 'big-mana-payoff', tagB: 'cost-reducer',
+    modifiers: { power: 3, salt: 0, fear: 2, airtime: 0 },
+    interactionType: 'synergy',
+    description: 'Cost reduction lets massive threats land turns earlier',
+  },
+  {
+    tagA: 'cast-trigger', tagB: 'cost-reducer',
+    modifiers: { power: 2, salt: 1, fear: 1, airtime: 1 },
+    interactionType: 'synergy',
+    description: 'Casting more spells means more cast triggers',
   },
 
   // === Anti-synergies ===

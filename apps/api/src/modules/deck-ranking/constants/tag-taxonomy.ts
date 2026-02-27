@@ -102,6 +102,11 @@ export const TAG_TAXONOMY = {
   'forced-sacrifice': 'Forces opponents to sacrifice',
   'forced-discard': 'Forces opponents to discard',
 
+  // === Big Mana / Eldrazi ===
+  'annihilator': 'Forces opponents to sacrifice permanents when attacking (Annihilator)',
+  'big-mana-payoff': 'Expensive spell (6+ mana) that provides enormous impact when cast',
+  'cast-trigger': 'Triggers significant effect when cast, not on ETB (Eldrazi titans, etc.)',
+
   // === Complexity/Airtime ===
   'trigger-heavy': 'Has multiple or frequent triggers',
   'counter-manipulation': 'Adds/removes/moves counters',

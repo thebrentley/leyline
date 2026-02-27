@@ -43,16 +43,16 @@ export function CommanderDamageHub({
           }}
           className="items-center justify-center gap-4 px-6"
         >
-          <Text className="text-center text-lg font-semibold text-black/70">
+          <Text className="text-center text-lg font-semibold text-white">
             Tap +/- on other players to adjust commander damage dealt to you
           </Text>
 
           <Pressable
             onPress={onExit}
-            className="flex-row items-center gap-2 rounded-xl bg-black/20 px-6 py-3 active:bg-black/30"
+            className="flex-row items-center gap-2 rounded-xl bg-white/20 px-6 py-3 active:bg-white/30"
           >
-            <ArrowLeft size={20} color="rgba(0,0,0,0.7)" />
-            <Text className="text-lg font-bold text-black/70">
+            <ArrowLeft size={20} color="white" />
+            <Text className="text-lg font-bold text-white">
               Return to Game
             </Text>
           </Pressable>

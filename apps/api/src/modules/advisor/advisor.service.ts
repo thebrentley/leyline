@@ -674,7 +674,7 @@ export class AdvisorService {
     cards.forEach((c) => {
       const manaCost = c.card?.manaCost || "";
       const qty = c.quantity;
-      (manaCost.match(/\{[WUBRG]\}/g) || []).forEach((pip) => {
+      ((manaCost.match(/\{[WUBRG]\}/g) || []) as string[]).forEach((pip) => {
         const color = pip.replace(/[{}]/g, "");
         if (colorPips[color] !== undefined) {
           colorPips[color] += qty;

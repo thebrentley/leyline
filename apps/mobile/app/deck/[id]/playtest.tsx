@@ -1,7 +1,6 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import {
-  ArrowLeft,
   Bot,
   Check,
   ChevronDown,
@@ -28,7 +27,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "~/components/ui/button";
 import {
   decksApi,
@@ -41,15 +39,7 @@ import { DesktopSidebar } from "~/components/web/DesktopSidebar";
 import { useSocket, type PlaytestMessage } from "~/contexts/SocketContext";
 import { GameView } from "~/components/playtest";
 import type { ExtendedGameZone, FullPlaytestGameState, PlayerId, PlayerState, StackItem, CumulativeTokenUsage } from "~/types/playtesting";
-
-// Color identity colors for deck display
-const MANA_COLORS: Record<string, string> = {
-  W: "#F9FAF4",
-  U: "#0E68AB",
-  B: "#150B00",
-  R: "#D3202A",
-  G: "#00733E",
-};
+import { MANA_COLORS } from "~/components/deck/deck-detail-constants";
 
 interface LogEntry {
   id: string;
@@ -995,25 +985,11 @@ export default function PlaytestPage() {
 
   const pageContent = (
     <>
-      {/* Header */}
-      <View
-        className={`flex-row items-center justify-between px-4 lg:px-6 py-3 lg:py-4 ${!isDesktop ? "border-b border-slate-200 dark:border-slate-800" : ""}`}
-      >
-        <View className="flex-row items-center gap-3 flex-1">
-          {/* Mobile: Back arrow */}
-          {!isDesktop && (
-            <Pressable
-              onPress={() => router.back()}
-              className={`rounded-full p-2 ${
-                isDark ? "active:bg-slate-800" : "active:bg-slate-100"
-              }`}
-            >
-              <ArrowLeft size={24} color={isDark ? "#94a3b8" : "#64748b"} />
-            </Pressable>
-          )}
-          <View className="flex-1">
-            {/* Desktop: Breadcrumb */}
-            {isDesktop && (
+      {/* Header - Desktop only (mobile uses native Stack header) */}
+      {isDesktop && (
+        <View className="flex-row items-center justify-between px-6 py-4">
+          <View className="flex-row items-center gap-3 flex-1">
+            <View className="flex-1">
               <View className="flex-row items-center gap-2 mb-1">
                 <Pressable
                   onPress={() => router.push("/(tabs)/decks")}
@@ -1052,25 +1028,25 @@ export default function PlaytestPage() {
                   Playtest
                 </Text>
               </View>
-            )}
-            <View className="flex-row items-center gap-2">
-              <Play size={isDesktop ? 28 : 20} color="#22c55e" />
+              <View className="flex-row items-center gap-2">
+                <Play size={28} color="#22c55e" />
+                <Text
+                  className={`text-2xl font-bold ${
+                    isDark ? "text-white" : "text-slate-900"
+                  }`}
+                >
+                  Playtest
+                </Text>
+              </View>
               <Text
-                className={`text-lg lg:text-2xl font-bold ${
-                  isDark ? "text-white" : "text-slate-900"
-                }`}
+                className={`text-sm mt-0.5 ${isDark ? "text-slate-500" : "text-slate-400"}`}
               >
-                Playtest
+                {deckName}
               </Text>
             </View>
-            <Text
-              className={`text-xs lg:text-sm mt-0.5 ${isDark ? "text-slate-500" : "text-slate-400"}`}
-            >
-              {deckName}
-            </Text>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Content */}
       {loading ? (
@@ -1781,6 +1757,7 @@ export default function PlaytestPage() {
   if (isDesktop) {
     return (
       <View className="flex-1 flex-row">
+        <Stack.Screen options={{ headerShown: false }} />
         <DesktopSidebar />
         <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
           {pageContent}
@@ -1791,8 +1768,20 @@ export default function PlaytestPage() {
 
   // Mobile Layout
   return (
-    <SafeAreaView className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
-      {pageContent}
-    </SafeAreaView>
+    <>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerShadowVisible: false,
+          title: "Playtest",
+          headerStyle: { backgroundColor: isDark ? "#020617" : "#ffffff" },
+          headerTintColor: isDark ? "#e2e8f0" : "#1e293b",
+          headerBackTitle: "Deck",
+        }}
+      />
+      <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+        {pageContent}
+      </View>
+    </>
   );
 }

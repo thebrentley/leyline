@@ -11,7 +11,10 @@ import { EventOfflineRsvp } from '../../entities/event-offline-rsvp.entity';
 import { PodOfflineMember } from '../../entities/pod-offline-member.entity';
 import { PodMember } from '../../entities/pod-member.entity';
 import { PodGameResult } from '../../entities/pod-game-result.entity';
+import { Pod } from '../../entities/pod.entity';
 import { PodsService } from './pods.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { EventChatService } from './event-chat.service';
 
 @Injectable()
 export class PodsEventsService {
@@ -22,7 +25,10 @@ export class PodsEventsService {
     @InjectRepository(PodOfflineMember) private offlineMemberRepo: Repository<PodOfflineMember>,
     @InjectRepository(PodMember) private memberRepo: Repository<PodMember>,
     @InjectRepository(PodGameResult) private gameResultRepo: Repository<PodGameResult>,
+    @InjectRepository(Pod) private podRepo: Repository<Pod>,
     private podsService: PodsService,
+    private notificationsService: NotificationsService,
+    private eventChatService: EventChatService,
   ) {}
 
   async createEvent(
@@ -48,6 +54,22 @@ export class PodsEventsService {
       endsAt: data.endsAt ? new Date(data.endsAt) : null,
     });
     await this.eventRepo.save(event);
+
+    // Send push notification to pod members (fire-and-forget)
+    const pod = await this.podRepo.findOne({ where: { id: podId } });
+    if (pod) {
+      this.notificationsService
+        .notifyNewEvent({
+          podId,
+          eventId: event.id,
+          eventName: event.name,
+          podName: pod.name,
+          creatorUserId: userId,
+        })
+        .catch((err) =>
+          console.error('Failed to send new event notification:', err),
+        );
+    }
 
     return {
       id: event.id,
@@ -228,7 +250,10 @@ export class PodsEventsService {
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.location !== undefined) updateData.location = data.location;
-    if (data.startsAt !== undefined) updateData.startsAt = new Date(data.startsAt);
+    if (data.startsAt !== undefined) {
+      updateData.startsAt = new Date(data.startsAt);
+      updateData.reminderSent = false;
+    }
     if (data.endsAt !== undefined) updateData.endsAt = new Date(data.endsAt);
 
     await this.eventRepo.update(eventId, updateData);
@@ -281,6 +306,28 @@ export class PodsEventsService {
     }
 
     await this.rsvpRepo.save(rsvp);
+
+    const pod = await this.podRepo.findOne({ where: { id: podId } });
+    this.notificationsService
+      .notifyRsvpUpdate({
+        podId,
+        eventId,
+        eventName: event.name,
+        podName: pod?.name ?? "your pod",
+        userId,
+        status,
+      })
+      .catch((err) =>
+        console.error("Failed to send RSVP notification:", err),
+      );
+
+    const statusText = status === 'accepted' ? 'is going' : 'is not going';
+    this.eventChatService
+      .sendSystemMessage(eventId, userId, statusText)
+      .catch((err) =>
+        console.error('Failed to send RSVP chat message:', err),
+      );
+
     return { success: true, status: rsvp.status, comment: rsvp.comment };
   }
 
@@ -293,6 +340,13 @@ export class PodsEventsService {
     if (!rsvp) throw new NotFoundException('RSVP not found');
 
     await this.rsvpRepo.remove(rsvp);
+
+    this.eventChatService
+      .sendSystemMessage(eventId, userId, 'removed their RSVP')
+      .catch((err) =>
+        console.error('Failed to send RSVP removal chat message:', err),
+      );
+
     return { success: true };
   }
 
@@ -304,8 +358,10 @@ export class PodsEventsService {
       startedAt: string;
       endedAt: string;
       winnerUserId: string | null;
+      winnerOfflineMemberId?: string | null;
       players: Array<{
         userId: string | null;
+        offlineMemberId?: string | null;
         deckName: string | null;
         deckId: string | null;
         finalLife: number;
@@ -330,10 +386,151 @@ export class PodsEventsService {
       startedAt: new Date(data.startedAt),
       endedAt: new Date(data.endedAt),
       winnerUserId: data.winnerUserId,
+      winnerOfflineMemberId: data.winnerOfflineMemberId ?? null,
       players: data.players,
     });
 
     await this.gameResultRepo.save(result);
     return { success: true, id: result.id };
+  }
+
+  async getMemberStats(podId: string, userId: string) {
+    await this.podsService.requireMembership(podId, userId);
+
+    const [onlineStats, offlineStats, totalResult] = await Promise.all([
+      this.gameResultRepo.query(
+        `SELECT
+          p->>'userId'           AS "userId",
+          NULL                   AS "offlineMemberId",
+          NULL                   AS "name",
+          COUNT(*)::int           AS "gamesPlayed",
+          SUM(CASE WHEN (p->>'isWinner')::boolean THEN 1 ELSE 0 END)::int AS "wins",
+          ROUND(
+            SUM(CASE WHEN (p->>'isWinner')::boolean THEN 1 ELSE 0 END)::numeric
+            / NULLIF(COUNT(*), 0) * 100,
+            1
+          )::float AS "winRate"
+        FROM pod_game_results gr
+        JOIN pod_events pe ON pe.id = gr.pod_event_id
+        CROSS JOIN LATERAL jsonb_array_elements(gr.players) AS p
+        WHERE pe.pod_id = $1
+          AND p->>'userId' IS NOT NULL
+        GROUP BY p->>'userId'`,
+        [podId],
+      ),
+      this.gameResultRepo.query(
+        `SELECT
+          COALESCE(om.linked_user_id::text, NULL) AS "userId",
+          p->>'offlineMemberId'  AS "offlineMemberId",
+          om.name                AS "name",
+          COUNT(*)::int           AS "gamesPlayed",
+          SUM(CASE WHEN (p->>'isWinner')::boolean THEN 1 ELSE 0 END)::int AS "wins",
+          ROUND(
+            SUM(CASE WHEN (p->>'isWinner')::boolean THEN 1 ELSE 0 END)::numeric
+            / NULLIF(COUNT(*), 0) * 100,
+            1
+          )::float AS "winRate"
+        FROM pod_game_results gr
+        JOIN pod_events pe ON pe.id = gr.pod_event_id
+        CROSS JOIN LATERAL jsonb_array_elements(gr.players) AS p
+        JOIN pod_offline_members om ON om.id = (p->>'offlineMemberId')::uuid
+        WHERE pe.pod_id = $1
+          AND p->>'offlineMemberId' IS NOT NULL
+          AND (p->>'userId' IS NULL)
+        GROUP BY p->>'offlineMemberId', om.name, om.linked_user_id`,
+        [podId],
+      ),
+      this.gameResultRepo.query(
+        `SELECT COUNT(*)::int AS "totalGames"
+         FROM pod_game_results gr
+         JOIN pod_events pe ON pe.id = gr.pod_event_id
+         WHERE pe.pod_id = $1`,
+        [podId],
+      ),
+    ]);
+
+    // Merge online + offline stats. If an offline member is now linked,
+    // combine their stats with the linked user's online stats.
+    const statsByUserId = new Map<string, { gamesPlayed: number; wins: number; offlineMemberId?: string; name?: string }>();
+    for (const s of onlineStats) {
+      statsByUserId.set(s.userId, { gamesPlayed: s.gamesPlayed, wins: s.wins });
+    }
+    for (const s of offlineStats) {
+      if (s.userId) {
+        // Offline member now linked — merge into their user stats
+        const existing = statsByUserId.get(s.userId);
+        if (existing) {
+          existing.gamesPlayed += s.gamesPlayed;
+          existing.wins += s.wins;
+        } else {
+          statsByUserId.set(s.userId, { gamesPlayed: s.gamesPlayed, wins: s.wins });
+        }
+      }
+    }
+
+    const mergedStats = Array.from(statsByUserId.entries()).map(([uid, s]) => ({
+      userId: uid as string | null,
+      offlineMemberId: null as string | null,
+      name: null as string | null,
+      gamesPlayed: s.gamesPlayed,
+      wins: s.wins,
+      winRate: s.gamesPlayed > 0 ? Math.round((s.wins / s.gamesPlayed) * 1000) / 10 : 0,
+    }));
+
+    // Add offline members that are NOT linked to any user
+    for (const s of offlineStats) {
+      if (!s.userId) {
+        mergedStats.push({
+          userId: null,
+          offlineMemberId: s.offlineMemberId,
+          name: s.name,
+          gamesPlayed: s.gamesPlayed,
+          wins: s.wins,
+          winRate: s.winRate,
+        });
+      }
+    }
+
+    mergedStats.sort((a, b) => b.wins - a.wins || b.gamesPlayed - a.gamesPlayed);
+
+    return {
+      totalGames: totalResult[0]?.totalGames ?? 0,
+      memberStats: mergedStats,
+    };
+  }
+
+  async getDeckStats(podId: string, userId: string) {
+    await this.podsService.requireMembership(podId, userId);
+
+    const deckStats: Array<{
+      deckId: string | null;
+      deckName: string;
+      userId: string | null;
+      wins: number;
+      gamesPlayed: number;
+      winRate: number;
+    }> = await this.gameResultRepo.query(
+      `SELECT
+        p->>'deckId'              AS "deckId",
+        p->>'deckName'            AS "deckName",
+        p->>'userId'              AS "userId",
+        COUNT(*)::int              AS "gamesPlayed",
+        SUM(CASE WHEN (p->>'isWinner')::boolean THEN 1 ELSE 0 END)::int AS "wins",
+        ROUND(
+          SUM(CASE WHEN (p->>'isWinner')::boolean THEN 1 ELSE 0 END)::numeric
+          / NULLIF(COUNT(*), 0) * 100,
+          1
+        )::float AS "winRate"
+      FROM pod_game_results gr
+      JOIN pod_events pe ON pe.id = gr.pod_event_id
+      CROSS JOIN LATERAL jsonb_array_elements(gr.players) AS p
+      WHERE pe.pod_id = $1
+        AND p->>'deckName' IS NOT NULL
+      GROUP BY p->>'deckId', p->>'deckName', p->>'userId'
+      ORDER BY "wins" DESC, "gamesPlayed" DESC`,
+      [podId],
+    );
+
+    return { deckStats };
   }
 }

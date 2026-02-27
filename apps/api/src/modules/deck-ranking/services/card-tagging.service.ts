@@ -341,6 +341,13 @@ export class CardTaggingService {
    - fear: How threatening this card's board presence is. Basic land = 0. Grave Titan = 65. Blightsteel Colossus = 90.
    - airtime: How much game time this card demands. Basic land = 0. Sensei's Divining Top = 70. Storm count spells = 80.
 
+IMPORTANT: For utility lands, always assign functional tags based on what the land DOES, not just "utility-land". Examples:
+- Strip Mine → land-destruction, utility-land
+- Eye of Ugin → tutor-creature, utility-land
+- Rogue's Passage → evasion-grant, utility-land
+- Blast Zone → targeted-removal, utility-land
+- Eldrazi Temple → cost-reducer, utility-land
+
 TAG TAXONOMY:
 ${taxonomyList}
 

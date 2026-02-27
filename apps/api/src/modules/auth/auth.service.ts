@@ -7,13 +7,22 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import axios from 'axios';
 import { User } from '../../entities/user.entity';
+import { PodOfflineMember } from '../../entities/pod-offline-member.entity';
+import { PodMember, PodRole } from '../../entities/pod-member.entity';
+import { EventOfflineRsvp } from '../../entities/event-offline-rsvp.entity';
+import { EventRsvp } from '../../entities/event-rsvp.entity';
+import { PodGameResult } from '../../entities/pod-game-result.entity';
+import { PodInvite } from '../../entities/pod-invite.entity';
 import { Setting, SETTING_KEYS } from '../../entities/setting.entity';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { SettingsService } from '../settings/settings.service';
+import { EmailService } from '../email/email.service';
+import { passwordResetEmailHtml } from '../email/templates/password-reset.template';
 
 interface JwtPayload {
   sub: string;
@@ -45,6 +54,7 @@ export class AuthService {
   private readonly SALT_ROUNDS = 10;
   private lastArchidektRequest = 0;
   private readonly ARCHIDEKT_RATE_LIMIT_MS = 500;
+  private resetRateLimit = new Map<string, number>();
 
   private async archidektRateLimit(): Promise<void> {
     const now = Date.now();
@@ -60,10 +70,23 @@ export class AuthService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(PodOfflineMember)
+    private offlineMemberRepo: Repository<PodOfflineMember>,
+    @InjectRepository(PodMember)
+    private podMemberRepo: Repository<PodMember>,
+    @InjectRepository(EventOfflineRsvp)
+    private offlineRsvpRepo: Repository<EventOfflineRsvp>,
+    @InjectRepository(EventRsvp)
+    private rsvpRepo: Repository<EventRsvp>,
+    @InjectRepository(PodGameResult)
+    private gameResultRepo: Repository<PodGameResult>,
+    @InjectRepository(PodInvite)
+    private podInviteRepo: Repository<PodInvite>,
     private jwtService: JwtService,
     private configService: ConfigService,
     private encryptionService: EncryptionService,
     private settingsService: SettingsService,
+    private emailService: EmailService,
   ) {}
 
   // ==================== Local Authentication ====================
@@ -95,6 +118,12 @@ export class AuthService {
     });
 
     await this.userRepository.save(user);
+
+    // Merge any offline member records with matching email
+    await this.mergeOfflineMembers(user.id, email);
+
+    // Auto-accept any pending pod invites for this email
+    await this.acceptPendingEmailInvites(user.id, email);
 
     // Generate JWT
     const accessToken = this.generateToken(user);
@@ -174,6 +203,65 @@ export class AuthService {
     }
 
     await this.userRepository.remove(user);
+  }
+
+  // ==================== Password Reset ====================
+
+  async forgotPassword(email: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Rate limit: 60s cooldown per email
+    const now = Date.now();
+    const lastRequest = this.resetRateLimit.get(normalizedEmail);
+    if (lastRequest && now - lastRequest < 60_000) {
+      return;
+    }
+    this.resetRateLimit.set(normalizedEmail, now);
+
+    const user = await this.userRepository.findOne({ where: { email: normalizedEmail } });
+    if (!user) {
+      return; // Silent — prevent email enumeration
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    user.resetToken = token;
+    user.resetTokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await this.userRepository.save(user);
+
+    const apiBaseUrl = this.getApiBaseUrl();
+    const resetUrl = `${apiBaseUrl}/api/auth/reset-password?token=${token}`;
+    const html = passwordResetEmailHtml({ resetUrl });
+    await this.emailService.sendEmail(user.email, 'Reset your Leyline password', html);
+  }
+
+  async validateResetToken(token: string): Promise<User | null> {
+    const user = await this.userRepository.findOne({ where: { resetToken: token } });
+    if (!user || !user.resetTokenExpiresAt || user.resetTokenExpiresAt < new Date()) {
+      return null;
+    }
+    return user;
+  }
+
+  async resetPassword(token: string, password: string): Promise<{ success: boolean; message: string }> {
+    const user = await this.validateResetToken(token);
+    if (!user) {
+      return { success: false, message: 'This reset link has expired or is invalid.' };
+    }
+
+    if (password.length < 8) {
+      return { success: false, message: 'Password must be at least 8 characters.' };
+    }
+
+    user.passwordHash = await bcrypt.hash(password, this.SALT_ROUNDS);
+    user.resetToken = null;
+    user.resetTokenExpiresAt = null;
+    await this.userRepository.save(user);
+
+    return { success: true, message: 'Your password has been reset successfully.' };
+  }
+
+  getApiBaseUrl(): string {
+    return this.configService.get<string>('API_BASE_URL', 'http://localhost:3001');
   }
 
   // ==================== Archidekt Connection ====================
@@ -374,6 +462,153 @@ export class AuthService {
   async getArchidektId(userId: string): Promise<number | null> {
     const settings = await this.settingsService.getArchidektSettings(userId);
     return settings.archidektId;
+  }
+
+  // ==================== Offline Member Merge ====================
+
+  /**
+   * Find all unlinked offline members matching this email, add the user
+   * as a pod member, convert offline RSVPs to regular RSVPs, then delete
+   * the offline member records.
+   */
+  async mergeOfflineMembers(userId: string, email: string): Promise<void> {
+    try {
+      const normalizedEmail = email.toLowerCase().trim();
+
+      const offlineMembers = await this.offlineMemberRepo.find({
+        where: {
+          email: normalizedEmail,
+          linkedUserId: IsNull(),
+        },
+      });
+
+      if (offlineMembers.length === 0) {
+        console.log(`[mergeOfflineMembers] No unlinked offline members found for email: ${normalizedEmail}`);
+        return;
+      }
+
+      console.log(`[mergeOfflineMembers] Found ${offlineMembers.length} offline member(s) for email: ${normalizedEmail}`);
+
+      for (const offlineMember of offlineMembers) {
+        // 1. Add user as pod member (if not already)
+        const existingMembership = await this.podMemberRepo.findOne({
+          where: { podId: offlineMember.podId, userId },
+        });
+
+        if (!existingMembership) {
+          const member = this.podMemberRepo.create({
+            podId: offlineMember.podId,
+            userId,
+            role: 'member' as PodRole,
+          });
+          await this.podMemberRepo.save(member);
+        }
+
+        // 2. Backfill game results before deleting the offline member
+        await this.backfillGameResults(offlineMember.id, userId);
+
+        // 3. Convert offline RSVPs to regular RSVPs
+        const offlineRsvps = await this.offlineRsvpRepo.find({
+          where: { offlineMemberId: offlineMember.id },
+        });
+
+        for (const offlineRsvp of offlineRsvps) {
+          const existingRsvp = await this.rsvpRepo.findOne({
+            where: { eventId: offlineRsvp.eventId, userId },
+          });
+
+          if (!existingRsvp) {
+            const rsvp = this.rsvpRepo.create({
+              eventId: offlineRsvp.eventId,
+              userId,
+              status: offlineRsvp.status,
+              comment: offlineRsvp.comment,
+            });
+            await this.rsvpRepo.save(rsvp);
+          }
+        }
+
+        // 4. Delete the offline member (cascades to offline RSVPs)
+        await this.offlineMemberRepo.remove(offlineMember);
+
+        console.log(`[mergeOfflineMembers] Merged offline member ${offlineMember.id} (pod: ${offlineMember.podId}) into user ${userId}`);
+      }
+    } catch (error) {
+      // Don't fail registration if merge fails
+      console.error('[mergeOfflineMembers] Error merging offline members:', error);
+    }
+  }
+
+  private async acceptPendingEmailInvites(userId: string, email: string): Promise<void> {
+    try {
+      const normalizedEmail = email.toLowerCase().trim();
+
+      const pendingInvites = await this.podInviteRepo.find({
+        where: { inviteeEmail: normalizedEmail, status: 'pending' },
+      });
+
+      if (pendingInvites.length === 0) return;
+
+      for (const invite of pendingInvites) {
+        // Ensure user is a pod member
+        const existingMember = await this.podMemberRepo.findOne({
+          where: { podId: invite.podId, userId },
+        });
+
+        if (!existingMember) {
+          const member = this.podMemberRepo.create({
+            podId: invite.podId,
+            userId,
+            role: 'member' as PodRole,
+          });
+          await this.podMemberRepo.save(member);
+        }
+
+        // Mark invite as accepted
+        invite.status = 'accepted';
+        invite.inviteeId = userId;
+        await this.podInviteRepo.save(invite);
+      }
+
+      console.log(`[acceptPendingEmailInvites] Accepted ${pendingInvites.length} invite(s) for ${normalizedEmail}`);
+    } catch (error) {
+      // Don't fail registration if invite acceptance fails
+      console.error('[acceptPendingEmailInvites] Error:', error);
+    }
+  }
+
+  private async backfillGameResults(
+    offlineMemberId: string,
+    linkedUserId: string,
+  ): Promise<void> {
+    // Update players JSONB: set userId on entries matching this offlineMemberId
+    await this.gameResultRepo.query(
+      `UPDATE pod_game_results
+       SET players = (
+         SELECT jsonb_agg(
+           CASE
+             WHEN elem->>'offlineMemberId' = $1
+             THEN jsonb_set(elem, '{userId}', to_jsonb($2::text))
+             ELSE elem
+           END
+         )
+         FROM jsonb_array_elements(players) AS elem
+       )
+       WHERE EXISTS (
+         SELECT 1 FROM jsonb_array_elements(players) AS elem
+         WHERE elem->>'offlineMemberId' = $1
+       )`,
+      [offlineMemberId, linkedUserId],
+    );
+
+    // Update winnerUserId for games where this offline member won
+    await this.gameResultRepo.query(
+      `UPDATE pod_game_results
+       SET winner_user_id = $2
+       WHERE winner_offline_member_id = $1::uuid
+         AND winner_user_id IS NULL`,
+      [offlineMemberId, linkedUserId],
+    );
   }
 
   // ==================== Helpers ====================

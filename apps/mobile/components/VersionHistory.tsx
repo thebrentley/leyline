@@ -1,3 +1,4 @@
+import { BottomSheetView } from "@gorhom/bottom-sheet";
 import {
   Clock,
   CloudDownload,
@@ -9,13 +10,13 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
   Text,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
+import { GlassSheet } from "~/components/ui/GlassSheet";
 import { decksApi, type DeckDetail, type DeckVersion } from "~/lib/api";
 import { showToast } from "~/lib/toast";
 
@@ -215,14 +216,8 @@ export function VersionHistory({
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent={false}
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`} style={{ paddingTop: insets.top }}>
+    <GlassSheet visible={visible} onDismiss={onClose} isDark={isDark}>
+      <BottomSheetView style={{ flex: 1 }}>
         {/* Header */}
         <View
           className={`flex-row items-center justify-between px-4 py-3 border-b ${
@@ -263,7 +258,7 @@ export function VersionHistory({
             contentContainerStyle={{ paddingTop: 16, paddingBottom: Math.max(24, insets.bottom) }}
           />
         )}
-      </View>
+      </BottomSheetView>
 
       {/* Confirmation Dialog */}
       {confirmDialog.version && (
@@ -278,6 +273,6 @@ export function VersionHistory({
           onCancel={() => setConfirmDialog({ visible: false, version: null })}
         />
       )}
-    </Modal>
+    </GlassSheet>
   );
 }

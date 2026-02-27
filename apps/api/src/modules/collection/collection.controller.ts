@@ -27,6 +27,10 @@ class AddToCollectionDto {
   @IsInt()
   @Min(0)
   foilQuantity?: number;
+
+  @IsOptional()
+  @IsString()
+  folderId?: string;
 }
 
 class LinkedDeckCardDto {
@@ -58,6 +62,22 @@ class BulkImportOptionsDto {
   @IsOptional()
   @IsBoolean()
   autoLink?: boolean;
+
+  @IsOptional()
+  @IsString()
+  folderId?: string;
+
+  @IsOptional()
+  @IsString()
+  deckId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  overrideSet?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  addMissing?: boolean;
 }
 
 class BulkImportDto {
@@ -71,10 +91,141 @@ class BulkImportDto {
   options?: BulkImportOptionsDto;
 }
 
+class LinkToDeckDto {
+  @IsArray()
+  @IsString({ each: true })
+  scryfallIds: string[];
+
+  @IsString()
+  deckId: string;
+
+  @IsOptional()
+  @IsBoolean()
+  overrideSet?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  addMissing?: boolean;
+}
+
+class CreateFolderDto {
+  @IsString()
+  name: string;
+}
+
+class RenameFolderDto {
+  @IsString()
+  name: string;
+}
+
+class MoveCardsDto {
+  @IsArray()
+  @IsString({ each: true })
+  cardIds: string[];
+
+  @IsOptional()
+  @IsString()
+  folderId?: string | null;
+}
+
+class BulkDeleteDto {
+  @IsArray()
+  @IsString({ each: true })
+  cardIds: string[];
+}
+
 @Controller('collection')
 @UseGuards(JwtAuthGuard)
 export class CollectionController {
   constructor(private collectionService: CollectionService) {}
+
+  // ==================== Folder endpoints (before :id routes) ====================
+
+  @Get('folders')
+  async getFolders(@CurrentUser() user: CurrentUserPayload) {
+    return this.collectionService.getUserFolders(user.userId);
+  }
+
+  @Post('folders')
+  async createFolder(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: CreateFolderDto,
+  ) {
+    return this.collectionService.createFolder(user.userId, dto.name);
+  }
+
+  @Put('folders/:folderId')
+  async renameFolder(
+    @Param('folderId') folderId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: RenameFolderDto,
+  ) {
+    return this.collectionService.renameFolder(folderId, user.userId, dto.name);
+  }
+
+  @Delete('folders/:folderId')
+  async deleteFolder(
+    @Param('folderId') folderId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    await this.collectionService.deleteFolder(folderId, user.userId);
+    return { success: true };
+  }
+
+  @Post('folders/move')
+  async moveCards(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: MoveCardsDto,
+  ) {
+    return this.collectionService.moveCardsToFolder(
+      user.userId,
+      dto.cardIds,
+      dto.folderId ?? null,
+    );
+  }
+
+  @Post('bulk-delete')
+  async bulkDelete(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: BulkDeleteDto,
+  ) {
+    return this.collectionService.bulkRemove(user.userId, dto.cardIds);
+  }
+
+  // ==================== Deck groups ====================
+
+  @Get('deck-groups')
+  async getDeckGroups(@CurrentUser() user: CurrentUserPayload) {
+    return this.collectionService.getDeckGroups(user.userId);
+  }
+
+  // ==================== Collection endpoints ====================
+
+  @Get('all-ids')
+  async getAllIds(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('search') search?: string,
+    @Query('folderId') folderId?: string,
+    @Query('deckId') deckId?: string,
+  ) {
+    return this.collectionService.getAllCardIds(user.userId, {
+      search: search || undefined,
+      folderId: folderId || undefined,
+      deckId: deckId || undefined,
+    });
+  }
+
+  @Get('stats')
+  async getStats(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('folderId') folderId?: string,
+    @Query('deckId') deckId?: string,
+  ) {
+    return this.collectionService.getCollectionStats(user.userId, {
+      folderId: folderId || undefined,
+      deckId: deckId || undefined,
+    });
+  }
 
   @Get()
   async getCollection(
@@ -82,17 +233,20 @@ export class CollectionController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('search') search?: string,
+    @Query('folderId') folderId?: string,
+    @Query('deckId') deckId?: string,
+    @Query('sort') sort?: string,
   ) {
+    const validSorts = ['name', 'value', 'date'] as const;
+    const sortValue = validSorts.includes(sort as any) ? (sort as 'name' | 'value' | 'date') : undefined;
     return this.collectionService.getUserCollection(user.userId, {
       page: page ? parseInt(page, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
       search,
+      folderId: folderId || undefined,
+      deckId: deckId || undefined,
+      sort: sortValue,
     });
-  }
-
-  @Get('stats')
-  async getStats(@CurrentUser() user: CurrentUserPayload) {
-    return this.collectionService.getCollectionStats(user.userId);
   }
 
   @Post()
@@ -114,6 +268,19 @@ export class CollectionController {
     @Body() dto: BulkImportDto,
   ) {
     return this.collectionService.bulkImport(user.userId, dto.lines, dto.options);
+  }
+
+  @Post('link-to-deck')
+  async linkToDeck(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: LinkToDeckDto,
+  ) {
+    return this.collectionService.linkImportedToDeck(
+      user.userId,
+      dto.scryfallIds,
+      dto.deckId,
+      { overrideSet: dto.overrideSet, addMissing: dto.addMissing },
+    );
   }
 
   @Put(':id')

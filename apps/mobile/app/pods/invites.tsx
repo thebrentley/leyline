@@ -1,5 +1,5 @@
 import { router, Stack, useFocusEffect } from "expo-router";
-import { ArrowLeft, Check, X } from "lucide-react-native";
+import { Check, X } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useCallback, useState } from "react";
 import {
@@ -55,25 +55,26 @@ export default function PendingInvitesScreen() {
 
   return (
     <View className="flex-1 flex-row">
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen
+        options={{
+          headerShown: !isDesktop,
+          headerShadowVisible: false,
+          title: "Pending Invites",
+          headerStyle: { backgroundColor: isDark ? "#020617" : "#ffffff" },
+          headerTintColor: isDark ? "#e2e8f0" : "#1e293b",
+          headerBackTitle: "Pods",
+        }}
+      />
       {isDesktop && <DesktopSidebar />}
       <SafeAreaView
         className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}
-        edges={isDesktop ? [] : ["top"]}
+        edges={[]}
       >
-        {/* Header */}
-        <View className="flex-row items-center px-4 lg:px-6 py-3 lg:py-4">
-          <View className="flex-row items-center gap-3 flex-1">
-            {!isDesktop && (
-              <Pressable
-                onPress={() => router.back()}
-                className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
-              >
-                <ArrowLeft size={24} color={isDark ? "#94a3b8" : "#64748b"} />
-              </Pressable>
-            )}
-            <View className="flex-1">
-              {isDesktop && (
+        {/* Header - desktop only (mobile uses native stack header) */}
+        {isDesktop && (
+          <View className="flex-row items-center px-4 lg:px-6 py-3 lg:py-4">
+            <View className="flex-row items-center gap-3 flex-1">
+              <View className="flex-1">
                 <View className="flex-row items-center gap-2 mb-1">
                   <Pressable onPress={() => router.push("/(tabs)/pods")} className="hover:underline">
                     <Text className={`text-sm ${isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"}`}>
@@ -85,15 +86,15 @@ export default function PendingInvitesScreen() {
                     Pending Invites
                   </Text>
                 </View>
-              )}
-              <Text
-                className={`text-lg lg:text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
-              >
-                Pending Invites
-              </Text>
+                <Text
+                  className={`text-lg lg:text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
+                >
+                  Pending Invites
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {loading ? (
           <View className="flex-1 items-center justify-center">

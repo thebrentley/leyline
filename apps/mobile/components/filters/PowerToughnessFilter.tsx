@@ -1,5 +1,6 @@
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 
 type Operator = '=' | '>=' | '<=' | '>' | '<';
 
@@ -110,6 +111,7 @@ function NumericWithOperator({
               ? 'bg-slate-800 border-slate-700 text-white'
               : 'bg-slate-100 border-slate-300 text-slate-900'
           }`}
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
       </View>
     </View>

@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { ArrowLeft, Crown, Layers } from "lucide-react-native";
+import { Crown, Layers } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useEffect, useState } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
@@ -9,14 +9,7 @@ import { useResponsive } from "~/hooks/useResponsive";
 import { DesktopSidebar } from "~/components/web/DesktopSidebar";
 import { useAuth } from "~/contexts/AuthContext";
 import { DeckScoreChip } from "~/components/ranking/DeckScoreChip";
-
-const MANA_COLORS: Record<string, string> = {
-  W: "#F9FAF4",
-  U: "#0E68AB",
-  B: "#150B00",
-  R: "#D3202A",
-  G: "#00733E",
-};
+import { MANA_COLORS } from "~/components/deck/deck-detail-constants";
 
 export default function UserProfileScreen() {
   const { id, podId, podName } = useLocalSearchParams<{
@@ -49,10 +42,19 @@ export default function UserProfileScreen() {
   if (loading || !profile) {
     return (
       <>
-        <Stack.Screen options={{ headerShown: false }} />
+        <Stack.Screen
+          options={{
+            headerShown: !isDesktop,
+          headerShadowVisible: false,
+            title: "Profile",
+            headerStyle: { backgroundColor: isDark ? "#020617" : "#ffffff" },
+            headerTintColor: isDark ? "#e2e8f0" : "#1e293b",
+            headerBackTitle: "Back",
+          }}
+        />
         <SafeAreaView
           className={`flex-1 items-center justify-center ${isDark ? "bg-slate-950" : "bg-white"}`}
-          edges={isDesktop ? [] : ["top"]}
+          edges={[]}
         >
           <Text className={isDark ? "text-slate-400" : "text-slate-500"}>
             Loading...
@@ -64,25 +66,26 @@ export default function UserProfileScreen() {
 
   return (
     <View className="flex-1 flex-row">
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen
+        options={{
+          headerShown: !isDesktop,
+          headerShadowVisible: false,
+          title: displayName,
+          headerStyle: { backgroundColor: isDark ? "#020617" : "#ffffff" },
+          headerTintColor: isDark ? "#e2e8f0" : "#1e293b",
+          headerBackTitle: "Back",
+        }}
+      />
       {isDesktop && <DesktopSidebar />}
       <SafeAreaView
         className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}
-        edges={isDesktop ? [] : ["top"]}
+        edges={[]}
       >
-        {/* Header */}
-        <View className="flex-row items-center px-4 lg:px-6 py-3 lg:py-4">
-          <View className="flex-row items-center gap-3 flex-1">
-            {!isDesktop && (
-              <Pressable
-                onPress={() => router.back()}
-                className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
-              >
-                <ArrowLeft size={24} color={isDark ? "#94a3b8" : "#64748b"} />
-              </Pressable>
-            )}
-            <View className="flex-1">
-              {isDesktop && (
+        {/* Header - desktop only (mobile uses native stack header) */}
+        {isDesktop && (
+          <View className="flex-row items-center px-4 lg:px-6 py-3 lg:py-4">
+            <View className="flex-row items-center gap-3 flex-1">
+              <View className="flex-1">
                 <View className="flex-row items-center gap-2 mb-1">
                   <Pressable
                     onPress={() => router.push("/(tabs)/pods")}
@@ -126,16 +129,16 @@ export default function UserProfileScreen() {
                     {displayName}
                   </Text>
                 </View>
-              )}
-              <Text
-                className={`text-lg lg:text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
-                numberOfLines={1}
-              >
-                {displayName}
-              </Text>
+                <Text
+                  className={`text-lg lg:text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
+                  numberOfLines={1}
+                >
+                  {displayName}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         <ScrollView
           className="flex-1"

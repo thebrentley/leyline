@@ -11,9 +11,11 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { PodsService } from './pods.service';
 import { PodsEventsService } from './pods-events.service';
 import { PodsOfflineMembersService } from './pods-offline-members.service';
+import { EventChatService } from './event-chat.service';
 import { RsvpStatus } from '../../entities/event-rsvp.entity';
 
 @Controller('pods')
@@ -23,6 +25,7 @@ export class PodsController {
     private podsService: PodsService,
     private podsEventsService: PodsEventsService,
     private offlineMembersService: PodsOfflineMembersService,
+    private eventChatService: EventChatService,
   ) {}
 
   // ==================== Pod CRUD ====================
@@ -51,8 +54,12 @@ export class PodsController {
   }
 
   @Get('users/search')
-  async searchUsers(@Query('q') query: string) {
-    return this.podsService.searchUsers(query);
+  async searchUsers(
+    @Query('q') query: string,
+    @Query('podId') podId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.podsService.searchUsers(query, user.userId, podId);
   }
 
   @Get('users/:userId/profile')
@@ -61,6 +68,22 @@ export class PodsController {
     @CurrentUser() viewer: CurrentUserPayload,
   ) {
     return this.podsService.getUserProfile(userId, viewer.userId);
+  }
+
+  // ==================== Email Invites ====================
+
+  @Public()
+  @Get('invite-token/:token')
+  async getInviteByToken(@Param('token') token: string) {
+    return this.podsService.getInviteByToken(token);
+  }
+
+  @Post('invite-token/:token/accept')
+  async acceptInviteByToken(
+    @Param('token') token: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.podsService.acceptInviteByToken(token, user.userId);
   }
 
   @Get(':podId')
@@ -124,6 +147,33 @@ export class PodsController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.podsService.respondToInvite(inviteId, user.userId, body.accept);
+  }
+
+  @Post(':podId/invite-email')
+  async inviteByEmail(
+    @Param('podId') podId: string,
+    @Body() body: { email: string },
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.podsService.inviteByEmail(podId, user.userId, body.email);
+  }
+
+  @Delete(':podId/invites/:inviteId')
+  async rescindInvite(
+    @Param('podId') podId: string,
+    @Param('inviteId') inviteId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.podsService.rescindInvite(podId, inviteId, user.userId);
+  }
+
+  @Post(':podId/invites/:inviteId/resend')
+  async resendInviteEmail(
+    @Param('podId') podId: string,
+    @Param('inviteId') inviteId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.podsService.resendInviteEmail(podId, inviteId, user.userId);
   }
 
   // ==================== Member Management ====================
@@ -349,6 +399,37 @@ export class PodsController {
     );
   }
 
+  // ==================== Event Chat ====================
+
+  @Get(':podId/events/:eventId/chat')
+  async getChatMessages(
+    @Param('podId') podId: string,
+    @Param('eventId') eventId: string,
+    @Query('before') before: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.eventChatService.getMessages(podId, eventId, user.userId, {
+      before,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
+  @Post(':podId/events/:eventId/chat')
+  async sendChatMessage(
+    @Param('podId') podId: string,
+    @Param('eventId') eventId: string,
+    @Body() body: { content: string },
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.eventChatService.sendMessage(
+      podId,
+      eventId,
+      user.userId,
+      body.content,
+    );
+  }
+
   // ==================== Member Decks ====================
 
   @Get(':podId/members/:userId/decks')
@@ -358,6 +439,24 @@ export class PodsController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.podsService.getMemberDecks(podId, user.userId, userId);
+  }
+
+  // ==================== Insights ====================
+
+  @Get(':podId/insights/member-stats')
+  async getMemberStats(
+    @Param('podId') podId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.podsEventsService.getMemberStats(podId, user.userId);
+  }
+
+  @Get(':podId/insights/deck-stats')
+  async getDeckStats(
+    @Param('podId') podId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.podsEventsService.getDeckStats(podId, user.userId);
   }
 
   // ==================== Game Results ====================
@@ -370,9 +469,11 @@ export class PodsController {
     body: {
       startedAt: string;
       endedAt: string;
-      winnerName: string;
+      winnerUserId: string | null;
       players: Array<{
-        name: string;
+        userId: string | null;
+        deckName: string | null;
+        deckId: string | null;
         finalLife: number;
         finalPoison: number;
         finalCommanderTax: number;

@@ -26,12 +26,16 @@ export class PodGameResult {
   @Column({ name: 'ended_at', type: 'timestamp with time zone' })
   endedAt: Date;
 
-  @Column({ name: 'winner_user_id', nullable: true })
+  @Column({ name: 'winner_user_id', type: 'varchar', nullable: true })
   winnerUserId: string | null;
+
+  @Column({ name: 'winner_offline_member_id', type: 'uuid', nullable: true })
+  winnerOfflineMemberId: string | null;
 
   @Column({ type: 'jsonb' })
   players: Array<{
     userId: string | null;
+    offlineMemberId?: string | null;
     deckName: string | null;
     deckId: string | null;
     finalLife: number;

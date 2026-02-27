@@ -53,8 +53,14 @@ export class GraphAnalysisService {
       centrality: centrality[i],
     }));
 
-    // Label propagation community detection
-    const clusters = this.labelPropagation(adjacency, names);
+    // Build filtered adjacency for clustering (only strong edges form communities)
+    const g = GRAPH_SCORING;
+    const clusterAdj: number[][] = Array.from({ length: n }, (_, i) =>
+      adjacency[i].map((w) => (w >= g.clusterEdgeMinWeight ? w : 0)),
+    );
+
+    // Overlapping community detection
+    const clusters = this.overlapClustering(clusterAdj, names);
 
     // Calculate metrics
     const possibleEdges = (n * (n - 1)) / 2;
@@ -217,45 +223,37 @@ export class GraphAnalysisService {
   }
 
   /**
-   * Label propagation community detection.
-   * Each node starts with its own label. Iteratively, each node adopts the
-   * most common label among its weighted neighbors.
+   * Overlapping community detection.
+   * Step 1: Label propagation for initial hard partition (seed clusters).
+   * Step 2: Overlap pass — cards with enough strong edges into another
+   *         cluster get added there too, so bridge cards appear in multiple clusters.
    */
-  private labelPropagation(
+  private overlapClustering(
     adjacency: number[][],
     names: string[],
   ): Array<{ cards: string[]; theme: string }> {
     const n = names.length;
-    const labels = Array.from({ length: n }, (_, i) => i);
+    const g = GRAPH_SCORING;
 
-    // Iterate until convergence or max iterations
+    // Step 1: Label propagation for seed clusters
+    const labels = Array.from({ length: n }, (_, i) => i);
     const MAX_ITER = 15;
     for (let iter = 0; iter < MAX_ITER; iter++) {
       let changed = false;
-
-      // Process nodes in random order
       const order = Array.from({ length: n }, (_, i) => i);
       for (let i = order.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [order[i], order[j]] = [order[j], order[i]];
       }
-
       for (const node of order) {
         const labelWeights = new Map<number, number>();
-
         for (let neighbor = 0; neighbor < n; neighbor++) {
           if (adjacency[node][neighbor] > 0) {
             const label = labels[neighbor];
-            labelWeights.set(
-              label,
-              (labelWeights.get(label) || 0) + adjacency[node][neighbor],
-            );
+            labelWeights.set(label, (labelWeights.get(label) || 0) + adjacency[node][neighbor]);
           }
         }
-
         if (labelWeights.size === 0) continue;
-
-        // Find the label with highest weight
         let bestLabel = labels[node];
         let bestWeight = 0;
         for (const [label, weight] of labelWeights) {
@@ -264,30 +262,56 @@ export class GraphAnalysisService {
             bestLabel = label;
           }
         }
-
         if (bestLabel !== labels[node]) {
           labels[node] = bestLabel;
           changed = true;
         }
       }
-
       if (!changed) break;
     }
 
-    // Group nodes by label
-    const groups = new Map<number, string[]>();
+    // Build initial cluster membership (label → node indices)
+    const clusterMembers = new Map<number, Set<number>>();
     for (let i = 0; i < n; i++) {
-      if (!groups.has(labels[i])) groups.set(labels[i], []);
-      groups.get(labels[i])!.push(names[i]);
+      if (!clusterMembers.has(labels[i])) clusterMembers.set(labels[i], new Set());
+      clusterMembers.get(labels[i])!.add(i);
     }
 
-    // Convert to clusters (only include groups with 2+ cards)
-    return Array.from(groups.values())
-      .filter((cards) => cards.length >= 2)
-      .map((cards) => ({
-        cards,
-        theme: `synergy-cluster-${cards.length}`,
-      }));
+    // Only keep clusters with 2+ members as candidates for overlap
+    const clusterIds = Array.from(clusterMembers.keys()).filter(
+      (id) => clusterMembers.get(id)!.size >= 2,
+    );
+
+    // Step 2: Overlap pass — add nodes to additional clusters they connect to strongly
+    // Use a snapshot of original membership so additions don't cascade
+    const originalMembers = new Map<number, ReadonlySet<number>>();
+    for (const id of clusterIds) {
+      originalMembers.set(id, new Set(clusterMembers.get(id)!));
+    }
+
+    for (let node = 0; node < n; node++) {
+      for (const clusterId of clusterIds) {
+        const members = originalMembers.get(clusterId)!;
+        if (members.has(node)) continue; // already in this cluster
+
+        // Count strong edges from this node into this cluster
+        let edgesInto = 0;
+        for (const member of members) {
+          if (adjacency[node][member] > 0) edgesInto++;
+        }
+        if (edgesInto >= g.clusterOverlapMinEdges) {
+          clusterMembers.get(clusterId)!.add(node);
+        }
+      }
+    }
+
+    // Convert to output (clusters with 2+ cards)
+    return clusterIds
+      .filter((id) => clusterMembers.get(id)!.size >= 2)
+      .map((id) => {
+        const cards = Array.from(clusterMembers.get(id)!).map((i) => names[i]);
+        return { cards, theme: `synergy-cluster-${cards.length}` };
+      });
   }
 
   private computeScores(

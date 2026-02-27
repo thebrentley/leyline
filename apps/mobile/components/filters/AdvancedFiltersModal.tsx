@@ -1,7 +1,9 @@
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { X, RotateCcw } from 'lucide-react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, RotateCcw } from 'lucide-react-native';
+import { GlassSheet } from '~/components/ui/GlassSheet';
 import { ColorFilter } from './ColorFilter';
 import { RarityFilter } from './RarityFilter';
 import { ManaValueFilter } from './ManaValueFilter';
@@ -48,16 +50,8 @@ export function AdvancedFiltersModal({
     filters.cardTypes.length > 0;
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <View
-        className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-white'}`}
-        style={{ paddingTop: insets.top }}
-      >
+    <GlassSheet visible={visible} onDismiss={onClose} isDark={isDark}>
+      <View style={{ flex: 1 }}>
         {/* Header */}
         <View
           className={`flex-row items-center justify-between px-4 py-3 border-b ${
@@ -94,8 +88,7 @@ export function AdvancedFiltersModal({
         </View>
 
         {/* Filters Content */}
-        <ScrollView
-          className="flex-1"
+        <BottomSheetScrollView
           contentContainerStyle={{
             padding: 16,
             gap: 24,
@@ -154,7 +147,7 @@ export function AdvancedFiltersModal({
             values={filters.cardTypes}
             onChange={(cardTypes) => onFiltersChange({ ...filters, cardTypes })}
           />
-        </ScrollView>
+        </BottomSheetScrollView>
 
         {/* Action Buttons */}
         <View
@@ -200,6 +193,6 @@ export function AdvancedFiltersModal({
           </Pressable>
         </View>
       </View>
-    </Modal>
+    </GlassSheet>
   );
 }

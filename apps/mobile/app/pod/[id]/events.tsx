@@ -1,8 +1,8 @@
 import { router, Stack, useLocalSearchParams, useFocusEffect } from "expo-router";
 import {
-  ArrowLeft,
   Calendar,
   Check,
+  ChevronLeft,
   MapPin,
   Plus,
   Users,
@@ -12,6 +12,7 @@ import { useColorScheme } from "nativewind";
 import { useCallback, useState } from "react";
 import {
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   Text,
@@ -21,6 +22,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { podsApi, type PodEventSummary } from "~/lib/api";
 import { useResponsive } from "~/hooks/useResponsive";
 import { DesktopSidebar } from "~/components/web/DesktopSidebar";
+import { CreateEventSheet } from "~/components/ui/CreateEventSheet";
+import { HeaderButton } from "~/components/ui/HeaderButton";
+
+const isWeb = Platform.OS === "web";
 
 function EventCard({
   event,
@@ -132,6 +137,7 @@ export default function EventsListScreen() {
   const [podName, setPodName] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showCreateEvent, setShowCreateEvent] = useState(false);
 
   const loadEvents = useCallback(async () => {
     if (!id) return;
@@ -158,25 +164,49 @@ export default function EventsListScreen() {
 
   return (
     <View className="flex-1 flex-row">
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen
+        options={{
+          headerShown: !isDesktop,
+          headerShadowVisible: false,
+          title: "Events",
+          headerStyle: { backgroundColor: isDark ? "#020617" : "#ffffff" },
+          headerTintColor: isDark ? "#e2e8f0" : "#1e293b",
+          headerLeft: () => (
+            <Pressable
+              onPress={() => router.push(`/pod/${id}`)}
+              hitSlop={8}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginRight: 8,
+              }}
+            >
+              <ChevronLeft size={28} color="#7C3AED" />
+              <Text style={{ color: "#7C3AED", fontSize: 17 }}>{podName || "Back"}</Text>
+            </Pressable>
+          ),
+          headerRight: () => (
+            <HeaderButton
+              icon={Plus}
+              variant="ghost"
+              onPress={() => setShowCreateEvent(true)}
+              iconSize={22}
+              hitSlop={8}
+            />
+          ),
+          ...(isWeb && { headerRightContainerStyle: { paddingRight: 16 } }),
+        }}
+      />
       {isDesktop && <DesktopSidebar />}
       <SafeAreaView
         className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}
-        edges={isDesktop ? [] : ["top"]}
+        edges={[]}
       >
-        {/* Header */}
-        <View className="flex-row items-center justify-between px-4 lg:px-6 py-3 lg:py-4">
-          <View className="flex-row items-center gap-3 flex-1">
-            {!isDesktop && (
-              <Pressable
-                onPress={() => router.back()}
-                className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
-              >
-                <ArrowLeft size={24} color={isDark ? "#94a3b8" : "#64748b"} />
-              </Pressable>
-            )}
-            <View className="flex-1">
-              {isDesktop && (
+        {/* Header - desktop only (mobile uses native stack header) */}
+        {isDesktop && (
+          <View className="flex-row items-center justify-between px-4 lg:px-6 py-3 lg:py-4">
+            <View className="flex-row items-center gap-3 flex-1">
+              <View className="flex-1">
                 <View className="flex-row items-center gap-2 mb-1">
                   <Pressable onPress={() => router.push("/(tabs)/pods")} className="hover:underline">
                     <Text className={`text-sm ${isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"}`}>
@@ -194,22 +224,22 @@ export default function EventsListScreen() {
                     Events
                   </Text>
                 </View>
-              )}
-              <Text
-                className={`text-lg lg:text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
-              >
-                Events
-              </Text>
+                <Text
+                  className={`text-lg lg:text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
+                >
+                  Events
+                </Text>
+              </View>
             </View>
+            <Pressable
+              onPress={() => setShowCreateEvent(true)}
+              hitSlop={8}
+              className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
+            >
+              <Plus size={22} color={isDark ? "#e2e8f0" : "#1e293b"} />
+            </Pressable>
           </View>
-          <Pressable
-            onPress={() => router.push(`/pod/${id}/event/create`)}
-            hitSlop={8}
-            className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
-          >
-            <Plus size={22} color={isDark ? "#e2e8f0" : "#1e293b"} />
-          </Pressable>
-        </View>
+        )}
 
         {loading ? (
           <View className="flex-1 items-center justify-center">
@@ -226,7 +256,7 @@ export default function EventsListScreen() {
               No events yet
             </Text>
             <Pressable
-              onPress={() => router.push(`/pod/${id}/event/create`)}
+              onPress={() => setShowCreateEvent(true)}
               className="rounded-lg bg-purple-600 px-6 py-3"
             >
               <Text className="font-semibold text-white">
@@ -248,6 +278,11 @@ export default function EventsListScreen() {
           />
         )}
       </SafeAreaView>
+      <CreateEventSheet
+        visible={showCreateEvent}
+        onDismiss={() => setShowCreateEvent(false)}
+        podId={id!}
+      />
     </View>
   );
 }

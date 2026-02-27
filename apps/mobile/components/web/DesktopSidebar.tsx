@@ -9,12 +9,14 @@ import {
   Layers,
   Library,
   Link2,
+  MessageSquare,
   Moon,
   Users,
 } from "lucide-react-native";
 import { useState, useCallback } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
 import { StyledSwitch } from "~/components/ui/StyledSwitch";
+import { FeedbackDialog } from "~/components/ui/FeedbackDialog";
 import { useAuth } from "~/contexts/AuthContext";
 import { usePersistedColorScheme } from "~/hooks/usePersistedColorScheme";
 import { podsApi, type PodSummary } from "~/lib/api";
@@ -109,6 +111,7 @@ export function DesktopSidebar() {
       return false;
     }
   });
+  const [showFeedback, setShowFeedback] = useState(false);
   const [pods, setPods] = useState<PodSummary[]>([]);
   const [podsExpanded, setPodsExpanded] = useState(() => {
     try {
@@ -484,7 +487,20 @@ export function DesktopSidebar() {
           </View>
         )}
 
+        <SidebarItem
+          icon={<MessageSquare size={20} color={iconColor} />}
+          label="Send Feedback"
+          onPress={() => setShowFeedback(true)}
+          isDark={isDark}
+          isCollapsed={isCollapsed}
+        />
+
       </ScrollView>
+
+      <FeedbackDialog
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+      />
 
       {/* User Profile */}
       <Pressable

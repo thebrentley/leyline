@@ -32,6 +32,7 @@ export interface DensityStats {
   tokenGeneratorCount: number;
   counterTrackingCount: number;
   recursionCount: number;
+  forcedSacrificeCount: number;
 }
 
 export interface DensityResult {
@@ -82,6 +83,7 @@ export class DensityAnalysisService {
     let tokenGeneratorCount = 0;
     let counterTrackingCount = 0;
     let recursionCount = 0;
+    let forcedSacrificeCount = 0;
 
     const rampTags = new Set(['mana-rock', 'mana-dork', 'land-ramp', 'cost-reducer', 'ritual', 'mana-doubler']);
     const drawTags = new Set(['card-draw', 'impulse-draw', 'wheel']);
@@ -90,6 +92,7 @@ export class DensityAnalysisService {
     const tutorTags = new Set(['tutor-any', 'tutor-creature', 'tutor-artifact', 'tutor-land', 'tutor-instant-sorcery']);
     const tokenTags = new Set(['token-generator', 'token-on-death', 'token-on-etb', 'token-on-attack', 'token-mass']);
     const recursionTags = new Set(['recursive-creature', 'recursion-engine', 'reanimation']);
+    const forcedSacTags = new Set(['annihilator', 'forced-sacrifice']);
 
     for (const card of cards) {
       const isLand = card.typeLine.toLowerCase().includes('land');
@@ -112,6 +115,7 @@ export class DensityAnalysisService {
       if (card.tags.some((t) => tutorTags.has(t))) tutorCount++;
       if (card.tags.some((t) => tokenTags.has(t))) tokenGeneratorCount++;
       if (card.tags.some((t) => recursionTags.has(t))) recursionCount++;
+      if (card.tags.some((t) => forcedSacTags.has(t))) forcedSacrificeCount++;
 
       // Creature stats
       if (isCreature) {
@@ -163,6 +167,7 @@ export class DensityAnalysisService {
       tokenGeneratorCount,
       counterTrackingCount,
       recursionCount,
+      forcedSacrificeCount,
     };
   }
 
@@ -192,6 +197,10 @@ export class DensityAnalysisService {
     if (stats.counterspellCount > f.counterspellHeavyThreshold) {
       salt += f.counterspellHeavyBonus;
     }
+    // Forced sacrifice density (annihilator, Fleshbag effects) — 3+ creates oppressive salt
+    if (stats.forcedSacrificeCount > 2) {
+      salt += Math.min((stats.forcedSacrificeCount - 2) * 4, 20);
+    }
 
     // === Fear ===
     let fear = 0;
@@ -205,6 +214,8 @@ export class DensityAnalysisService {
       fear += f.evasionRatioBonus;
     }
     fear += Math.min(stats.tokenGeneratorCount * f.tokenGeneratorMultiplier, f.tokenGeneratorCap);
+    // Forced sacrifice creatures are board-threatening — density of them is scary
+    fear += Math.min(stats.forcedSacrificeCount * 3, 15);
 
     // === Airtime ===
     let airtime = 0;
@@ -252,6 +263,7 @@ export class DensityAnalysisService {
       tokenGeneratorCount: 0,
       counterTrackingCount: 0,
       recursionCount: 0,
+      forcedSacrificeCount: 0,
     };
   }
 }

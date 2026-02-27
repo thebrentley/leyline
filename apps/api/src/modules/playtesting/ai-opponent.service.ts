@@ -1059,7 +1059,7 @@ Analyze the game state and choose the best action. Respond in JSON format with a
 
         const costPart = trimmed.substring(0, colonIdx);
         // Check for mana symbols other than {T}
-        const manaSymbols = costPart.match(/\{[WUBRGC\d]+\}/gi) || [];
+        const manaSymbols = (costPart.match(/\{[WUBRGC\d]+\}/gi) || []) as string[];
         return manaSymbols.some((s) => s.toUpperCase() !== "{T}");
       }
     }

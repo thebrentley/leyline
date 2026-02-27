@@ -1,6 +1,6 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { BottomSheetFlatList, BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import {
-  ArrowLeft,
   DollarSign,
   ExternalLink,
 } from "lucide-react-native";
@@ -16,7 +16,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { GlassSheet } from "~/components/ui/GlassSheet";
 import { decksApi, type DeckCard, type DeckDetail } from "~/lib/api";
 import { useResponsive } from "~/hooks/useResponsive";
 import { DesktopSidebar } from "~/components/web/DesktopSidebar";
@@ -162,25 +162,58 @@ export default function PricePage() {
     </Pressable>
   );
 
+  const overviewContent = (
+    <>
+      {/* Rarity Breakdown */}
+      {Object.entries(priceBreakdown.byRarity)
+        .sort((a, b) => b[1].value - a[1].value)
+        .map(([rarity, data]) => (
+          <View
+            key={rarity}
+            className={`flex-row items-center justify-between py-4 border-b ${
+              isDark ? "border-slate-800" : "border-slate-200"
+            }`}
+          >
+            <View className="flex-row items-center gap-3">
+              <View
+                className="h-4 w-4 rounded-full"
+                style={{ backgroundColor: rarityColors[rarity] || "#64748b" }}
+              />
+              <Text className={`capitalize font-medium ${isDark ? "text-white" : "text-slate-900"}`}>
+                {rarity}
+              </Text>
+              <Text className={`text-sm ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                ({data.count} cards)
+              </Text>
+            </View>
+            <Text className="text-purple-500 font-bold">
+              ${data.value.toFixed(2)}
+            </Text>
+          </View>
+        ))}
+
+      {/* TCGPlayer Link */}
+      <Pressable
+        onPress={() => Linking.openURL("https://www.tcgplayer.com")}
+        className={`flex-row items-center justify-center gap-2 mt-6 mb-6 py-4 rounded-xl ${
+          isDark ? "bg-slate-800 lg:hover:bg-slate-700" : "bg-slate-100 lg:hover:bg-slate-200"
+        }`}
+      >
+        <ExternalLink size={18} color={isDark ? "#94a3b8" : "#64748b"} />
+        <Text className={isDark ? "text-slate-300" : "text-slate-600"}>
+          Shop on TCGPlayer
+        </Text>
+      </Pressable>
+    </>
+  );
+
   const pageContent = (
     <>
-      {/* Header */}
-      <View className={`flex-row items-center justify-between px-4 lg:px-6 py-3 lg:py-4 ${!isDesktop ? "border-b border-slate-200 dark:border-slate-800" : ""}`}>
-        <View className="flex-row items-center gap-3 flex-1">
-          {/* Mobile: Back arrow */}
-          {!isDesktop && (
-            <Pressable
-              onPress={() => router.back()}
-              className={`rounded-full p-2 ${
-                isDark ? "active:bg-slate-800" : "active:bg-slate-100"
-              }`}
-            >
-              <ArrowLeft size={24} color={isDark ? "#94a3b8" : "#64748b"} />
-            </Pressable>
-          )}
-          <View className="flex-1">
-            {/* Desktop: Breadcrumb */}
-            {isDesktop && (
+      {/* Header - Desktop only (mobile uses native Stack header) */}
+      {isDesktop && (
+        <View className="flex-row items-center justify-between px-6 py-4">
+          <View className="flex-row items-center gap-3 flex-1">
+            <View className="flex-1">
               <View className="flex-row items-center gap-2 mb-1">
                 <Pressable
                   onPress={() => router.push("/(tabs)/decks")}
@@ -204,194 +237,167 @@ export default function PricePage() {
                   Price Analysis
                 </Text>
               </View>
-            )}
-            <View className="flex-row items-center gap-2">
-              <DollarSign size={isDesktop ? 28 : 20} color="#7C3AED" />
+              <View className="flex-row items-center gap-2">
+                <DollarSign size={28} color="#7C3AED" />
+                <Text
+                  className={`text-2xl font-bold ${
+                    isDark ? "text-white" : "text-slate-900"
+                  }`}
+                >
+                  Price Analysis
+                </Text>
+              </View>
               <Text
-                className={`text-lg lg:text-2xl font-bold ${
-                  isDark ? "text-white" : "text-slate-900"
-                }`}
+                className={`text-sm mt-0.5 ${isDark ? "text-slate-500" : "text-slate-400"}`}
               >
-                Price Analysis
+                {deckName}
               </Text>
             </View>
-            <Text
-              className={`text-xs lg:text-sm mt-0.5 ${isDark ? "text-slate-500" : "text-slate-400"}`}
-            >
-              {deckName}
+          </View>
+        </View>
+      )}
+
+      {/* Total Value Header */}
+      <View className={`px-4 lg:px-6 py-6 ${isDark ? "bg-slate-900" : "bg-slate-50"}`}>
+        <Text className={`text-center text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+          Total Deck Value
+        </Text>
+        <Text className="text-center text-4xl font-bold text-purple-500 mt-1">
+          ${priceBreakdown.totalValue.toFixed(2)}
+        </Text>
+        <View className="flex-row justify-center gap-6 mt-4">
+          <View className="items-center">
+            <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+              Cards
+            </Text>
+            <Text className={`font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+              {allCards.reduce((sum, c) => sum + c.quantity, 0)}
             </Text>
           </View>
+          <View className="items-center">
+            <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+              Avg. Price
+            </Text>
+            <Text className={`font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+              ${priceBreakdown.averageCardPrice.toFixed(2)}
+            </Text>
+          </View>
+          {priceBreakdown.totalFoilValue > 0 && (
+            <View className="items-center">
+              <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                Foil Value
+              </Text>
+              <Text className="font-bold text-purple-400">
+                ${priceBreakdown.totalFoilValue.toFixed(2)}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
 
-      {loading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#7C3AED" />
-        </View>
-      ) : (
-        <>
-          {/* Total Value Header */}
-          <View className={`px-4 lg:px-6 py-6 ${isDark ? "bg-slate-900" : "bg-slate-50"}`}>
-            <Text className={`text-center text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-              Total Deck Value
-            </Text>
-            <Text className="text-center text-4xl font-bold text-purple-500 mt-1">
-              ${priceBreakdown.totalValue.toFixed(2)}
-            </Text>
-            <View className="flex-row justify-center gap-6 mt-4">
-              <View className="items-center">
-                <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-                  Cards
-                </Text>
-                <Text className={`font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
-                  {allCards.reduce((sum, c) => sum + c.quantity, 0)}
-                </Text>
-              </View>
-              <View className="items-center">
-                <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-                  Avg. Price
-                </Text>
-                <Text className={`font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
-                  ${priceBreakdown.averageCardPrice.toFixed(2)}
-                </Text>
-              </View>
-              {priceBreakdown.totalFoilValue > 0 && (
-                <View className="items-center">
-                  <Text className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-                    Foil Value
-                  </Text>
-                  <Text className="font-bold text-purple-400">
-                    ${priceBreakdown.totalFoilValue.toFixed(2)}
-                  </Text>
-                </View>
-              )}
+      {/* Tabs */}
+      <View className={`flex-row border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
+        <Pressable
+          onPress={() => setActiveTab("overview")}
+          className={`flex-1 py-3 items-center ${
+            activeTab === "overview"
+              ? "border-b-2 border-purple-500"
+              : ""
+          }`}
+        >
+          <Text
+            className={`font-medium ${
+              activeTab === "overview"
+                ? "text-purple-500"
+                : isDark
+                  ? "text-slate-400"
+                  : "text-slate-500"
+            }`}
+          >
+            By Rarity
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setActiveTab("expensive")}
+          className={`flex-1 py-3 items-center ${
+            activeTab === "expensive"
+              ? "border-b-2 border-purple-500"
+              : ""
+          }`}
+        >
+          <Text
+            className={`font-medium ${
+              activeTab === "expensive"
+                ? "text-purple-500"
+                : isDark
+                  ? "text-slate-400"
+                  : "text-slate-500"
+            }`}
+          >
+            Most Expensive
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setActiveTab("cheap")}
+          className={`flex-1 py-3 items-center ${
+            activeTab === "cheap"
+              ? "border-b-2 border-purple-500"
+              : ""
+          }`}
+        >
+          <Text
+            className={`font-medium ${
+              activeTab === "cheap"
+                ? "text-purple-500"
+                : isDark
+                  ? "text-slate-400"
+                  : "text-slate-500"
+            }`}
+          >
+            Budget Cards
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Tab Content */}
+      {activeTab === "overview" ? (
+        isDesktop ? (
+          <ScrollView className="flex-1 px-4 lg:px-6 pt-4" contentContainerStyle={{ paddingBottom: 32 }}>
+            {overviewContent}
+          </ScrollView>
+        ) : (
+          <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32 }}>
+            {overviewContent}
+          </BottomSheetScrollView>
+        )
+      ) : isDesktop ? (
+        <FlatList
+          data={activeTab === "expensive" ? priceBreakdown.mostExpensive : priceBreakdown.leastExpensive}
+          keyExtractor={(item) => `${item.name}-${item.setCode}`}
+          renderItem={renderCardItem}
+          ListEmptyComponent={
+            <View className="items-center py-12">
+              <DollarSign size={48} color={isDark ? "#334155" : "#cbd5e1"} />
+              <Text className={`mt-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                No price data available
+              </Text>
             </View>
-          </View>
-
-          {/* Tabs */}
-          <View className={`flex-row border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
-            <Pressable
-              onPress={() => setActiveTab("overview")}
-              className={`flex-1 py-3 items-center ${
-                activeTab === "overview"
-                  ? "border-b-2 border-purple-500"
-                  : ""
-              }`}
-            >
-              <Text
-                className={`font-medium ${
-                  activeTab === "overview"
-                    ? "text-purple-500"
-                    : isDark
-                      ? "text-slate-400"
-                      : "text-slate-500"
-                }`}
-              >
-                By Rarity
+          }
+        />
+      ) : (
+        <BottomSheetFlatList<DeckCard & { totalPrice: number }>
+          data={activeTab === "expensive" ? priceBreakdown.mostExpensive : priceBreakdown.leastExpensive}
+          keyExtractor={(item) => `${item.name}-${item.setCode}`}
+          renderItem={renderCardItem}
+          ListEmptyComponent={
+            <View className="items-center py-12">
+              <DollarSign size={48} color={isDark ? "#334155" : "#cbd5e1"} />
+              <Text className={`mt-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                No price data available
               </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setActiveTab("expensive")}
-              className={`flex-1 py-3 items-center ${
-                activeTab === "expensive"
-                  ? "border-b-2 border-purple-500"
-                  : ""
-              }`}
-            >
-              <Text
-                className={`font-medium ${
-                  activeTab === "expensive"
-                    ? "text-purple-500"
-                    : isDark
-                      ? "text-slate-400"
-                      : "text-slate-500"
-                }`}
-              >
-                Most Expensive
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setActiveTab("cheap")}
-              className={`flex-1 py-3 items-center ${
-                activeTab === "cheap"
-                  ? "border-b-2 border-purple-500"
-                  : ""
-              }`}
-            >
-              <Text
-                className={`font-medium ${
-                  activeTab === "cheap"
-                    ? "text-purple-500"
-                    : isDark
-                      ? "text-slate-400"
-                      : "text-slate-500"
-                }`}
-              >
-                Budget Cards
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* Tab Content */}
-          {activeTab === "overview" ? (
-            <ScrollView className="flex-1 px-4 lg:px-6 pt-4">
-              {/* Rarity Breakdown */}
-              {Object.entries(priceBreakdown.byRarity)
-                .sort((a, b) => b[1].value - a[1].value)
-                .map(([rarity, data]) => (
-                  <View
-                    key={rarity}
-                    className={`flex-row items-center justify-between py-4 border-b ${
-                      isDark ? "border-slate-800" : "border-slate-200"
-                    }`}
-                  >
-                    <View className="flex-row items-center gap-3">
-                      <View
-                        className="h-4 w-4 rounded-full"
-                        style={{ backgroundColor: rarityColors[rarity] || "#64748b" }}
-                      />
-                      <Text className={`capitalize font-medium ${isDark ? "text-white" : "text-slate-900"}`}>
-                        {rarity}
-                      </Text>
-                      <Text className={`text-sm ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-                        ({data.count} cards)
-                      </Text>
-                    </View>
-                    <Text className="text-purple-500 font-bold">
-                      ${data.value.toFixed(2)}
-                    </Text>
-                  </View>
-                ))}
-
-              {/* TCGPlayer Link */}
-              <Pressable
-                onPress={() => Linking.openURL("https://www.tcgplayer.com")}
-                className={`flex-row items-center justify-center gap-2 mt-6 mb-6 py-4 rounded-xl ${
-                  isDark ? "bg-slate-800 lg:hover:bg-slate-700" : "bg-slate-100 lg:hover:bg-slate-200"
-                }`}
-              >
-                <ExternalLink size={18} color={isDark ? "#94a3b8" : "#64748b"} />
-                <Text className={isDark ? "text-slate-300" : "text-slate-600"}>
-                  Shop on TCGPlayer
-                </Text>
-              </Pressable>
-            </ScrollView>
-          ) : (
-            <FlatList
-              data={activeTab === "expensive" ? priceBreakdown.mostExpensive : priceBreakdown.leastExpensive}
-              keyExtractor={(item) => `${item.name}-${item.setCode}`}
-              renderItem={renderCardItem}
-              ListEmptyComponent={
-                <View className="items-center py-12">
-                  <DollarSign size={48} color={isDark ? "#334155" : "#cbd5e1"} />
-                  <Text className={`mt-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                    No price data available
-                  </Text>
-                </View>
-              }
-            />
-          )}
-        </>
+            </View>
+          }
+        />
       )}
     </>
   );
@@ -400,18 +406,38 @@ export default function PricePage() {
   if (isDesktop) {
     return (
       <View className="flex-1 flex-row">
+        <Stack.Screen options={{ headerShown: false }} />
         <DesktopSidebar />
         <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
-          {pageContent}
+          {loading ? (
+            <View className="flex-1 items-center justify-center">
+              <ActivityIndicator size="large" color="#7C3AED" />
+            </View>
+          ) : (
+            pageContent
+          )}
         </View>
       </View>
     );
   }
 
-  // Mobile Layout
+  // Mobile Layout - GlassSheet inline inside transparentModal (presentation set in _layout)
   return (
-    <SafeAreaView className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
-      {pageContent}
-    </SafeAreaView>
+    <GlassSheet visible={true} onDismiss={() => router.back()} isDark={isDark} snapPoints={["90%"]} inline>
+      <View className={`flex-row items-center px-4 py-3 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
+        <Text className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+          Price Analysis
+        </Text>
+      </View>
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator size="large" color="#7C3AED" />
+        </View>
+      ) : (
+        <View style={{ flex: 1 }}>
+          {pageContent}
+        </View>
+      )}
+    </GlassSheet>
   );
 }

@@ -1,3 +1,4 @@
+import { BottomSheetView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { X } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useEffect, useState } from "react";
@@ -5,13 +6,12 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  Modal,
   Pressable,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { cardsApi, type CardSearchResult } from "~/lib/api";
+import { GlassSheet } from "./ui/GlassSheet";
 
 interface ArtCropPickerDialogProps {
   visible: boolean;
@@ -86,15 +86,8 @@ export function ArtCropPickerDialog({
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <View
-        className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}
-      >
+    <GlassSheet visible={visible} onDismiss={onClose} isDark={isDark}>
+      <BottomSheetView style={{ flex: 1 }}>
         {/* Header */}
         <View
           className={`flex-row items-center justify-between border-b px-4 py-4 ${
@@ -120,7 +113,7 @@ export function ArtCropPickerDialog({
 
         {/* Search Input */}
         <View className="px-4 py-3">
-          <TextInput
+          <BottomSheetTextInput
             value={search}
             onChangeText={setSearch}
             placeholder="Search for a card..."
@@ -207,7 +200,7 @@ export function ArtCropPickerDialog({
             )}
           />
         )}
-      </View>
-    </Modal>
+      </BottomSheetView>
+    </GlassSheet>
   );
 }

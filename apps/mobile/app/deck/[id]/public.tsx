@@ -1,6 +1,6 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { BottomSheetView } from "@gorhom/bottom-sheet";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import {
-  ArrowLeft,
   BarChart3,
   ChevronDown,
   ChevronLeft,
@@ -28,10 +28,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   decksApi,
   deckRankingApi,
@@ -41,17 +38,11 @@ import {
 } from "~/lib/api";
 import { cache, CACHE_KEYS, CACHE_TTL, cachedFetch } from "~/lib/cache";
 import { useResponsive } from "~/hooks/useResponsive";
+import { GlassSheet } from "~/components/ui/GlassSheet";
 import { DesktopSidebar } from "~/components/web/DesktopSidebar";
 import { DeckScoreChip } from "~/components/ranking/DeckScoreChip";
-
-// Color identity colors
-const MANA_COLORS: Record<string, string> = {
-  W: "#F9FAF4",
-  U: "#0E68AB",
-  B: "#150B00",
-  R: "#D3202A",
-  G: "#00733E",
-};
+import { MANA_COLORS } from "~/components/deck/deck-detail-constants";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 
 // View mode options
 type ViewMode = "list" | "grid" | "stacks-text" | "stacks-cards";
@@ -679,19 +670,11 @@ export default function PublicDeckDetailScreen() {
 
   const pageContent = (
     <>
-      {/* Header */}
-      <View className="flex-row items-center justify-between px-4 lg:px-6 py-3 lg:py-4">
-        <View className="flex-row items-center gap-3 flex-1">
-          {!isDesktop && (
-            <Pressable
-              onPress={() => router.push("/(tabs)/explore")}
-              className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
-            >
-              <ArrowLeft size={24} color={isDark ? "#94a3b8" : "#64748b"} />
-            </Pressable>
-          )}
-          <View className="flex-1">
-            {isDesktop && (
+      {/* Header - Desktop only (mobile uses native Stack header) */}
+      {isDesktop && (
+        <View className="flex-row items-center justify-between px-6 py-4">
+          <View className="flex-row items-center gap-3 flex-1">
+            <View className="flex-1">
               <View className="flex-row items-center gap-2 mb-1">
                 <Pressable onPress={() => router.push("/(tabs)/explore")} className="hover:underline">
                   <Text className={`text-sm ${isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"}`}>
@@ -703,14 +686,13 @@ export default function PublicDeckDetailScreen() {
                   {deck?.name || "Loading..."}
                 </Text>
               </View>
-            )}
-            <Text
-              className={`text-lg lg:text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
-              numberOfLines={1}
-              style={{ flexShrink: 1 }}
-            >
-              {deck?.name || "Loading..."}
-            </Text>
+              <Text
+                className={`text-2xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}
+                numberOfLines={1}
+                style={{ flexShrink: 1 }}
+              >
+                {deck?.name || "Loading..."}
+              </Text>
             {deck && (
               <View className="flex-row items-center gap-2 lg:gap-3 mt-0.5 lg:mt-1">
                 {isDesktop && <ColorIdentityPills colors={deck.colorIdentity} isDark={isDark} />}
@@ -731,6 +713,34 @@ export default function PublicDeckDetailScreen() {
           </View>
         </View>
       </View>
+      )}
+
+      {/* Mobile metadata strip */}
+      {!isDesktop && deck && (
+        <View
+          className={`flex-row items-center gap-2 px-3 py-2 border-b ${
+            isDark ? "border-slate-800" : "border-slate-200"
+          }`}
+        >
+          <ColorIdentityPills colors={deck.colorIdentity} isDark={isDark} />
+          {deck.format && (
+            <Text className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              {deck.format}
+            </Text>
+          )}
+          <Text className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+            {deck.cardCount} cards
+          </Text>
+          {deckScores && (
+            <DeckScoreChip deckId={id!} deckName={deck.name} scores={deckScores} variant="inline" />
+          )}
+          {deck.ownerName && (
+            <Text className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              by {deck.ownerName}
+            </Text>
+          )}
+        </View>
+      )}
 
       {/* Sticky Toolbar */}
       <View
@@ -834,6 +844,7 @@ export default function PublicDeckDetailScreen() {
               autoFocus
               autoCapitalize="none"
               autoCorrect={false}
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
             />
             {searchQuery.length > 0 && (
               <Pressable onPress={() => setSearchQuery("")}>
@@ -1162,9 +1173,9 @@ export default function PublicDeckDetailScreen() {
       </Modal>
 
       {/* Card Detail Modal */}
-      <Modal visible={cardModalVisible} transparent={isDesktop} animationType={isDesktop ? "fade" : "slide"} onRequestClose={closeCardModal}>
-        {isDesktop ? (
-          /* Desktop: Dialog with backdrop */
+      {isDesktop ? (
+        <Modal visible={cardModalVisible} transparent animationType="fade" onRequestClose={closeCardModal}>
+          {/* Desktop: Dialog with backdrop */}
           <Pressable className="flex-1 bg-black/70 items-center justify-start pt-16 px-6 pb-6" onPress={closeCardModal}>
             <Pressable
               className={`max-w-5xl w-full max-h-[90vh] rounded-2xl ${isDark ? "bg-slate-900" : "bg-white"} shadow-2xl`}
@@ -1286,9 +1297,10 @@ export default function PublicDeckDetailScreen() {
               </ScrollView>
             </Pressable>
           </Pressable>
-        ) : (
-          /* Mobile: Full screen modal */
-          <View className="flex-1 bg-slate-950" style={{ paddingTop: insets.top }}>
+        </Modal>
+      ) : (
+        <GlassSheet visible={cardModalVisible} onDismiss={closeCardModal} isDark={isDark}>
+          <BottomSheetView style={{ flex: 1 }}>
             <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-800">
               <View className="flex-row items-center gap-2 flex-1">
                 {selectedCard?.isCommander && <Crown size={20} color="#eab308" />}
@@ -1406,9 +1418,9 @@ export default function PublicDeckDetailScreen() {
                 </>
               )}
             </ScrollView>
-          </View>
-        )}
-      </Modal>
+          </BottomSheetView>
+        </GlassSheet>
+      )}
     </>
   );
 
@@ -1416,6 +1428,7 @@ export default function PublicDeckDetailScreen() {
   if (isDesktop) {
     return (
       <View className="flex-1 flex-row">
+        <Stack.Screen options={{ headerShown: false }} />
         <DesktopSidebar />
         <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>{pageContent}</View>
       </View>
@@ -1423,8 +1436,28 @@ export default function PublicDeckDetailScreen() {
   }
 
   return (
-    <SafeAreaView className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
-      {pageContent}
-    </SafeAreaView>
+    <>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerShadowVisible: false,
+          title: deck?.name || "Deck",
+          headerStyle: { backgroundColor: isDark ? "#020617" : "#ffffff" },
+          headerTintColor: isDark ? "#e2e8f0" : "#1e293b",
+          headerBackTitle: "Explore",
+          headerLeft: () => (
+            <Pressable onPress={() => router.back()} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", marginRight: 8 }}>
+              <ChevronLeft size={28} color="#7C3AED" />
+              <Text style={{ color: "#7C3AED", fontSize: 17 }}>
+                Explore
+              </Text>
+            </Pressable>
+          ),
+        }}
+      />
+      <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+        {pageContent}
+      </View>
+    </>
   );
 }

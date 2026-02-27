@@ -30,7 +30,7 @@ echo -e "${GREEN}[1/4] Authenticating Docker with ECR...${NC}"
 aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URI}
 
 echo -e "${GREEN}[2/4] Building Docker image...${NC}"
-docker build -t ${IMAGE_NAME}:${TAG} -f apps/mobile/Dockerfile .
+docker build --platform linux/arm64 -t ${IMAGE_NAME}:${TAG} -f apps/mobile/Dockerfile .
 
 echo -e "${GREEN}[3/4] Tagging image for ECR...${NC}"
 docker tag ${IMAGE_NAME}:${TAG} ${ECR_URI}:${TAG}

@@ -216,10 +216,10 @@ export function DeckExportModal({ visible, onClose, deck }: DeckExportModalProps
     try {
       if (isWeb) {
         downloadFileWeb(content, filename, mime);
+        showToast.success("File downloaded");
       } else {
         await shareFileNative(content, filename, mime);
       }
-      showToast.success(isWeb ? "File downloaded" : "File shared");
       onClose();
     } catch {
       showToast.error("Failed to export file");

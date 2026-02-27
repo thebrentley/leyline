@@ -10,8 +10,11 @@ import { AdvisorModule } from "./modules/advisor/advisor.module";
 import { PlaytestingModule } from "./modules/playtesting/playtesting.module";
 import { DeckRankingModule } from "./modules/deck-ranking/deck-ranking.module";
 import { PodsModule } from "./modules/pods/pods.module";
+import { FeedbackModule } from "./modules/feedback/feedback.module";
 import { EventsModule } from "./modules/events/events.module";
 import { CommonModule } from "./common/common.module";
+import { EmailModule } from "./modules/email/email.module";
+import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { SnakeNamingStrategy } from "./database/snake-naming.strategy";
 import { migrations } from "./database/data-source";
 
@@ -45,6 +48,8 @@ import { migrations } from "./database/data-source";
 
     // Common services
     CommonModule,
+    EmailModule,
+    NotificationsModule,
 
     // Feature modules
     EventsModule,
@@ -56,6 +61,7 @@ import { migrations } from "./database/data-source";
     PlaytestingModule,
     DeckRankingModule,
     PodsModule,
+    FeedbackModule,
   ],
 })
 export class AppModule {}

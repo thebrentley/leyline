@@ -11,6 +11,9 @@ import Animated, {
   useSharedValue,
   withSpring,
   withTiming,
+  FadeIn,
+  FadeOut,
+  ZoomIn,
 } from "react-native-reanimated";
 import { useColorScheme } from "nativewind";
 import type { EdgeInsets } from "react-native-safe-area-context";
@@ -24,24 +27,26 @@ interface PlayerCounterProps {
   onSwipe?: () => void;
   menuOpen?: boolean;
   insets?: EdgeInsets;
+  showCounters?: boolean;
+  allPlayers?: PlayerState[];
 }
 
 export const PLAYER_COLORS = [
-  "bg-yellow-400",
-  "bg-pink-500",
-  "bg-purple-400",
-  "bg-blue-400",
-  "bg-green-400",
-  "bg-orange-400",
+  "bg-[#1a0f0a]",
+  "bg-[#0f0a1a]",
+  "bg-[#0a1a1a]",
+  "bg-[#1a1a0a]",
+  "bg-[#1a0a1a]",
+  "bg-[#0a1a0f]",
 ];
 
 export const PLAYER_COLOR_HEX = [
-  "#facc15",
-  "#ec4899",
-  "#c084fc",
-  "#60a5fa",
-  "#4ade80",
-  "#fb923c",
+  "#1a0f0a",
+  "#0f0a1a",
+  "#0a1a1a",
+  "#1a1a0a",
+  "#1a0a1a",
+  "#0a1a0f",
 ];
 
 export function PlayerCounter({
@@ -52,6 +57,8 @@ export function PlayerCounter({
   onSwipe,
   menuOpen,
   insets,
+  showCounters = true,
+  allPlayers = [],
 }: PlayerCounterProps) {
   const { colorScheme } = useColorScheme();
   const [countersOpen, setCountersOpen] = React.useState(false);
@@ -66,8 +73,8 @@ export function PlayerCounter({
 
   // Adjust font size based on screen size
   const isTablet = Math.min(dimensions.width, dimensions.height) > 600;
-  const lifeFontSize = isTablet ? 180 : 120;
-  const changeFontSize = isTablet ? 60 : 40;
+  const lifeFontSize = isTablet ? 180 : playerCount >= 5 ? 70 : 120;
+  const changeFontSize = isTablet ? 60 : playerCount >= 5 ? 24 : 40;
 
   const backgroundColor = PLAYER_COLORS[player.id % PLAYER_COLORS.length];
 
@@ -168,6 +175,7 @@ export function PlayerCounter({
   };
 
   const totalPoison = player.poison;
+  const totalCommanderDamage = Object.values(player.commanderDamage).reduce((sum, dmg) => sum + dmg, 0);
 
   const [deadDismissed, setDeadDismissed] = React.useState(false);
 
@@ -178,7 +186,7 @@ export function PlayerCounter({
 
   const isDead = player.life <= 0 && !deadDismissed;
 
-  const hasCounters = totalPoison > 0 || player.commanderTax > 0;
+  const hasCounters = showCounters && (totalPoison > 0 || player.commanderTax > 0 || totalCommanderDamage > 0);
 
   const animatedLifeStyle = useAnimatedStyle(() => {
     return {
@@ -320,17 +328,47 @@ export function PlayerCounter({
 
         {/* Counter Indicators */}
         {hasCounters && (
-          <View className="absolute bottom-4 flex-row gap-2">
+          <View className="absolute bottom-2 flex-row flex-wrap gap-1">
             {totalPoison > 0 && (
-              <View className="rounded-full bg-black/50 px-3 py-1">
-                <Text className="text-sm font-bold text-white">
+              <View className="rounded-full bg-black/50 px-2 py-0.5">
+                <Text className="font-bold text-white" style={{ fontSize: isTablet ? 14 : 11 }}>
                   ☠ {totalPoison}
                 </Text>
               </View>
             )}
+            {Object.entries(player.commanderDamage)
+              .filter(([_, dmg]) => dmg > 0)
+              .map(([playerId, dmg]) => {
+                const opponentId = Number.parseInt(playerId);
+                const opponent = allPlayers.find(p => p.id === opponentId);
+                const opponentColor = PLAYER_COLOR_HEX[opponentId % PLAYER_COLOR_HEX.length];
+                const hasBackground = opponent?.backgroundImage;
+
+                return (
+                  <View
+                    key={playerId}
+                    className="flex-row items-center gap-1 rounded-full overflow-hidden"
+                    style={{ backgroundColor: hasBackground ? 'transparent' : opponentColor }}
+                  >
+                    {hasBackground ? (
+                      <Image
+                        source={{ uri: opponent.backgroundImage }}
+                        className="absolute inset-0"
+                        style={{ width: '100%', height: '100%' }}
+                      />
+                    ) : null}
+                    <View className="flex-row items-center gap-1 px-2 py-0.5" style={{ backgroundColor: 'rgba(0,0,0,0.3)' }}>
+                      <View className="h-3 w-3 rounded-full bg-white/30" />
+                      <Text className="font-bold text-white" style={{ fontSize: isTablet ? 14 : 11 }}>
+                        {dmg}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
             {player.commanderTax > 0 && (
-              <View className="rounded-full bg-black/50 px-3 py-1">
-                <Text className="text-sm font-bold text-white">
+              <View className="rounded-full bg-black/50 px-2 py-0.5">
+                <Text className="font-bold text-white" style={{ fontSize: isTablet ? 14 : 11 }}>
                   T {player.commanderTax}
                 </Text>
               </View>
@@ -354,7 +392,7 @@ export function PlayerCounter({
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ alignItems: "stretch", paddingTop: rotatedInsets.top + 32, paddingBottom: rotatedInsets.bottom + 32, paddingLeft: rotatedInsets.left + 16, paddingRight: rotatedInsets.right + 16, gap: 12 }}
+              contentContainerStyle={{ alignItems: "stretch", paddingTop: rotatedInsets.top + 16, paddingBottom: rotatedInsets.bottom + 16, paddingLeft: rotatedInsets.left + 16, paddingRight: rotatedInsets.right + 16, gap: 12 }}
               style={{ flex: 1, backgroundColor: colorScheme === "dark" ? "#0f172a" : "#ffffff" }}
             >
               {/* Background */}
@@ -407,15 +445,33 @@ export function PlayerCounter({
 
         {/* Dead Overlay */}
         {isDead && (
-          <Pressable
-            onPress={() => setDeadDismissed(true)}
-            className="absolute inset-0 items-center justify-center bg-black/70"
+          <Animated.View
+            entering={FadeIn.duration(600)}
+            exiting={FadeOut.duration(200)}
+            className="absolute inset-0"
           >
-            <Text className="text-6xl">💀</Text>
-            <Text className="mt-2 text-lg font-semibold text-white/60">
-              Tap to revive
-            </Text>
-          </Pressable>
+            <LinearGradient
+              colors={["rgba(120,0,0,0.7)", "rgba(0,0,0,0.9)", "rgba(120,0,0,0.7)"]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+            />
+            <Pressable
+              onPress={() => setDeadDismissed(true)}
+              className="absolute inset-0 items-center justify-center"
+            >
+              <Animated.View entering={ZoomIn.delay(200).springify().damping(8)}>
+                <Text className="text-3xl font-black tracking-widest text-red-400/80">
+                  DEFEATED
+                </Text>
+              </Animated.View>
+              <Animated.View entering={FadeIn.delay(800).duration(300)}>
+                <Text className="mt-3 text-sm font-medium text-white/40">
+                  Tap to revive
+                </Text>
+              </Animated.View>
+            </Pressable>
+          </Animated.View>
         )}
       </View>
       )}

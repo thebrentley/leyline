@@ -280,4 +280,42 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   getActivePlaytestSession(deckId: string): string | null {
     return this.activePlaytestSessions.get(deckId) || null;
   }
+
+  // =====================
+  // Event Chat WebSocket Methods
+  // =====================
+
+  @SubscribeMessage("event:chat:join")
+  handleEventChatJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { eventId: string },
+  ) {
+    const { eventId } = data;
+    const roomName = `event:${eventId}`;
+    client.join(roomName);
+    console.log(`[WS] Client ${client.id} joined event chat room ${roomName}`);
+    client.emit("event:chat:joined", { eventId });
+    return { success: true, eventId };
+  }
+
+  @SubscribeMessage("event:chat:leave")
+  handleEventChatLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { eventId: string },
+  ) {
+    const { eventId } = data;
+    const roomName = `event:${eventId}`;
+    client.leave(roomName);
+    console.log(`[WS] Client ${client.id} left event chat room ${roomName}`);
+    client.emit("event:chat:left", { eventId });
+    return { success: true, eventId };
+  }
+
+  /**
+   * Emit an event to all clients in an event's chat room
+   */
+  emitToEventRoom(eventId: string, eventName: string, data: any) {
+    const roomName = `event:${eventId}`;
+    this.server.to(roomName).emit(eventName, data);
+  }
 }

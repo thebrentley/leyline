@@ -108,6 +108,21 @@ export interface PlaytestLeftEvent {
   deckId: string;
 }
 
+// =====================
+// Event Chat Types
+// =====================
+
+export interface EventChatSocketMessage {
+  id: string;
+  eventId: string;
+  userId: string;
+  displayName: string | null;
+  profilePicture: string | null;
+  content: string;
+  isSystem?: boolean;
+  createdAt: string;
+}
+
 interface SocketContextValue {
   isConnected: boolean;
   onDeckSyncStatus: (callback: (event: DeckSyncStatusEvent) => void) => () => void;
@@ -117,6 +132,10 @@ interface SocketContextValue {
   onPlaytestMessage: (callback: (message: PlaytestMessage) => void) => () => void;
   onPlaytestJoined: (callback: (data: PlaytestJoinedEvent) => void) => () => void;
   onPlaytestLeft: (callback: (data: PlaytestLeftEvent) => void) => () => void;
+  // Event Chat methods
+  joinEventChat: (eventId: string) => void;
+  leaveEventChat: (eventId: string) => void;
+  onEventChatMessage: (callback: (message: EventChatSocketMessage) => void) => () => void;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -136,6 +155,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     new Set()
   );
   const playtestLeftListenersRef = useRef<Set<(data: PlaytestLeftEvent) => void>>(
+    new Set()
+  );
+  // Event Chat listeners
+  const eventChatMessageListenersRef = useRef<Set<(message: EventChatSocketMessage) => void>>(
     new Set()
   );
   // Ordered message delivery: don't enforce ordering until we see session:started
@@ -278,6 +301,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       playtestLeftListenersRef.current.forEach((listener) => listener(data));
     });
 
+    // Listen for event chat messages
+    socket.on("event:chat:message", (message: EventChatSocketMessage) => {
+      eventChatMessageListenersRef.current.forEach((listener) => listener(message));
+    });
+
     socketRef.current = socket;
 
     return () => {
@@ -346,6 +374,29 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  // Event Chat methods
+  const joinEventChat = useCallback((eventId: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("event:chat:join", { eventId });
+    }
+  }, []);
+
+  const leaveEventChat = useCallback((eventId: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("event:chat:leave", { eventId });
+    }
+  }, []);
+
+  const onEventChatMessage = useCallback(
+    (callback: (message: EventChatSocketMessage) => void) => {
+      eventChatMessageListenersRef.current.add(callback);
+      return () => {
+        eventChatMessageListenersRef.current.delete(callback);
+      };
+    },
+    []
+  );
+
   return (
     <SocketContext.Provider
       value={{
@@ -356,6 +407,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         onPlaytestMessage,
         onPlaytestJoined,
         onPlaytestLeft,
+        joinEventChat,
+        leaveEventChat,
+        onEventChatMessage,
       }}
     >
       {children}

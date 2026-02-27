@@ -19,6 +19,18 @@ import {
   AddOwnerRole1739700000000,
   AddPodCoverImage1739800000000,
   CreatePodGameResults1739900000000,
+  CreateCollectionFolders1740000000000,
+  AddWinnerUserIdToGameResults1740100000000,
+  AddLinkedDeckCard1740200000000,
+  DropWinnerNameFromGameResults1740300000000,
+  AddInviteTokenColumns1740400000000,
+  AddPasswordResetColumns1740500000000,
+  AddPushNotifications1740600000000,
+  CreateAppConfigTable1740700000000,
+  AddOfflineMemberPhoneNumber1740800000000,
+  CreateEventChatMessages1740900000000,
+  DropOfflineMemberPhoneNumber1741000000000,
+  AddSystemFlagToEventChat1741100000000,
 } from "./migrations";
 
 config();
@@ -42,6 +54,18 @@ export const migrations = [
   AddOwnerRole1739700000000,
   AddPodCoverImage1739800000000,
   CreatePodGameResults1739900000000,
+  CreateCollectionFolders1740000000000,
+  AddWinnerUserIdToGameResults1740100000000,
+  AddLinkedDeckCard1740200000000,
+  DropWinnerNameFromGameResults1740300000000,
+  AddInviteTokenColumns1740400000000,
+  AddPasswordResetColumns1740500000000,
+  AddPushNotifications1740600000000,
+  CreateAppConfigTable1740700000000,
+  AddOfflineMemberPhoneNumber1740800000000,
+  CreateEventChatMessages1740900000000,
+  DropOfflineMemberPhoneNumber1741000000000,
+  AddSystemFlagToEventChat1741100000000,
 ];
 
 export const AppDataSource = new DataSource({

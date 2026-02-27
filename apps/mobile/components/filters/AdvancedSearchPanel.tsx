@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 import { RotateCcw, X } from 'lucide-react-native';
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 import { ColorFilter } from './ColorFilter';
 import { RarityFilter } from './RarityFilter';
 import { ManaValueFilter } from './ManaValueFilter';
@@ -129,6 +130,7 @@ export function AdvancedSearchPanel({
               className={`flex-1 ${isDark ? 'text-white' : 'text-slate-900'}`}
               autoCapitalize="none"
               autoCorrect={false}
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
             />
             {filters.name.length > 0 && (
               <Pressable onPress={() => onFiltersChange({ ...filters, name: '' })}>

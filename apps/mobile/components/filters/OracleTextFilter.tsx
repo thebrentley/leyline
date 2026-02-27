@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 import { Plus, X } from 'lucide-react-native';
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 
 interface OracleTextFilterProps {
   values: string[];
@@ -105,6 +106,7 @@ export function OracleTextFilter({ values, onChange }: OracleTextFilterProps) {
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="done"
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
         {inputText.trim().length > 0 && (
           <Pressable onPress={handleSubmit}>

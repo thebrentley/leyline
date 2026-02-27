@@ -13,6 +13,8 @@
     "dev:api": "npm run dev -w @leyline/api",
     "dev:landing": "npm run dev -w @leyline/landing",
     "dev:mobile": "npm run start -w mobile",
+    "mobile:ios": "npm run ios -w mobile",
+    "mobile:ios:device": "npm run ios:device -w mobile",
     "dev:mobile-prod": "cp apps/mobile/.env apps/mobile/.env.local.bak && cp apps/mobile/.env.production apps/mobile/.env && npm run start -w mobile; cp apps/mobile/.env.local.bak apps/mobile/.env && rm apps/mobile/.env.local.bak",
     "build:api": "npm run build -w @leyline/api",
     "build:landing": "npm run build -w @leyline/landing",
@@ -32,8 +34,8 @@
     "node": ">=18.0.0"
   },
   "overrides": {
-    "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
   },
   "devDependencies": {
     "@types/uuid": "^10.0.0"
@@ -41,6 +43,9 @@
   "dependencies": {
     "@nestjs/platform-socket.io": "^10.3.0",
     "@nestjs/schedule": "^6.1.1",
-    "@nestjs/websockets": "^10.3.0"
+    "@nestjs/websockets": "^10.3.0",
+    "expo": "~55.0.0-preview.11",
+    "react": "19.2.0",
+    "react-native": "0.83.2"
   }
 }

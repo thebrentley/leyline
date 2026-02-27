@@ -1,5 +1,4 @@
 import {
-  X,
   RotateCcw,
   Users,
   Settings,
@@ -7,13 +6,15 @@ import {
   ChevronLeft,
   Dices,
 } from "lucide-react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import * as React from "react";
-import { Modal, Pressable, View, Text } from "react-native";
+import { Pressable, View, Text, Modal } from "react-native";
 import { useColorScheme } from "nativewind";
 import { useRouter } from "expo-router";
+import { GlassSheet } from "../ui/GlassSheet";
 
-type Screen = "menu" | "restart" | "players" | "players-confirm" | "settings";
+type Screen = "menu" | "players" | "settings";
+type ConfirmModal = "restart" | "layout-change" | null;
 
 interface CenterMenuModalProps {
   open: boolean;
@@ -25,6 +26,8 @@ interface CenterMenuModalProps {
   onHighRoll: () => void;
   startingLife: number;
   onStartingLifeChange: (life: number) => void;
+  showCounters: boolean;
+  onShowCountersChange: (show: boolean) => void;
 }
 
 interface LayoutOption {
@@ -46,12 +49,15 @@ export function CenterMenuModal({
   onHighRoll,
   startingLife,
   onStartingLifeChange,
+  showCounters,
+  onShowCountersChange,
 }: CenterMenuModalProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const router = useRouter();
 
   const [screen, setScreen] = React.useState<Screen>("menu");
+  const [confirmModal, setConfirmModal] = React.useState<ConfirmModal>(null);
   const [pendingLayout, setPendingLayout] = React.useState<{
     count: number;
     type: string;
@@ -60,17 +66,19 @@ export function CenterMenuModal({
   const handleClose = () => {
     setScreen("menu");
     setPendingLayout(null);
+    setConfirmModal(null);
     onClose();
   };
 
   const handleRestart = () => {
     onReset();
+    setConfirmModal(null);
     handleClose();
   };
 
   const handleSelectLayout = (count: number, type: string) => {
     setPendingLayout({ count, type });
-    setScreen("players-confirm");
+    setConfirmModal("layout-change");
   };
 
   const handleConfirmLayoutChange = () => {
@@ -78,12 +86,13 @@ export function CenterMenuModal({
       onLayoutChange(pendingLayout.count, pendingLayout.type);
       onReset();
     }
+    setConfirmModal(null);
     handleClose();
   };
 
   const handleDeclineLayoutChange = () => {
     setPendingLayout(null);
-    setScreen("menu");
+    setConfirmModal(null);
   };
 
   const handleExit = () => {
@@ -97,7 +106,7 @@ export function CenterMenuModal({
 
   const textColor = isDark ? "text-white" : "text-slate-900";
   const subtextColor = isDark ? "text-slate-400" : "text-slate-500";
-  const cardBg = isDark ? "bg-slate-800" : "bg-slate-100";
+  const cardBg = isDark ? "bg-white/10" : "bg-black/5";
 
   const layoutOptions: LayoutOption[] = [
     {
@@ -162,6 +171,98 @@ export function CenterMenuModal({
       ),
     },
     {
+      id: "3-empty-tl",
+      playerCount: 3,
+      layoutType: "empty-tl",
+      layout: (
+        <View className="aspect-[9/20] w-full flex-row gap-[2px]">
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 rounded bg-slate-700" />
+            <View className="flex-1 items-center justify-center rounded bg-yellow-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+          </View>
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-pink-500">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-purple-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: "3-empty-bl",
+      playerCount: 3,
+      layoutType: "empty-bl",
+      layout: (
+        <View className="aspect-[9/20] w-full flex-row gap-[2px]">
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-yellow-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 rounded bg-slate-700" />
+          </View>
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-pink-500">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-purple-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: "3-empty-tr",
+      playerCount: 3,
+      layoutType: "empty-tr",
+      layout: (
+        <View className="aspect-[9/20] w-full flex-row gap-[2px]">
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-yellow-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-pink-500">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+          </View>
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 rounded bg-slate-700" />
+            <View className="flex-1 items-center justify-center rounded bg-purple-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: "3-empty-br",
+      playerCount: 3,
+      layoutType: "empty-br",
+      layout: (
+        <View className="aspect-[9/20] w-full flex-row gap-[2px]">
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-yellow-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-pink-500">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+          </View>
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-purple-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 rounded bg-slate-700" />
+          </View>
+        </View>
+      ),
+    },
+    {
       id: "4-two-h",
       playerCount: 4,
       layoutType: "two-h",
@@ -186,13 +287,220 @@ export function CenterMenuModal({
         </View>
       ),
     },
+    {
+      id: "5-one-bottom",
+      playerCount: 5,
+      layoutType: "one-bottom",
+      layout: (
+        <View className="aspect-[9/20] w-full gap-[2px]">
+          <View style={{ flex: 2 }} className="flex-row gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-yellow-400">
+              <Text className="text-xs text-black">↑</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-pink-500">
+              <Text className="text-xs text-black">↑</Text>
+            </View>
+          </View>
+          <View style={{ flex: 2 }} className="flex-row gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-purple-400">
+              <Text className="text-xs text-black">↑</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-blue-400">
+              <Text className="text-xs text-black">↑</Text>
+            </View>
+          </View>
+          <View
+            style={{ flex: 1.5 }}
+            className="items-center justify-center rounded bg-green-400"
+          >
+            <Text className="text-xs text-black">↓</Text>
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: "5-one-top",
+      playerCount: 5,
+      layoutType: "one-top",
+      layout: (
+        <View className="aspect-[9/20] w-full gap-[2px]">
+          <View
+            style={{ flex: 1.5 }}
+            className="items-center justify-center rounded bg-yellow-400"
+          >
+            <Text className="text-xs text-black">↑</Text>
+          </View>
+          <View style={{ flex: 2 }} className="flex-row gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-pink-500">
+              <Text className="text-xs text-black">↓</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-purple-400">
+              <Text className="text-xs text-black">↓</Text>
+            </View>
+          </View>
+          <View style={{ flex: 2 }} className="flex-row gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-blue-400">
+              <Text className="text-xs text-black">↓</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-green-400">
+              <Text className="text-xs text-black">↓</Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: "5-empty-tl",
+      playerCount: 5,
+      layoutType: "empty-tl",
+      layout: (
+        <View className="aspect-[9/20] w-full flex-row gap-[2px]">
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 rounded bg-slate-700" />
+            <View className="flex-1 items-center justify-center rounded bg-yellow-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-pink-500">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+          </View>
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-purple-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-blue-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-green-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: "5-empty-bl",
+      playerCount: 5,
+      layoutType: "empty-bl",
+      layout: (
+        <View className="aspect-[9/20] w-full flex-row gap-[2px]">
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-yellow-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-pink-500">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 rounded bg-slate-700" />
+          </View>
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-purple-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-blue-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-green-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: "5-empty-tr",
+      playerCount: 5,
+      layoutType: "empty-tr",
+      layout: (
+        <View className="aspect-[9/20] w-full flex-row gap-[2px]">
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-yellow-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-pink-500">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-purple-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+          </View>
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 rounded bg-slate-700" />
+            <View className="flex-1 items-center justify-center rounded bg-blue-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-green-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: "5-empty-br",
+      playerCount: 5,
+      layoutType: "empty-br",
+      layout: (
+        <View className="aspect-[9/20] w-full flex-row gap-[2px]">
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-yellow-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-pink-500">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-purple-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+          </View>
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-blue-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-green-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 rounded bg-slate-700" />
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: "6-full",
+      playerCount: 6,
+      layoutType: "full",
+      layout: (
+        <View className="aspect-[9/20] w-full flex-row gap-[2px]">
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-yellow-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-pink-500">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-purple-400">
+              <Text className="text-xs text-black">←</Text>
+            </View>
+          </View>
+          <View className="flex-1 gap-[2px]">
+            <View className="flex-1 items-center justify-center rounded bg-blue-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-green-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+            <View className="flex-1 items-center justify-center rounded bg-rose-400">
+              <Text className="text-xs text-black">→</Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
   ];
 
   const screenTitle: Record<Screen, string> = {
     menu: "",
-    restart: "Restart Game",
     players: "Select Layout",
-    "players-confirm": "Restart Game?",
     settings: "Settings",
   };
 
@@ -202,7 +510,7 @@ export function CenterMenuModal({
     <>
       <View className="gap-3">
         <Pressable
-          onPress={() => setScreen("restart")}
+          onPress={() => setConfirmModal("restart")}
           className={`flex-row items-center gap-4 rounded-xl p-4 ${cardBg} active:opacity-70`}
         >
           <RotateCcw size={24} color={isDark ? "#fff" : "#1e293b"} />
@@ -275,28 +583,6 @@ export function CenterMenuModal({
     </>
   );
 
-  const renderRestart = () => (
-    <>
-
-      <Text className={`mb-6 text-center text-lg ${subtextColor}`}>
-        Reset all life totals to {startingLife}?
-      </Text>
-      <View className="flex-row gap-3">
-        <Pressable
-          onPress={() => setScreen("menu")}
-          className={`flex-1 items-center rounded-xl p-4 ${cardBg} active:opacity-70`}
-        >
-          <Text className={`text-lg font-semibold ${textColor}`}>Cancel</Text>
-        </Pressable>
-        <Pressable
-          onPress={handleRestart}
-          className="flex-1 items-center rounded-xl bg-red-600 p-4 active:opacity-70"
-        >
-          <Text className="text-lg font-semibold text-white">Restart</Text>
-        </Pressable>
-      </View>
-    </>
-  );
 
   const renderPlayers = () => (
     <>
@@ -322,116 +608,167 @@ export function CenterMenuModal({
     </>
   );
 
-  const renderPlayersConfirm = () => (
-    <>
-
-      <Text className={`mb-6 text-center text-lg ${subtextColor}`}>
-        Changing the layout requires restarting. Continue?
-      </Text>
-      <View className="flex-row gap-3">
-        <Pressable
-          onPress={handleDeclineLayoutChange}
-          className={`flex-1 items-center rounded-xl p-4 ${cardBg} active:opacity-70`}
-        >
-          <Text className={`text-lg font-semibold ${textColor}`}>No</Text>
-        </Pressable>
-        <Pressable
-          onPress={handleConfirmLayoutChange}
-          className="flex-1 items-center rounded-xl bg-purple-600 p-4 active:opacity-70"
-        >
-          <Text className="text-lg font-semibold text-white">Yes</Text>
-        </Pressable>
-      </View>
-    </>
-  );
 
   const renderSettings = () => (
     <>
-      <View>
-        <Text className={`mb-3 text-lg font-semibold ${textColor}`}>
-          Starting Life Total
-        </Text>
-        <View className="flex-row gap-2">
-          {STARTING_LIFE_OPTIONS.map((life) => (
-            <Pressable
-              key={life}
-              onPress={() => onStartingLifeChange(life)}
-              className={`flex-1 items-center rounded-xl p-4 ${
-                startingLife === life ? "bg-purple-600" : cardBg
-              }`}
-            >
-              <Text
-                numberOfLines={1}
-                className={`text-2xl font-bold ${
-                  startingLife === life ? "text-white" : textColor
+      <View className="gap-6">
+        {/* Starting Life Total */}
+        <View>
+          <Text className={`mb-3 text-lg font-semibold ${textColor}`}>
+            Starting Life Total
+          </Text>
+          <View className="flex-row gap-2">
+            {STARTING_LIFE_OPTIONS.map((life) => (
+              <Pressable
+                key={life}
+                onPress={() => onStartingLifeChange(life)}
+                className={`flex-1 items-center rounded-xl p-4 ${
+                  startingLife === life
+                    ? "border-2 border-purple-500 bg-purple-500/20"
+                    : cardBg
                 }`}
               >
-                {life}
-              </Text>
-            </Pressable>
-          ))}
+                <Text
+                  numberOfLines={1}
+                  className={`text-2xl font-bold ${
+                    startingLife === life ? "text-purple-300" : textColor
+                  }`}
+                >
+                  {life}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
+
+        {/* Show Counters Toggle */}
+        <Pressable
+          onPress={() => onShowCountersChange(!showCounters)}
+          className={`flex-row items-center justify-between rounded-xl p-4 ${cardBg} active:opacity-70`}
+        >
+          <View>
+            <Text className={`text-lg font-semibold ${textColor}`}>
+              Show Counters
+            </Text>
+            <Text className={`text-sm ${subtextColor}`}>
+              Display poison and commander tax
+            </Text>
+          </View>
+          <View
+            className={`h-8 w-14 rounded-full ${
+              showCounters ? "bg-purple-500" : "bg-gray-600"
+            }`}
+          >
+            <View
+              className={`h-6 w-6 rounded-full bg-white shadow-lg ${
+                showCounters ? "ml-7 mt-1" : "ml-1 mt-1"
+              }`}
+            />
+          </View>
+        </Pressable>
       </View>
     </>
   );
 
   return (
-    <Modal
-      visible={open}
-      transparent
-      animationType="fade"
-      onRequestClose={handleClose}
-    >
-      <View style={{ flex: 1 }}>
-        {/* Base tint + gradient backdrop */}
-        <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.2)" }} />
-        <LinearGradient
-          colors={["transparent", "rgba(0,0,0,0.8)", "rgba(0,0,0,0.8)", "transparent"]}
-          locations={[0, 0.3, 0.7, 1]}
-          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-        />
-        <LinearGradient
-          colors={["transparent", "rgba(0,0,0,0.6)", "rgba(0,0,0,0.6)", "transparent"]}
-          locations={[0, 0.3, 0.7, 1]}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-        />
+    <>
+      <GlassSheet
+        visible={open}
+        onDismiss={handleClose}
+        snapPoints={["70%", "90%"]}
+        isDark={isDark}
+      >
+        <BottomSheetScrollView className="flex-1">
+          {/* Header */}
+          {screen !== "menu" && (
+            <View className="flex-row items-center gap-2 px-6 pb-4 pt-2">
+              {hasBack && (
+                <Pressable
+                  onPress={() => setScreen("menu")}
+                  className="rounded-full p-1 active:opacity-70"
+                >
+                  <ChevronLeft size={24} color={isDark ? "#fff" : "#1e293b"} />
+                </Pressable>
+              )}
+              <Text className={`text-2xl font-bold ${textColor}`}>
+                {screenTitle[screen]}
+              </Text>
+            </View>
+          )}
 
-        {/* Header pinned at top */}
-        <View className="flex-row items-center justify-between px-6 pt-14 pb-2">
-          <View className="flex-row items-center gap-2">
-            {hasBack && (
-              <Pressable
-                onPress={() => setScreen("menu")}
-                className="rounded-full p-1 active:opacity-70"
-              >
-                <ChevronLeft size={24} color="white" />
-              </Pressable>
-            )}
-            <Text className="text-2xl font-bold text-white">
-              {screenTitle[screen]}
-            </Text>
-          </View>
-          <Pressable
-            onPress={handleClose}
-            className="rounded-full p-2 active:opacity-70"
-          >
-            <X size={24} color="white" />
-          </Pressable>
-        </View>
-
-        {/* Centered content */}
-        <Pressable className="flex-1 items-center justify-center" onPress={handleClose}>
-          <Pressable onPress={(e) => e.stopPropagation()} style={{ width: "80%" }}>
+          {/* Content */}
+          <View className="px-6 pb-8">
             {screen === "menu" && renderMenu()}
-            {screen === "restart" && renderRestart()}
             {screen === "players" && renderPlayers()}
-            {screen === "players-confirm" && renderPlayersConfirm()}
             {screen === "settings" && renderSettings()}
-          </Pressable>
-        </Pressable>
-      </View>
-    </Modal>
+          </View>
+        </BottomSheetScrollView>
+      </GlassSheet>
+
+      {/* Confirmation Modals */}
+      <Modal
+        visible={confirmModal === "restart"}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmModal(null)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/70">
+          <View className="mx-6 w-full max-w-sm rounded-2xl bg-slate-800 p-6">
+            <Text className="mb-2 text-center text-2xl font-bold text-white">
+              Restart Game
+            </Text>
+            <Text className="mb-6 text-center text-lg text-slate-400">
+              Reset all life totals to {startingLife}?
+            </Text>
+            <View className="flex-row gap-3">
+              <Pressable
+                onPress={() => setConfirmModal(null)}
+                className="flex-1 items-center rounded-xl bg-slate-700 p-4 active:opacity-70"
+              >
+                <Text className="text-lg font-semibold text-white">Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleRestart}
+                className="flex-1 items-center rounded-xl bg-red-600 p-4 active:opacity-70"
+              >
+                <Text className="text-lg font-semibold text-white">Restart</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={confirmModal === "layout-change"}
+        transparent
+        animationType="fade"
+        onRequestClose={handleDeclineLayoutChange}
+      >
+        <View className="flex-1 items-center justify-center bg-black/70">
+          <View className="mx-6 w-full max-w-sm rounded-2xl bg-slate-800 p-6">
+            <Text className="mb-2 text-center text-2xl font-bold text-white">
+              Restart Game?
+            </Text>
+            <Text className="mb-6 text-center text-lg text-slate-400">
+              Changing the layout requires restarting. Continue?
+            </Text>
+            <View className="flex-row gap-3">
+              <Pressable
+                onPress={handleDeclineLayoutChange}
+                className="flex-1 items-center rounded-xl bg-slate-700 p-4 active:opacity-70"
+              >
+                <Text className="text-lg font-semibold text-white">No</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleConfirmLayoutChange}
+                className="flex-1 items-center rounded-xl bg-purple-600 p-4 active:opacity-70"
+              >
+                <Text className="text-lg font-semibold text-white">Yes</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }

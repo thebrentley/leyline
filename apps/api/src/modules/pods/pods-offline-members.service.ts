@@ -10,8 +10,10 @@ import { PodOfflineMember } from '../../entities/pod-offline-member.entity';
 import { EventOfflineRsvp } from '../../entities/event-offline-rsvp.entity';
 import { PodMember } from '../../entities/pod-member.entity';
 import { PodEvent } from '../../entities/pod-event.entity';
+import { PodGameResult } from '../../entities/pod-game-result.entity';
 import { RsvpStatus } from '../../entities/event-rsvp.entity';
 import { User } from '../../entities/user.entity';
+import { EventChatService } from './event-chat.service';
 
 @Injectable()
 export class PodsOfflineMembersService {
@@ -24,8 +26,11 @@ export class PodsOfflineMembersService {
     private memberRepo: Repository<PodMember>,
     @InjectRepository(PodEvent)
     private eventRepo: Repository<PodEvent>,
+    @InjectRepository(PodGameResult)
+    private gameResultRepo: Repository<PodGameResult>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
+    private eventChatService: EventChatService,
   ) {}
 
   // ==================== Helpers ====================
@@ -213,6 +218,7 @@ export class PodsOfflineMembersService {
     offlineMember.linkedUserId = targetUserId;
     offlineMember.linkedAt = new Date();
     await this.offlineMemberRepo.save(offlineMember);
+    await this.backfillGameResults(offlineMemberId, targetUserId);
 
     return {
       id: offlineMember.id,
@@ -269,6 +275,13 @@ export class PodsOfflineMembersService {
 
     await this.offlineRsvpRepo.save(rsvp);
 
+    const statusText = status === 'accepted' ? 'going' : 'not going';
+    this.eventChatService
+      .sendSystemMessage(eventId, userId, `marked ${offlineMember.name} as ${statusText}`)
+      .catch((err) =>
+        console.error('Failed to send offline RSVP chat message:', err),
+      );
+
     return {
       id: rsvp.id,
       eventId: rsvp.eventId,
@@ -304,7 +317,17 @@ export class PodsOfflineMembersService {
       throw new NotFoundException('RSVP not found');
     }
 
+    const offlineMember = await this.offlineMemberRepo.findOne({
+      where: { id: offlineMemberId },
+    });
+
     await this.offlineRsvpRepo.remove(rsvp);
+
+    this.eventChatService
+      .sendSystemMessage(eventId, userId, `removed RSVP for ${offlineMember?.name ?? 'an offline member'}`)
+      .catch((err) =>
+        console.error('Failed to send offline RSVP removal chat message:', err),
+      );
 
     return { success: true };
   }
@@ -332,6 +355,47 @@ export class PodsOfflineMembersService {
       offlineMember.linkedUserId = userId;
       offlineMember.linkedAt = new Date();
       await this.offlineMemberRepo.save(offlineMember);
+      await this.backfillGameResults(offlineMember.id, userId);
     }
+  }
+
+  // ==================== Game Result Backfill ====================
+
+  /**
+   * When an offline member gets linked to a real user, backfill their
+   * userId into existing game result JSONB players + winnerUserId.
+   */
+  private async backfillGameResults(
+    offlineMemberId: string,
+    linkedUserId: string,
+  ): Promise<void> {
+    // Update players JSONB: set userId on entries matching this offlineMemberId
+    await this.gameResultRepo.query(
+      `UPDATE pod_game_results
+       SET players = (
+         SELECT jsonb_agg(
+           CASE
+             WHEN elem->>'offlineMemberId' = $1
+             THEN jsonb_set(elem, '{userId}', to_jsonb($2::text))
+             ELSE elem
+           END
+         )
+         FROM jsonb_array_elements(players) AS elem
+       )
+       WHERE EXISTS (
+         SELECT 1 FROM jsonb_array_elements(players) AS elem
+         WHERE elem->>'offlineMemberId' = $1
+       )`,
+      [offlineMemberId, linkedUserId],
+    );
+
+    // Update winnerUserId for games where this offline member won
+    await this.gameResultRepo.query(
+      `UPDATE pod_game_results
+       SET winner_user_id = $2
+       WHERE winner_offline_member_id = $1::uuid
+         AND winner_user_id IS NULL`,
+      [offlineMemberId, linkedUserId],
+    );
   }
 }

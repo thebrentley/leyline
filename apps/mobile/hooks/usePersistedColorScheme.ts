@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Appearance } from "react-native";
 import { colorScheme, useColorScheme } from "nativewind";
 import { secureStorage } from "~/lib/storage";
 
@@ -18,6 +19,7 @@ export function usePersistedColorScheme() {
         const savedTheme = await secureStorage.getItem(THEME_KEY);
         if (savedTheme === "dark" || savedTheme === "light") {
           colorScheme.set(savedTheme);
+          Appearance.setColorScheme?.(savedTheme);
         }
       } catch (error) {
         console.error("Failed to load theme preference:", error);
@@ -31,8 +33,9 @@ export function usePersistedColorScheme() {
     const isDark = currentScheme === "dark";
     const newScheme = isDark ? "light" : "dark";
 
-    // Update NativeWind's in-memory state
+    // Update NativeWind's in-memory state + native Appearance
     colorScheme.set(newScheme);
+    Appearance.setColorScheme?.(newScheme);
 
     // Persist to storage
     try {

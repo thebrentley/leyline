@@ -3,6 +3,7 @@ import {
   DrawerContentScrollView,
 } from "@react-navigation/drawer";
 import { router, Slot, useFocusEffect } from "expo-router";
+
 import { Drawer } from "expo-router/drawer";
 import {
   ChevronDown,
@@ -12,6 +13,7 @@ import {
   Layers,
   Library,
   Link2,
+  MessageSquare,
   Moon,
   Users,
 } from "lucide-react-native";
@@ -19,6 +21,7 @@ import { useColorScheme } from "nativewind";
 import { useCallback, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { StyledSwitch } from "~/components/ui/StyledSwitch";
+import { FeedbackDialog } from "~/components/ui/FeedbackDialog";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "~/contexts/AuthContext";
 import { useResponsive } from "~/hooks/useResponsive";
@@ -36,7 +39,14 @@ interface DrawerItemProps {
   isActive?: boolean;
 }
 
-function DrawerItem({ icon, label, onPress, rightText, isDark, isActive }: DrawerItemProps) {
+function DrawerItem({
+  icon,
+  label,
+  onPress,
+  rightText,
+  isDark,
+  isActive,
+}: DrawerItemProps) {
   return (
     <Pressable
       onPress={onPress}
@@ -77,7 +87,9 @@ function DrawerItem({ icon, label, onPress, rightText, isDark, isActive }: Drawe
 }
 
 function Divider({ isDark }: { isDark: boolean }) {
-  return <View className={`h-px ${isDark ? "bg-slate-800" : "bg-slate-100"}`} />;
+  return (
+    <View className={`h-px ${isDark ? "bg-slate-800" : "bg-slate-100"}`} />
+  );
 }
 
 function CustomDrawerContent(props: DrawerContentComponentProps) {
@@ -85,6 +97,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const iconColor = isDark ? "#94a3b8" : "#64748b";
+  const [showFeedback, setShowFeedback] = useState(false);
   const [pods, setPods] = useState<PodSummary[]>([]);
   const [podsExpanded, setPodsExpanded] = useState(() => {
     try {
@@ -123,16 +136,26 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
 
         {/* Navigation Items */}
         <DrawerItem
-          icon={<Home size={24} color={currentRoute === "index" ? "#7C3AED" : iconColor} />}
+          icon={
+            <Home
+              size={24}
+              color={currentRoute === "(home)" ? "#7C3AED" : iconColor}
+            />
+          }
           label="Home"
-          onPress={() => props.navigation.navigate("index")}
+          onPress={() => props.navigation.navigate("(home)")}
           isDark={isDark}
-          isActive={currentRoute === "index"}
+          isActive={currentRoute === "(home)"}
         />
         <Divider isDark={isDark} />
 
         <DrawerItem
-          icon={<Layers size={24} color={currentRoute === "decks" ? "#7C3AED" : iconColor} />}
+          icon={
+            <Layers
+              size={24}
+              color={currentRoute === "decks" ? "#7C3AED" : iconColor}
+            />
+          }
           label="Decks"
           onPress={() => props.navigation.navigate("decks")}
           isDark={isDark}
@@ -141,7 +164,12 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         <Divider isDark={isDark} />
 
         <DrawerItem
-          icon={<Library size={24} color={currentRoute === "collection" ? "#7C3AED" : iconColor} />}
+          icon={
+            <Library
+              size={24}
+              color={currentRoute === "collection" ? "#7C3AED" : iconColor}
+            />
+          }
           label="Collection"
           onPress={() => props.navigation.navigate("collection")}
           isDark={isDark}
@@ -150,7 +178,12 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         <Divider isDark={isDark} />
 
         <DrawerItem
-          icon={<Compass size={24} color={currentRoute === "explore" ? "#7C3AED" : iconColor} />}
+          icon={
+            <Compass
+              size={24}
+              color={currentRoute === "explore" ? "#7C3AED" : iconColor}
+            />
+          }
           label="Explore"
           onPress={() => props.navigation.navigate("explore")}
           isDark={isDark}
@@ -158,25 +191,27 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         />
         <Divider isDark={isDark} />
 
-        {/* Pods Accordion */}
-        <Pressable
-          onPress={() => setPodsExpanded((prev) => {
-            const next = !prev;
-            try { localStorage.setItem("pods_expanded", String(next)); } catch {}
-            return next;
-          })}
+        {/* Pods Section */}
+        <View
           className={`flex-row items-center justify-between px-6 py-4 ${
             currentRoute === "pods"
               ? isDark
                 ? "bg-slate-800"
                 : "bg-slate-100"
-              : isDark
-                ? "active:bg-slate-800/50"
-                : "active:bg-slate-50"
+              : ""
           }`}
         >
-          <View className="flex-row items-center gap-4">
-            <Users size={24} color={currentRoute === "pods" ? "#7C3AED" : iconColor} />
+          <Pressable
+            onPress={() => {
+              props.navigation.navigate("pods");
+              props.navigation.closeDrawer();
+            }}
+            className="flex-1 flex-row items-center gap-4"
+          >
+            <Users
+              size={24}
+              color={currentRoute === "pods" ? "#7C3AED" : iconColor}
+            />
             <Text
               className={`text-base ${
                 currentRoute === "pods"
@@ -188,31 +223,36 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
             >
               Pods
             </Text>
-          </View>
-          {podsExpanded ? (
-            <ChevronDown size={20} color={isDark ? "#475569" : "#cbd5e1"} />
-          ) : (
-            <ChevronRight size={20} color={isDark ? "#475569" : "#cbd5e1"} />
-          )}
-        </Pressable>
-        {podsExpanded && (
-          <View className={`pb-2 ${isDark ? "bg-slate-900/50" : "bg-slate-50/50"}`}>
-            {/* All Pods link */}
+          </Pressable>
+          {pods.length > 0 && (
             <Pressable
-              onPress={() => {
-                props.navigation.navigate("pods");
-                props.navigation.closeDrawer();
-              }}
-              className={`flex-row items-center gap-3 pl-14 pr-6 py-3 ${
-                isDark ? "active:bg-slate-800/50" : "active:bg-slate-50"
-              }`}
+              onPress={() =>
+                setPodsExpanded((prev) => {
+                  const next = !prev;
+                  try {
+                    localStorage.setItem("pods_expanded", String(next));
+                  } catch {}
+                  return next;
+                })
+              }
+              className="pl-4 py-1"
+              hitSlop={8}
             >
-              <Text
-                className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}
-              >
-                All Pods
-              </Text>
+              {podsExpanded ? (
+                <ChevronDown size={20} color={isDark ? "#475569" : "#cbd5e1"} />
+              ) : (
+                <ChevronRight
+                  size={20}
+                  color={isDark ? "#475569" : "#cbd5e1"}
+                />
+              )}
             </Pressable>
+          )}
+        </View>
+        {podsExpanded && pods.length > 0 && (
+          <View
+            className={`pb-2 ${isDark ? "bg-slate-900/50" : "bg-slate-50/50"}`}
+          >
             {pods.map((pod) => (
               <Pressable
                 key={pod.id}
@@ -261,7 +301,12 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         </View>
 
         <DrawerItem
-          icon={<Link2 size={24} color={currentRoute === "connections" ? "#7C3AED" : iconColor} />}
+          icon={
+            <Link2
+              size={24}
+              color={currentRoute === "connections" ? "#7C3AED" : iconColor}
+            />
+          }
           label="Connections"
           onPress={() => props.navigation.navigate("connections")}
           isDark={isDark}
@@ -270,9 +315,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         <Divider isDark={isDark} />
 
         {/* Dark Mode Toggle */}
-        <View
-          className={`flex-row items-center justify-between px-6 py-4`}
-        >
+        <View className={`flex-row items-center justify-between px-6 py-4`}>
           <View className="flex-row items-center gap-4">
             <Moon size={24} color={iconColor} />
             <Text
@@ -289,7 +332,19 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         </View>
         <Divider isDark={isDark} />
 
+        <DrawerItem
+          icon={<MessageSquare size={24} color={iconColor} />}
+          label="Send Feedback"
+          onPress={() => setShowFeedback(true)}
+          isDark={isDark}
+        />
+        <Divider isDark={isDark} />
       </DrawerContentScrollView>
+
+      <FeedbackDialog
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+      />
 
       {/* User Profile */}
       <Pressable
@@ -309,7 +364,8 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         ) : (
           <View className="h-10 w-10 items-center justify-center rounded-full bg-purple-600">
             <Text className="text-sm font-bold text-white">
-              {(user?.displayName || user?.email)?.charAt(0).toUpperCase() || "U"}
+              {(user?.displayName || user?.email)?.charAt(0).toUpperCase() ||
+                "U"}
             </Text>
           </View>
         )}
@@ -325,7 +381,6 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         </View>
         <ChevronRight size={16} color={isDark ? "#475569" : "#cbd5e1"} />
       </Pressable>
-
     </View>
   );
 }
@@ -355,7 +410,11 @@ export default function DrawerLayout() {
     <Drawer
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        headerShadowVisible: false,
+        headerStyle: { backgroundColor: isDark ? "#020617" : "#ffffff" },
+        headerTintColor: isDark ? "#e2e8f0" : "#1e293b",
+        sceneStyle: { backgroundColor: isDark ? "#020617" : "#ffffff" },
         drawerStyle: {
           backgroundColor: isDark ? "#020617" : "#ffffff",
           width: 320,
@@ -364,45 +423,59 @@ export default function DrawerLayout() {
       }}
     >
       <Drawer.Screen
-        name="index"
+        name="(home)"
         options={{
           drawerLabel: "Home",
+          title: "Home",
+          headerShown: false,
         }}
       />
       <Drawer.Screen
         name="decks"
         options={{
           drawerLabel: "Decks",
+          title: "My Decks",
+          headerShown: false,
         }}
       />
       <Drawer.Screen
         name="collection"
         options={{
           drawerLabel: "Collection",
+          title: "Collection",
+          headerShown: false,
         }}
       />
       <Drawer.Screen
         name="explore"
         options={{
           drawerLabel: "Explore",
+          title: "Explore Decks",
+          headerShown: false,
         }}
       />
       <Drawer.Screen
         name="pods"
         options={{
           drawerLabel: "Pods",
+          title: "Pods",
+          headerShown: false,
         }}
       />
       <Drawer.Screen
         name="profile"
         options={{
           drawerItemStyle: { display: "none" },
+          title: "Settings",
+          headerShown: false,
         }}
       />
       <Drawer.Screen
         name="connections"
         options={{
           drawerItemStyle: { display: "none" },
+          title: "Connections",
+          headerShown: false,
         }}
       />
     </Drawer>

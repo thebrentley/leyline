@@ -1,6 +1,6 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import {
-  ArrowLeft,
   Clock,
   CloudDownload,
   History,
@@ -15,8 +15,8 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
+import { GlassSheet } from "~/components/ui/GlassSheet";
 import { decksApi, type DeckDetail, type DeckVersion } from "~/lib/api";
 import { showToast } from "~/lib/toast";
 import { useResponsive } from "~/hooks/useResponsive";
@@ -217,23 +217,11 @@ export default function VersionsPage() {
 
   const pageContent = (
     <>
-      {/* Header */}
-      <View className={`flex-row items-center justify-between px-4 lg:px-6 py-3 lg:py-4 ${!isDesktop ? "border-b border-slate-200 dark:border-slate-800" : ""}`}>
-        <View className="flex-row items-center gap-3 flex-1">
-          {/* Mobile: Back arrow */}
-          {!isDesktop && (
-            <Pressable
-              onPress={() => router.back()}
-              className={`rounded-full p-2 ${
-                isDark ? "active:bg-slate-800" : "active:bg-slate-100"
-              }`}
-            >
-              <ArrowLeft size={24} color={isDark ? "#94a3b8" : "#64748b"} />
-            </Pressable>
-          )}
-          <View className="flex-1">
-            {/* Desktop: Breadcrumb */}
-            {isDesktop && (
+      {/* Header - Desktop only (mobile uses native Stack header) */}
+      {isDesktop && (
+        <View className="flex-row items-center justify-between px-6 py-4">
+          <View className="flex-row items-center gap-3 flex-1">
+            <View className="flex-1">
               <View className="flex-row items-center gap-2 mb-1">
                 <Pressable
                   onPress={() => router.push("/(tabs)/decks")}
@@ -257,25 +245,25 @@ export default function VersionsPage() {
                   Version History
                 </Text>
               </View>
-            )}
-            <View className="flex-row items-center gap-2">
-              <History size={isDesktop ? 28 : 20} color={isDark ? "#94a3b8" : "#64748b"} />
+              <View className="flex-row items-center gap-2">
+                <History size={28} color={isDark ? "#94a3b8" : "#64748b"} />
+                <Text
+                  className={`text-2xl font-bold ${
+                    isDark ? "text-white" : "text-slate-900"
+                  }`}
+                >
+                  Version History
+                </Text>
+              </View>
               <Text
-                className={`text-lg lg:text-2xl font-bold ${
-                  isDark ? "text-white" : "text-slate-900"
-                }`}
+                className={`text-sm mt-0.5 ${isDark ? "text-slate-500" : "text-slate-400"}`}
               >
-                Version History
+                {deckName}
               </Text>
             </View>
-            <Text
-              className={`text-xs lg:text-sm mt-0.5 ${isDark ? "text-slate-500" : "text-slate-400"}`}
-            >
-              {deckName}
-            </Text>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Content */}
       {loading ? (
@@ -292,8 +280,15 @@ export default function VersionsPage() {
             Versions are created when you sync from Archidekt or make changes
           </Text>
         </View>
+      ) : isDesktop ? (
+        <FlatList<DeckVersion>
+          data={versions}
+          keyExtractor={(item) => item.id}
+          renderItem={renderVersion}
+          contentContainerStyle={{ paddingTop: 16, paddingBottom: 24 }}
+        />
       ) : (
-        <FlatList
+        <BottomSheetFlatList<DeckVersion>
           data={versions}
           keyExtractor={(item) => item.id}
           renderItem={renderVersion}
@@ -321,6 +316,7 @@ export default function VersionsPage() {
   if (isDesktop) {
     return (
       <View className="flex-1 flex-row">
+        <Stack.Screen options={{ headerShown: false }} />
         <DesktopSidebar />
         <View className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
           {pageContent}
@@ -329,10 +325,15 @@ export default function VersionsPage() {
     );
   }
 
-  // Mobile Layout
+  // Mobile Layout - GlassSheet inline inside transparentModal (presentation set in _layout)
   return (
-    <SafeAreaView className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+    <GlassSheet visible={true} onDismiss={() => router.back()} isDark={isDark} snapPoints={["90%"]} inline>
+      <View className={`flex-row items-center px-4 py-3 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
+        <Text className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+          Version History
+        </Text>
+      </View>
       {pageContent}
-    </SafeAreaView>
+    </GlassSheet>
   );
 }

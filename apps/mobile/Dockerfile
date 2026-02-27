@@ -1,28 +1,28 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM --platform=linux/arm64 node:20 AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY apps/mobile/package*.json ./apps/mobile/
+# Copy the mobile app
+COPY apps/mobile ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies directly in the app directory
+RUN npm install --legacy-peer-deps
 
-# Copy source files
-COPY apps/mobile ./apps/mobile
+# Explicitly install the lightningcss native binding for linux-arm64
+RUN npm install --no-save --force lightningcss-linux-arm64-gnu@1.27.0 && \
+    cp node_modules/lightningcss-linux-arm64-gnu/lightningcss.linux-arm64-gnu.node \
+       node_modules/react-native-css-interop/node_modules/lightningcss/
 
 # Build the web application with production env vars
-WORKDIR /app/apps/mobile
 ENV EXPO_PUBLIC_API_URL=https://api.mtgleyline.com/api
-RUN npm install && npx expo export --platform web
+RUN npx expo export --platform web
 
 # Production stage
-FROM nginx:alpine
+FROM --platform=linux/arm64 nginx:alpine
 
 # Copy the built files from builder
-COPY --from=builder /app/apps/mobile/dist /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy nginx configuration
 COPY apps/mobile/nginx.conf /etc/nginx/conf.d/default.conf

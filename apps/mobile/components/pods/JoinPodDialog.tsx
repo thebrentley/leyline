@@ -7,6 +7,7 @@ import {
   TextInput,
   useColorScheme,
 } from "react-native";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 
 interface JoinPodDialogProps {
   visible: boolean;
@@ -94,6 +95,7 @@ export function JoinPodDialog({
             autoCorrect={false}
             autoFocus
             onSubmitEditing={handleJoin}
+            inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
           />
 
           <View className="flex-row gap-3">

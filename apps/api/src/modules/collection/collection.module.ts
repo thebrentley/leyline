@@ -3,13 +3,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CollectionController } from './collection.controller';
 import { CollectionService } from './collection.service';
 import { CollectionCard } from '../../entities/collection-card.entity';
+import { CollectionFolder } from '../../entities/collection-folder.entity';
 import { Deck } from '../../entities/deck.entity';
 import { DeckCard } from '../../entities/deck-card.entity';
 import { CardsModule } from '../cards/cards.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CollectionCard, Deck, DeckCard]),
+    TypeOrmModule.forFeature([CollectionCard, CollectionFolder, Deck, DeckCard]),
     CardsModule,
   ],
   controllers: [CollectionController],

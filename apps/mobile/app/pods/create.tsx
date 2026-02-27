@@ -5,6 +5,7 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { podsApi } from "~/lib/api";
 import { showToast } from "~/lib/toast";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 
 export default function CreatePodScreen() {
   const { colorScheme } = useColorScheme();
@@ -31,9 +32,12 @@ export default function CreatePodScreen() {
     <>
       <Stack.Screen
         options={{
+          headerShown: true,
+          headerShadowVisible: false,
           title: "Create Pod",
           headerStyle: { backgroundColor: isDark ? "#020617" : "#ffffff" },
           headerTintColor: isDark ? "#e2e8f0" : "#1e293b",
+          headerBackTitle: "Pods",
         }}
       />
       <SafeAreaView
@@ -60,6 +64,7 @@ export default function CreatePodScreen() {
                   : "border-slate-300 bg-white text-slate-900"
               }`}
               autoFocus
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
             />
           </View>
 
@@ -83,6 +88,7 @@ export default function CreatePodScreen() {
                   ? "border-slate-700 bg-slate-900 text-white"
                   : "border-slate-300 bg-white text-slate-900"
               }`}
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
               style={{ minHeight: 80, textAlignVertical: "top" }}
             />
           </View>

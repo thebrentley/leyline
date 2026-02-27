@@ -1,3 +1,4 @@
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   ArrowUp,
   Bot,
@@ -8,20 +9,16 @@ import {
   Plus,
   Sparkles,
   User,
-  X,
 } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 import { Button } from "~/components/ui/button";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -32,6 +29,7 @@ import {
   type DeckDetail,
 } from "~/lib/api";
 import { CardDetailModal } from "./CardDetailModal";
+import { GlassSheet } from "./ui/GlassSheet";
 import { showToast } from "~/lib/toast";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { AdvisorQuickActions } from "~/components/AdvisorQuickActions";
@@ -74,88 +72,62 @@ function ChatInput({
 
   return (
     <View
-      className={`px-4 pt-3 ${isDark ? "bg-gray-950" : "bg-gray-50"}`}
-      style={{ paddingBottom: Math.max(16, bottomInset) }}
+      className={`border-t ${isDark ? "border-slate-800" : "border-slate-200"}`}
+      style={{ paddingBottom: Math.max(8, bottomInset) }}
     >
-      <Pressable
-        onPress={() => setIncludeCollection(!includeCollection)}
-        className={`flex-row items-center gap-2 mb-3 px-3 py-2 rounded-full self-start border ${
-          includeCollection
-            ? isDark
-              ? "border-purple-500/50 bg-purple-900/20"
-              : "border-purple-300 bg-purple-50"
-            : isDark
-              ? "border-slate-700 bg-transparent"
-              : "border-slate-200 bg-white"
-        }`}
-        accessibilityRole="switch"
-        accessibilityState={{ checked: includeCollection }}
-        accessibilityLabel="Consider my collection when making suggestions"
-      >
-        <FolderOpen
-          size={14}
-          color={includeCollection ? "#7C3AED" : isDark ? "#64748b" : "#94a3b8"}
-        />
-        <Text
-          className={`text-xs ${
-            includeCollection
-              ? "text-purple-400 font-medium"
-              : isDark
-                ? "text-slate-400"
-                : "text-slate-500"
+      <View className="flex-row items-end gap-2 px-3 pt-2 pb-1">
+        <Pressable
+          onPress={() => setIncludeCollection(!includeCollection)}
+          className="items-center justify-center pb-2.5"
+          accessibilityRole="switch"
+          accessibilityState={{ checked: includeCollection }}
+          accessibilityLabel="Consider my collection when making suggestions"
+          hitSlop={8}
+        >
+          <FolderOpen
+            size={22}
+            color={includeCollection ? "#7C3AED" : isDark ? "#64748b" : "#94a3b8"}
+          />
+        </Pressable>
+        <View
+          className={`flex-1 flex-row items-end rounded-2xl px-3 py-1.5 ${
+            isDark
+              ? "bg-slate-800"
+              : "bg-slate-100"
           }`}
         >
-          Consider my collection
-        </Text>
-      </Pressable>
-      <View
-        className={`flex-row items-end rounded-2xl border px-3 py-2 ${
-          isDark
-            ? "border-slate-700 bg-slate-900/50"
-            : "border-slate-200 bg-white"
-        }`}
-      >
-        <TextInput
-          className={`flex-1 min-h-[40px] max-h-[100px] px-2 py-2 text-base ${
-            isDark ? "text-white" : "text-slate-900"
-          }`}
-          placeholder="Ask about your deck..."
-          placeholderTextColor={isDark ? "#64748b" : "#9ca3af"}
-          value={localMessage}
-          onChangeText={setLocalMessage}
-          multiline
-          editable={!sending}
-        />
+          <TextInput
+            className={`flex-1 min-h-[36px] max-h-[100px] py-1.5 text-base ${
+              isDark ? "text-white" : "text-slate-900"
+            }`}
+            placeholder="Ask about your deck..."
+            placeholderTextColor={isDark ? "#64748b" : "#9ca3af"}
+            value={localMessage}
+            onChangeText={setLocalMessage}
+            multiline
+            editable={!sending}
+            inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+          />
+        </View>
         <Pressable
           onPress={handleSend}
           disabled={!localMessage.trim() || sending}
-          className={`h-10 w-10 rounded-xl items-center justify-center ml-2 ${
+          className={`h-8 w-8 rounded-full items-center justify-center mb-1 ${
             !localMessage.trim() || sending
-              ? isDark
-                ? "bg-slate-700"
-                : "bg-slate-100"
-              : isDark
-                ? "bg-white"
-                : "bg-slate-900"
+              ? "opacity-0"
+              : "bg-purple-600"
           }`}
         >
           {sending ? (
             <ActivityIndicator
-              color={isDark ? "#64748b" : "#94a3b8"}
+              color="white"
               size="small"
             />
           ) : (
             <ArrowUp
-              size={20}
-              color={
-                !localMessage.trim()
-                  ? isDark
-                    ? "#64748b"
-                    : "#94a3b8"
-                  : isDark
-                    ? "#1f2937"
-                    : "white"
-              }
+              size={18}
+              color="white"
+              strokeWidth={2.5}
             />
           )}
         </Pressable>
@@ -476,204 +448,179 @@ export function ChatPanel({
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent={false}
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
+    <GlassSheet visible={visible} onDismiss={onClose} isDark={isDark} snapPoints={["90%"]} enableKeyboardHandling>
+      {/* Header */}
       <View
-        className={`flex-1 ${isDark ? "bg-gray-950" : "bg-white"}`}
-        style={{ paddingTop: insets.top }}
+        className={`flex-row items-center justify-between px-4 py-3 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}
       >
-        {/* Header with gradient */}
-        <View
-          className={`flex-row items-center justify-between px-4 py-3 border-b ${isDark ? "border-slate-800 bg-gradient-to-r from-purple-950 to-gray-900" : "border-slate-200 bg-slate-50"}`}
-        >
-          <View className="flex-row items-center gap-2">
-            <Sparkles size={20} color="#7C3AED" />
-            <Text
-              className={`text-lg font-light tracking-wide ${isDark ? "text-white" : "text-slate-900"}`}
-            >
-              Deck advisor
-            </Text>
-          </View>
-          <View className="flex-row items-center gap-2">
-            <Pressable
-              onPress={() => setShowHistory(true)}
-              className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
-            >
-              <MessagesSquare size={20} color="#7C3AED" />
-            </Pressable>
-            <Pressable
-              onPress={createSession}
-              className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
-            >
-              <Plus size={20} color="#7C3AED" />
-            </Pressable>
-            <Pressable onPress={onClose} className="rounded-full p-2">
-              <X size={24} color={isDark ? "white" : "#1e293b"} />
-            </Pressable>
-          </View>
+        <View className="flex-row items-center gap-2">
+          <Sparkles size={20} color="#7C3AED" />
+          <Text
+            className={`text-lg font-semibold ${isDark ? "text-white" : "text-slate-900"}`}
+          >
+            Deck Advisor
+          </Text>
         </View>
+        <View className="flex-row items-center gap-1">
+          <Pressable
+            onPress={() => setShowHistory(true)}
+            className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
+          >
+            <MessagesSquare size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+          </Pressable>
+          <Pressable
+            onPress={createSession}
+            className={`rounded-full p-2 ${isDark ? "active:bg-slate-800" : "active:bg-slate-100"}`}
+          >
+            <Plus size={20} color={isDark ? "#94a3b8" : "#64748b"} />
+          </Pressable>
+        </View>
+      </View>
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
-        >
-          {loading ? (
-            <View className="flex-1 items-center justify-center">
-              <ActivityIndicator size="large" color="#7C3AED" />
-            </View>
-          ) : (
-            <>
-              {/* Chat area */}
-              {activeSession ? (
-                <>
-                  <ScrollView
-                    ref={scrollViewRef}
-                    className="flex-1 px-4 pt-4"
-                    contentContainerStyle={{ paddingBottom: 16 }}
-                  >
-                    {activeSession.messages.length === 0 &&
-                    !streamingContent ? (
-                      <View className="py-8">
-                        <View className="items-center mb-6">
-                          <View
-                            className={`p-4 rounded-full mb-4 ${isDark ? "bg-purple-900/30" : "bg-purple-100"}`}
-                          >
-                            <MessageSquare size={32} color="#7C3AED" />
-                          </View>
-                          <Text
-                            className={`text-lg font-medium text-center mb-2 ${isDark ? "text-white" : "text-slate-900"}`}
-                          >
-                            Welcome to Deck Advisor
-                          </Text>
-                          <Text
-                            className={`text-sm text-center px-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}
-                          >
-                            Ask me anything about improving your "{deck.name}"
-                            deck.
-                          </Text>
-                        </View>
-                        <View className="px-2">
-                          <Text
-                            className={`text-xs font-medium mb-2 px-2 ${isDark ? "text-slate-500" : "text-slate-400"}`}
-                          >
-                            Quick Actions
-                          </Text>
-                          <AdvisorQuickActions
-                            onActionSelect={(prompt) => sendMessage(prompt)}
-                            disabled={sending}
-                            isDark={isDark}
-                          />
-                        </View>
-                      </View>
-                    ) : (
-                      <>
-                        {activeSession.messages.map(renderMessage)}
-                        {/* Streaming message */}
-                        {sending && streamingContent && (
-                          <View
-                            className={`p-4 rounded-xl mb-3 ${isDark ? "bg-slate-800" : "bg-slate-100"}`}
-                          >
-                            <View className="flex-row items-center gap-2 mb-2">
-                              <View
-                                className={`h-6 w-6 rounded-full items-center justify-center ${isDark ? "bg-slate-700" : "bg-slate-300"}`}
-                              >
-                                <Bot
-                                  size={14}
-                                  color={isDark ? "#A78BFA" : "#7C3AED"}
-                                />
-                              </View>
-                              <Text
-                                className={`text-sm font-medium ${isDark ? "text-white" : "text-slate-900"}`}
-                              >
-                                Deck Advisor
-                              </Text>
-                              <View className="flex-row items-center gap-1 ml-auto">
-                                <Loader2
-                                  size={12}
-                                  color="#7C3AED"
-                                  className="animate-spin"
-                                />
-                                <Text className="text-xs text-purple-400">
-                                  thinking
-                                </Text>
-                              </View>
-                            </View>
-                            <Text
-                              className={`text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}
-                            >
-                              {streamingContent}
-                              <Text className="text-purple-400">▊</Text>
-                            </Text>
-                          </View>
-                        )}
-                        {sending && !streamingContent && (
-                          <View
-                            className={`flex-row items-center gap-3 p-4 rounded-xl mb-3 ${isDark ? "bg-purple-900/30" : "bg-purple-50"}`}
-                          >
-                            <Loader2
-                              size={18}
-                              color="#7C3AED"
-                              className="animate-spin"
-                            />
-                            <Text
-                              className={`text-sm font-medium ${isDark ? "text-purple-300" : "text-purple-600"}`}
-                            >
-                              {statusMessage || "Thinking..."}
-                            </Text>
-                          </View>
-                        )}
-                      </>
-                    )}
-                  </ScrollView>
-
-                  <ChatInput
-                    onSend={sendMessage}
-                    sending={sending}
-                    includeCollection={includeCollection}
-                    setIncludeCollection={setIncludeCollection}
-                    isDark={isDark}
-                    bottomInset={insets.bottom}
-                  />
-                </>
-              ) : (
-                <View className="flex-1 items-center justify-center px-6">
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#7C3AED" />
+        </View>
+      ) : activeSession ? (
+        <>
+          <BottomSheetScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+          >
+            {activeSession.messages.length === 0 &&
+            !streamingContent ? (
+              <View className="py-8">
+                <View className="items-center mb-6">
                   <View
                     className={`p-4 rounded-full mb-4 ${isDark ? "bg-purple-900/30" : "bg-purple-100"}`}
                   >
-                    <MessageSquare size={48} color="#7C3AED" />
+                    <MessageSquare size={32} color="#7C3AED" />
                   </View>
                   <Text
                     className={`text-lg font-medium text-center mb-2 ${isDark ? "text-white" : "text-slate-900"}`}
                   >
-                    No chat session selected
+                    Welcome to Deck Advisor
                   </Text>
                   <Text
-                    className={`text-sm text-center mb-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                    className={`text-sm text-center px-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}
                   >
-                    Start a new chat to get AI-powered deck advice
+                    Ask me anything about improving your "{deck.name}"
+                    deck.
                   </Text>
-                  <Button
-                    onPress={createSession}
-                    className="px-6 py-3 bg-purple-600"
-                  >
-                    <View className="flex-row items-center gap-2">
-                      <Plus size={18} color="white" />
-                      <Text className="text-white font-medium">
-                        Start New Chat
-                      </Text>
-                    </View>
-                  </Button>
                 </View>
-              )}
-            </>
-          )}
-        </KeyboardAvoidingView>
-      </View>
+                <View className="px-2">
+                  <Text
+                    className={`text-xs font-medium mb-2 px-2 ${isDark ? "text-slate-500" : "text-slate-400"}`}
+                  >
+                    Quick Actions
+                  </Text>
+                  <AdvisorQuickActions
+                    onActionSelect={(prompt) => sendMessage(prompt)}
+                    disabled={sending}
+                    isDark={isDark}
+                  />
+                </View>
+              </View>
+            ) : (
+              <>
+                {activeSession.messages.map(renderMessage)}
+                {/* Streaming message */}
+                {sending && streamingContent && (
+                  <View
+                    className={`p-4 rounded-xl mb-3 ${isDark ? "bg-slate-800" : "bg-slate-100"}`}
+                  >
+                    <View className="flex-row items-center gap-2 mb-2">
+                      <View
+                        className={`h-6 w-6 rounded-full items-center justify-center ${isDark ? "bg-slate-700" : "bg-slate-300"}`}
+                      >
+                        <Bot
+                          size={14}
+                          color={isDark ? "#A78BFA" : "#7C3AED"}
+                        />
+                      </View>
+                      <Text
+                        className={`text-sm font-medium ${isDark ? "text-white" : "text-slate-900"}`}
+                      >
+                        Deck Advisor
+                      </Text>
+                      <View className="flex-row items-center gap-1 ml-auto">
+                        <Loader2
+                          size={12}
+                          color="#7C3AED"
+                          className="animate-spin"
+                        />
+                        <Text className="text-xs text-purple-400">
+                          thinking
+                        </Text>
+                      </View>
+                    </View>
+                    <Text
+                      className={`text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}
+                    >
+                      {streamingContent}
+                      <Text className="text-purple-400">▊</Text>
+                    </Text>
+                  </View>
+                )}
+                {sending && !streamingContent && (
+                  <View
+                    className={`flex-row items-center gap-3 p-4 rounded-xl mb-3 ${isDark ? "bg-purple-900/30" : "bg-purple-50"}`}
+                  >
+                    <Loader2
+                      size={18}
+                      color="#7C3AED"
+                      className="animate-spin"
+                    />
+                    <Text
+                      className={`text-sm font-medium ${isDark ? "text-purple-300" : "text-purple-600"}`}
+                    >
+                      {statusMessage || "Thinking..."}
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
+          </BottomSheetScrollView>
+
+          <ChatInput
+            onSend={sendMessage}
+            sending={sending}
+            includeCollection={includeCollection}
+            setIncludeCollection={setIncludeCollection}
+            isDark={isDark}
+            bottomInset={insets.bottom}
+          />
+        </>
+      ) : (
+        <View className="flex-1 items-center justify-center px-6">
+          <View
+            className={`p-4 rounded-full mb-4 ${isDark ? "bg-purple-900/30" : "bg-purple-100"}`}
+          >
+            <MessageSquare size={48} color="#7C3AED" />
+          </View>
+          <Text
+            className={`text-lg font-medium text-center mb-2 ${isDark ? "text-white" : "text-slate-900"}`}
+          >
+            No chat session selected
+          </Text>
+          <Text
+            className={`text-sm text-center mb-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}
+          >
+            Start a new chat to get AI-powered deck advice
+          </Text>
+          <Button
+            onPress={createSession}
+            className="px-6 py-3 bg-purple-600"
+          >
+            <View className="flex-row items-center gap-2">
+              <Plus size={18} color="white" />
+              <Text className="text-white font-medium">
+                Start New Chat
+              </Text>
+            </View>
+          </Button>
+        </View>
+      )}
 
       {/* Card Detail Modal */}
       <CardDetailModal
@@ -720,6 +667,6 @@ export function ChatPanel({
         onDeleteSession={deleteSession}
         isDark={isDark}
       />
-    </Modal>
+    </GlassSheet>
   );
 }

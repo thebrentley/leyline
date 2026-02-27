@@ -33,79 +33,107 @@ export class ComboDetectionService {
   async syncFromSpellbook(): Promise<{ added: number; updated: number }> {
     let added = 0;
     let updated = 0;
+    const PAGE_SIZE = 100;
 
     try {
-      const response = await fetch(
-        'https://backend.commanderspellbook.com/variant-aliases/',
-        {
+      let url: string | null =
+        `https://backend.commanderspellbook.com/variants/?limit=${PAGE_SIZE}`;
+
+      while (url) {
+        const response = await fetch(url, {
           headers: { Accept: 'application/json' },
-        },
-      );
+        });
 
-      if (!response.ok) {
-        throw new Error(`Spellbook API returned ${response.status}`);
-      }
+        if (!response.ok) {
+          throw new Error(`Spellbook API returned ${response.status}`);
+        }
 
-      const data = (await response.json()) as any;
-      const variants = Array.isArray(data.results) ? data.results : (Array.isArray(data) ? data : []);
+        const data = (await response.json()) as any;
+        const variants: any[] = data.results || [];
+        url = data.next || null;
 
-      for (const variant of variants) {
-        try {
-          const cardNames: string[] = (variant.uses || [])
-            .map((u: any) => u.card?.name)
-            .filter(Boolean);
+        // Batch-collect entries to save in bulk
+        const entriesToSave: Partial<ComboEntry>[] = [];
 
-          if (cardNames.length < 2) continue;
+        for (const variant of variants) {
+          try {
+            const cardNames: string[] = (variant.uses || [])
+              .map((u: any) => u.card?.name)
+              .filter(Boolean);
 
-          const isGameWinning =
-            (variant.produces || []).some(
+            if (cardNames.length < 2) continue;
+
+            const isGameWinning = (variant.produces || []).some(
               (p: any) =>
                 p.feature?.name?.toLowerCase().includes('win') ||
                 p.feature?.name?.toLowerCase().includes('infinite'),
             );
 
-          const resultTags = (variant.produces || [])
-            .map((p: any) => p.feature?.name)
-            .filter(Boolean)
-            .map((name: string) => name.toLowerCase().replace(/\s+/g, '-'));
+            const resultTags = (variant.produces || [])
+              .map((p: any) => p.feature?.name)
+              .filter(Boolean)
+              .map((name: string) => name.toLowerCase().replace(/\s+/g, '-'));
 
-          const colorIdentity = variant.identity
-            ? variant.identity.split('')
-            : [];
+            const colorIdentity = variant.identity
+              ? variant.identity.split('')
+              : [];
 
-          const existing = await this.comboRepo.findOne({
-            where: { spellbookId: String(variant.id) },
-          });
-
-          if (existing) {
-            existing.cardNames = cardNames;
-            existing.pieceCount = cardNames.length;
-            existing.isGameWinning = isGameWinning;
-            existing.colorIdentity = colorIdentity;
-            existing.resultTags = resultTags;
-            existing.description = variant.description || null;
-            existing.lastSyncedAt = new Date();
-            await this.comboRepo.save(existing);
-            updated++;
-          } else {
-            await this.comboRepo.save(
-              this.comboRepo.create({
-                spellbookId: String(variant.id),
-                cardNames,
-                pieceCount: cardNames.length,
-                isGameWinning,
-                requiresCommander: variant.requires_commander || false,
-                colorIdentity,
-                description: variant.description || null,
-                resultTags,
-                lastSyncedAt: new Date(),
-              }),
+            const requiresCommander = (variant.uses || []).some(
+              (u: any) => u.mustBeCommander === true,
             );
-            added++;
+
+            entriesToSave.push({
+              spellbookId: String(variant.id),
+              cardNames,
+              pieceCount: cardNames.length,
+              isGameWinning,
+              requiresCommander,
+              colorIdentity,
+              description: variant.description || null,
+              resultTags,
+              lastSyncedAt: new Date(),
+            });
+          } catch (err) {
+            this.logger.warn(
+              `Failed to process combo ${variant.id}: ${err.message}`,
+            );
           }
-        } catch (err) {
-          // Skip individual combo errors, continue
-          this.logger.warn(`Failed to process combo ${variant.id}: ${err.message}`);
+        }
+
+        // Upsert batch by spellbookId
+        if (entriesToSave.length > 0) {
+          const result = await this.comboRepo
+            .createQueryBuilder()
+            .insert()
+            .into(ComboEntry)
+            .values(entriesToSave)
+            .orUpdate(
+              [
+                'card_names',
+                'piece_count',
+                'is_game_winning',
+                'requires_commander',
+                'color_identity',
+                'description',
+                'result_tags',
+                'last_synced_at',
+              ],
+              ['spellbook_id'],
+            )
+            .execute();
+
+          // Count new vs updated based on what was actually inserted
+          const affected = result.identifiers.length;
+          added += affected;
+        }
+
+        this.logger.log(
+          `Spellbook sync progress: processed ${added} combos so far...`,
+        );
+
+        // Rate-limit: wait between pages to avoid getting blocked
+        if (url) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
         }
       }
     } catch (err) {
@@ -113,7 +141,9 @@ export class ComboDetectionService {
       throw err;
     }
 
-    this.logger.log(`Spellbook sync complete: ${added} added, ${updated} updated`);
+    this.logger.log(
+      `Spellbook sync complete: ${added} combos synced`,
+    );
     return { added, updated };
   }
 

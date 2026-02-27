@@ -16,6 +16,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 import { decksApi, type ColorTag, type DeckDetail } from "~/lib/api";
 import { showToast } from "~/lib/toast";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
@@ -247,6 +248,7 @@ export function ColorTagManager({
                       placeholder="Tag name"
                       placeholderTextColor={isDark ? "#64748b" : "#94a3b8"}
                       autoFocus
+                      inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
                     />
                     <Pressable
                       className="h-10 w-10 rounded-lg overflow-hidden border-2"
@@ -341,6 +343,7 @@ export function ColorTagManager({
                   placeholder="New tag name"
                   placeholderTextColor={isDark ? "#64748b" : "#94a3b8"}
                   autoFocus
+                  inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
                 />
                 <Pressable
                   className="h-10 w-10 rounded-lg overflow-hidden border-2"

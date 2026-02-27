@@ -7,6 +7,7 @@ import {
   TextInput,
   useColorScheme,
 } from "react-native";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 import { Button } from "./button";
 
 interface CreateDeckDialogProps {
@@ -79,6 +80,7 @@ export function CreateDeckDialog({
             onChangeText={setDeckName}
             autoFocus
             onSubmitEditing={handleConfirm}
+            inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
           />
           <View className="flex-row gap-3">
             <Button

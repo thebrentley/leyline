@@ -1,3 +1,4 @@
+import { BottomSheetView } from "@gorhom/bottom-sheet";
 import {
   ChevronRight,
   DollarSign,
@@ -11,14 +12,13 @@ import {
   FlatList,
   Image,
   Linking,
-  Modal,
   Pressable,
   ScrollView,
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import type { DeckCard, DeckDetail } from "~/lib/api";
+import { GlassSheet } from "./ui/GlassSheet";
 
 interface PriceSummaryProps {
   deck: DeckDetail;
@@ -137,14 +137,8 @@ export function PriceSummary({ deck, visible, onClose, isDark }: PriceSummaryPro
   );
 
   return (
-    <Modal
-      visible={visible}
-      transparent={false}
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <SafeAreaView className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}>
+    <GlassSheet visible={visible} onDismiss={onClose} isDark={isDark}>
+      <BottomSheetView style={{ flex: 1 }}>
         {/* Header */}
         <View className={`flex-row items-center justify-between px-4 py-3 border-b ${isDark ? "border-slate-800" : "border-slate-200"}`}>
           <View className="flex-row items-center gap-2">
@@ -319,7 +313,7 @@ export function PriceSummary({ deck, visible, onClose, isDark }: PriceSummaryPro
             }
           />
         )}
-      </SafeAreaView>
-    </Modal>
+      </BottomSheetView>
+    </GlassSheet>
   );
 }

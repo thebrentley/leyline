@@ -209,11 +209,42 @@ export interface ArchidektDeck {
   updatedAt?: string;
 }
 
+export interface CollectionFolder {
+  id: string;
+  name: string;
+  cardCount: number;
+  totalValue: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FolderListResponse {
+  folders: CollectionFolder[];
+  totalCards: number;
+  unfiledCount: number;
+  unfiledValue: number;
+}
+
+export interface DeckGroup {
+  deckId: string;
+  deckName: string;
+  cardCount: number;
+  totalValue: number;
+}
+
+export interface DeckGroupsResponse {
+  decks: DeckGroup[];
+  totalCards: number;
+  unlinkedCount: number;
+  unlinkedValue: number;
+}
+
 export interface CollectionCard {
   id: string;
   scryfallId: string;
   quantity: number;
   foilQuantity: number;
+  folderId?: string | null;
   linkedDeckCard?: { deckId: string; deckName: string } | null;
   addedAt: string;
   name?: string;
@@ -344,6 +375,34 @@ export const authApi = {
 
   async getArchidektStatus(): Promise<ApiResponse<ArchidektStatus>> {
     return request<ArchidektStatus>("/auth/archidekt/status");
+  },
+
+  async forgotPassword(
+    email: string,
+  ): Promise<ApiResponse<{ message: string }>> {
+    return request<{ message: string }>("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async registerPushToken(
+    token: string,
+    platform?: string,
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return request<{ success: boolean }>("/auth/push-token", {
+      method: "POST",
+      body: JSON.stringify({ token, platform }),
+    });
+  },
+
+  async unregisterPushToken(
+    token: string,
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return request<{ success: boolean }>("/auth/push-token", {
+      method: "DELETE",
+      body: JSON.stringify({ token }),
+    });
   },
 };
 
@@ -630,11 +689,17 @@ export const collectionApi = {
     page?: number;
     pageSize?: number;
     search?: string;
+    folderId?: string;
+    deckId?: string;
+    sort?: "name" | "value" | "date";
   }): Promise<ApiResponse<PaginatedResponse<CollectionCard>>> {
     const params = new URLSearchParams();
     if (options?.page) params.set("page", options.page.toString());
     if (options?.pageSize) params.set("pageSize", options.pageSize.toString());
     if (options?.search) params.set("search", options.search);
+    if (options?.folderId) params.set("folderId", options.folderId);
+    if (options?.deckId) params.set("deckId", options.deckId);
+    if (options?.sort) params.set("sort", options.sort);
 
     const query = params.toString();
     return request<PaginatedResponse<CollectionCard>>(
@@ -642,18 +707,75 @@ export const collectionApi = {
     );
   },
 
-  async getStats(): Promise<ApiResponse<CollectionStats>> {
-    return request<CollectionStats>("/collection/stats");
+  async getStats(options?: {
+    folderId?: string;
+    deckId?: string;
+  }): Promise<ApiResponse<CollectionStats>> {
+    const params = new URLSearchParams();
+    if (options?.folderId) params.set("folderId", options.folderId);
+    if (options?.deckId) params.set("deckId", options.deckId);
+    const query = params.toString();
+    return request<CollectionStats>(
+      `/collection/stats${query ? `?${query}` : ""}`,
+    );
+  },
+
+  // ==================== Folder methods ====================
+
+  async getFolders(): Promise<ApiResponse<FolderListResponse>> {
+    return request<FolderListResponse>("/collection/folders");
+  },
+
+  async createFolder(name: string): Promise<ApiResponse<CollectionFolder>> {
+    return request<CollectionFolder>("/collection/folders", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  async renameFolder(
+    folderId: string,
+    name: string,
+  ): Promise<ApiResponse<CollectionFolder>> {
+    return request<CollectionFolder>(`/collection/folders/${folderId}`, {
+      method: "PUT",
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  async deleteFolder(
+    folderId: string,
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return request<{ success: boolean }>(`/collection/folders/${folderId}`, {
+      method: "DELETE",
+    });
+  },
+
+  async moveCardsToFolder(
+    cardIds: string[],
+    folderId: string | null,
+  ): Promise<ApiResponse<{ moved: number }>> {
+    return request<{ moved: number }>("/collection/folders/move", {
+      method: "POST",
+      body: JSON.stringify({ cardIds, folderId }),
+    });
+  },
+
+  // ==================== Deck groups ====================
+
+  async getDeckGroups(): Promise<ApiResponse<DeckGroupsResponse>> {
+    return request<DeckGroupsResponse>("/collection/deck-groups");
   },
 
   async add(
     scryfallId: string,
     quantity: number,
     foilQuantity?: number,
+    folderId?: string,
   ): Promise<ApiResponse<CollectionCard>> {
     return request<CollectionCard>("/collection", {
       method: "POST",
-      body: JSON.stringify({ scryfallId, quantity, foilQuantity }),
+      body: JSON.stringify({ scryfallId, quantity, foilQuantity, folderId }),
     });
   },
 
@@ -677,6 +799,28 @@ export const collectionApi = {
     });
   },
 
+  async bulkRemove(
+    cardIds: string[],
+  ): Promise<ApiResponse<{ removed: number }>> {
+    return request<{ removed: number }>("/collection/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify({ cardIds }),
+    });
+  },
+
+  async getAllIds(options?: {
+    search?: string;
+    folderId?: string;
+    deckId?: string;
+  }): Promise<ApiResponse<string[]>> {
+    const params = new URLSearchParams();
+    if (options?.search) params.set("search", options.search);
+    if (options?.folderId) params.set("folderId", options.folderId);
+    if (options?.deckId) params.set("deckId", options.deckId);
+    const qs = params.toString();
+    return request<string[]>(`/collection/all-ids${qs ? `?${qs}` : ""}`);
+  },
+
   async linkAllToDecks(): Promise<
     ApiResponse<{ linked: number; total: number }>
   > {
@@ -687,17 +831,35 @@ export const collectionApi = {
 
   async bulkImport(
     lines: string[],
-    options?: { autoLink?: boolean },
+    options?: {
+      autoLink?: boolean;
+      folderId?: string;
+      deckId?: string;
+      overrideSet?: boolean;
+      addMissing?: boolean;
+    },
   ): Promise<
     ApiResponse<{
       imported: number;
       linked: number;
+      added: number;
       errors: Array<{ line: string; error: string }>;
     }>
   > {
     return request("/collection/bulk-import", {
       method: "POST",
       body: JSON.stringify({ lines, options }),
+    });
+  },
+
+  async linkImportedToDeck(
+    scryfallIds: string[],
+    deckId: string,
+    options?: { overrideSet?: boolean; addMissing?: boolean },
+  ): Promise<ApiResponse<{ linked: number; added: number }>> {
+    return request("/collection/link-to-deck", {
+      method: "POST",
+      body: JSON.stringify({ scryfallIds, deckId, ...options }),
     });
   },
 };
@@ -1059,11 +1221,36 @@ export interface PodDetail {
   }>;
   pendingInvites?: Array<{
     id: string;
+    inviteId: string;
     displayName: string | null;
     email: string;
+    isEmailInvite: boolean;
     invitedAt: string;
   }>;
   createdAt: string;
+}
+
+export interface PodMemberStats {
+  totalGames: number;
+  memberStats: Array<{
+    userId: string | null;
+    offlineMemberId?: string | null;
+    name?: string | null;
+    gamesPlayed: number;
+    wins: number;
+    winRate: number;
+  }>;
+}
+
+export interface PodDeckStats {
+  deckStats: Array<{
+    deckId: string | null;
+    deckName: string;
+    userId: string | null;
+    wins: number;
+    gamesPlayed: number;
+    winRate: number;
+  }>;
 }
 
 export interface PodInviteInfo {
@@ -1076,6 +1263,15 @@ export interface PodInviteInfo {
   };
   inviter: { displayName: string | null; email: string };
   createdAt: string;
+}
+
+export interface InviteTokenInfo {
+  inviteId: string;
+  podName: string;
+  podDescription: string | null;
+  inviterName: string;
+  status: string;
+  expired: boolean;
 }
 
 export interface PodEventSummary {
@@ -1119,6 +1315,22 @@ export interface PodEventDetail {
   notResponded: Array<{ userId: string; displayName: string | null; email: string; profilePicture: string | null }>;
   offlineNotResponded: Array<{ offlineMemberId: string; name: string }>;
   createdAt: string;
+}
+
+export interface EventChatMessageData {
+  id: string;
+  eventId: string;
+  userId: string;
+  displayName: string | null;
+  profilePicture: string | null;
+  content: string;
+  isSystem?: boolean;
+  createdAt: string;
+}
+
+export interface EventChatHistoryResponse {
+  messages: EventChatMessageData[];
+  hasMore: boolean;
 }
 
 export interface PodOfflineMember {
@@ -1228,6 +1440,47 @@ export const podsApi = {
     });
   },
 
+  // Email invites
+  async getInviteByToken(
+    token: string,
+  ): Promise<ApiResponse<InviteTokenInfo>> {
+    return request<InviteTokenInfo>(`/pods/invite-token/${token}`);
+  },
+
+  async acceptInviteByToken(
+    token: string,
+  ): Promise<ApiResponse<{ success: true; podId: string }>> {
+    return request(`/pods/invite-token/${token}/accept`, { method: "POST" });
+  },
+
+  async inviteByEmail(
+    podId: string,
+    email: string,
+  ): Promise<ApiResponse<{ id: string }>> {
+    return request(`/pods/${podId}/invite-email`, {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async rescindInvite(
+    podId: string,
+    inviteId: string,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/${podId}/invites/${inviteId}`, {
+      method: "DELETE",
+    });
+  },
+
+  async resendInviteEmail(
+    podId: string,
+    inviteId: string,
+  ): Promise<ApiResponse<{ success: true }>> {
+    return request(`/pods/${podId}/invites/${inviteId}/resend`, {
+      method: "POST",
+    });
+  },
+
   // Members
   async removeMember(
     podId: string,
@@ -1261,12 +1514,15 @@ export const podsApi = {
   // User search & profile
   async searchUsers(
     query: string,
+    podId?: string,
   ): Promise<
     ApiResponse<
       Array<{ id: string; displayName: string | null; email: string }>
     >
   > {
-    return request(`/pods/users/search?q=${encodeURIComponent(query)}`);
+    let url = `/pods/users/search?q=${encodeURIComponent(query)}`;
+    if (podId) url += `&podId=${encodeURIComponent(podId)}`;
+    return request(url);
   },
 
   async getUserProfile(userId: string): Promise<ApiResponse<PodUserProfile>> {
@@ -1453,8 +1709,10 @@ export const podsApi = {
       startedAt: string;
       endedAt: string;
       winnerUserId: string | null;
+      winnerOfflineMemberId?: string | null;
       players: Array<{
         userId: string | null;
+        offlineMemberId?: string | null;
         deckName: string | null;
         deckId: string | null;
         finalLife: number;
@@ -1473,6 +1731,51 @@ export const podsApi = {
         body: JSON.stringify(data),
       },
     );
+  },
+
+  async getChatMessages(
+    podId: string,
+    eventId: string,
+    options?: { before?: string; limit?: number },
+  ): Promise<ApiResponse<EventChatHistoryResponse>> {
+    const params = new URLSearchParams();
+    if (options?.before) params.set("before", options.before);
+    if (options?.limit) params.set("limit", options.limit.toString());
+    const query = params.toString();
+    return request<EventChatHistoryResponse>(
+      `/pods/${podId}/events/${eventId}/chat${query ? `?${query}` : ""}`,
+    );
+  },
+
+  async sendChatMessage(
+    podId: string,
+    eventId: string,
+    content: string,
+  ): Promise<ApiResponse<EventChatMessageData>> {
+    return request<EventChatMessageData>(
+      `/pods/${podId}/events/${eventId}/chat`,
+      {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      },
+    );
+  },
+
+  async getMemberStats(podId: string): Promise<ApiResponse<PodMemberStats>> {
+    return request<PodMemberStats>(`/pods/${podId}/insights/member-stats`);
+  },
+
+  async getDeckStats(podId: string): Promise<ApiResponse<PodDeckStats>> {
+    return request<PodDeckStats>(`/pods/${podId}/insights/deck-stats`);
+  },
+};
+
+export const feedbackApi = {
+  async send(message: string): Promise<ApiResponse<{ success: boolean }>> {
+    return request<{ success: boolean }>("/feedback", {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    });
   },
 };
 

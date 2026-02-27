@@ -1,9 +1,25 @@
 import { Redirect, Stack, useLocalSearchParams, router } from "expo-router";
 import { useKeepAwake } from "expo-keep-awake";
-import { Menu, X } from "lucide-react-native";
+import { X, Menu } from "lucide-react-native";
 import * as React from "react";
-import { ActivityIndicator, Image, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import {
+  ActivityIndicator,
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, {
+  FadeIn,
+  FadeInUp,
+  ZoomIn,
+  BounceIn,
+} from "react-native-reanimated";
 import { PlayerCounter } from "~/components/life-counter/PlayerCounter";
 import { CommanderDamageHub } from "~/components/life-counter/CommanderDamageHub";
 import { CommanderDamageCounter } from "~/components/life-counter/CommanderDamageCounter";
@@ -22,7 +38,7 @@ export interface PlayerState {
 }
 
 export default function LifeCounterScreen() {
-  if (Platform.OS === 'web') {
+  if (Platform.OS === "web") {
     return <Redirect href="/" />;
   }
 
@@ -32,7 +48,11 @@ export default function LifeCounterScreen() {
 function LifeCounterContent() {
   useKeepAwake();
   const insets = useSafeAreaInsets();
-  const { players: playersParam, podId, eventId } = useLocalSearchParams<{
+  const {
+    players: playersParam,
+    podId,
+    eventId,
+  } = useLocalSearchParams<{
     players?: string;
     podId?: string;
     eventId?: string;
@@ -41,11 +61,24 @@ function LifeCounterContent() {
   const { height: windowHeight } = useWindowDimensions();
   const [layoutPickingPhase, setLayoutPickingPhase] = React.useState(false);
   const [seatPickingPhase, setSeatPickingPhase] = React.useState(false);
-  const [eventPlayersList, setEventPlayersList] = React.useState<Array<{ name: string; profilePicture: string | null; userId: string | null }>>([]);
-  const [seatAssignments, setSeatAssignments] = React.useState<(number | null)[]>([]);
+  const [eventPlayersList, setEventPlayersList] = React.useState<
+    Array<{
+      name: string;
+      profilePicture: string | null;
+      userId: string | null;
+      offlineMemberId?: string | null;
+    }>
+  >([]);
+  const [seatAssignments, setSeatAssignments] = React.useState<
+    (number | null)[]
+  >([]);
   const [pickingSlot, setPickingSlot] = React.useState<number | null>(null);
-  const [deckSelections, setDeckSelections] = React.useState<(DeckSummary | 'skipped' | null)[]>([]);
-  const [pickingDeckSlot, setPickingDeckSlot] = React.useState<number | null>(null);
+  const [deckSelections, setDeckSelections] = React.useState<
+    (DeckSummary | "skipped" | null)[]
+  >([]);
+  const [pickingDeckSlot, setPickingDeckSlot] = React.useState<number | null>(
+    null,
+  );
   const [memberDecks, setMemberDecks] = React.useState<DeckSummary[]>([]);
   const [loadingDecks, setLoadingDecks] = React.useState(false);
   const [centerMenuOpen, setCenterMenuOpen] = React.useState(false);
@@ -53,6 +86,8 @@ function LifeCounterContent() {
   const [layoutType, setLayoutType] = React.useState("square");
   const [startingLife, setStartingLife] = React.useState(40);
   const startingLifeLoaded = React.useRef(false);
+  const [showCounters, setShowCounters] = React.useState(true);
+  const showCountersLoaded = React.useRef(false);
 
   React.useEffect(() => {
     secureStorage.getItem("lifeCounter.startingLife").then((val) => {
@@ -70,17 +105,38 @@ function LifeCounterContent() {
     }
   }, [startingLife]);
 
+  React.useEffect(() => {
+    secureStorage.getItem("lifeCounter.showCounters").then((val) => {
+      if (val !== null) {
+        setShowCounters(val === "true");
+      }
+      showCountersLoaded.current = true;
+    });
+  }, []);
+
+  React.useEffect(() => {
+    if (showCountersLoaded.current) {
+      secureStorage.setItem("lifeCounter.showCounters", String(showCounters));
+    }
+  }, [showCounters]);
+
   const eventInitialized = React.useRef(false);
   React.useEffect(() => {
     if (eventInitialized.current || !playersParam) return;
     eventInitialized.current = true;
     try {
-      const eventPlayers: Array<{ name: string; profilePicture: string | null; userId?: string | null }> =
-        JSON.parse(playersParam);
+      const eventPlayers: Array<{
+        name: string;
+        profilePicture: string | null;
+        userId?: string | null;
+        offlineMemberId?: string | null;
+      }> = JSON.parse(playersParam);
       if (eventPlayers.length >= 2 && eventPlayers.length <= 4) {
         const count = eventPlayers.length;
         setPlayerCount(count);
-        setEventPlayersList(eventPlayers.map((ep) => ({ ...ep, userId: ep.userId ?? null })));
+        setEventPlayersList(
+          eventPlayers.map((ep) => ({ ...ep, userId: ep.userId ?? null })),
+        );
         setSeatAssignments(Array(count).fill(null));
         setDeckSelections(Array(count).fill(null));
         if (count === 3) {
@@ -96,7 +152,9 @@ function LifeCounterContent() {
     }
   }, [playersParam, startingLife]);
 
-  const [gameStartedAt, setGameStartedAt] = React.useState(() => new Date().toISOString());
+  const [gameStartedAt, setGameStartedAt] = React.useState(() =>
+    new Date().toISOString(),
+  );
   const [deathOrder, setDeathOrder] = React.useState<number[]>([]);
   const [saving, setSaving] = React.useState(false);
 
@@ -110,9 +168,10 @@ function LifeCounterContent() {
         seatAssignments.map((epIdx, slotIdx) => {
           const ep = eventPlayersList[epIdx!];
           const deck = deckSelections[slotIdx];
-          const bgImage = (deck && deck !== 'skipped' && deck.commanderImageCrop)
-            ? deck.commanderImageCrop
-            : ep.profilePicture ?? undefined;
+          const bgImage =
+            deck && deck !== "skipped" && deck.commanderImageCrop
+              ? deck.commanderImageCrop
+              : (ep.profilePicture ?? undefined);
           return {
             id: slotIdx,
             life: startingLife,
@@ -127,10 +186,20 @@ function LifeCounterContent() {
       setSeatPickingPhase(false);
       setGameStartedAt(new Date().toISOString());
     }
-  }, [seatAssignments, deckSelections, seatPickingPhase, eventPlayersList, startingLife]);
+  }, [
+    seatAssignments,
+    deckSelections,
+    seatPickingPhase,
+    eventPlayersList,
+    startingLife,
+  ]);
 
-  const [activeCommanderPlayer, setActiveCommanderPlayer] = React.useState<number | null>(null);
-  const [highRollResults, setHighRollResults] = React.useState<{ [playerId: number]: number } | null>(null);
+  const [activeCommanderPlayer, setActiveCommanderPlayer] = React.useState<
+    number | null
+  >(null);
+  const [highRollResults, setHighRollResults] = React.useState<{
+    [playerId: number]: number;
+  } | null>(null);
 
   const [players, setPlayers] = React.useState<PlayerState[]>(() =>
     Array.from({ length: 4 }, (_, i) => ({
@@ -186,7 +255,8 @@ function LifeCounterContent() {
 
   // Win detection
   const alivePlayers = players.filter((p) => p.life > 0);
-  const winner = alivePlayers.length === 1 && players.length > 1 ? alivePlayers[0] : null;
+  const winner =
+    alivePlayers.length === 1 && players.length > 1 ? alivePlayers[0] : null;
 
   const resetGame = () => {
     setPlayers((prev) =>
@@ -206,25 +276,30 @@ function LifeCounterContent() {
     if (!podId || !eventId || !winner) return;
     const endedAt = new Date().toISOString();
     const winnerEpIdx = seatAssignments[winner.id];
-    const winnerEp = winnerEpIdx !== null ? eventPlayersList[winnerEpIdx] : null;
+    const winnerEp =
+      winnerEpIdx !== null ? eventPlayersList[winnerEpIdx] : null;
     await podsApi.saveGameResult(podId, eventId, {
       startedAt: gameStartedAt,
       endedAt,
       winnerUserId: winnerEp?.userId ?? null,
+      winnerOfflineMemberId: winnerEp?.offlineMemberId ?? null,
       players: players.map((p) => {
         const epIdx = seatAssignments[p.id];
         const ep = epIdx !== null ? eventPlayersList[epIdx] : null;
         const deck = deckSelections[p.id];
-        const hasDeck = deck && deck !== 'skipped';
+        const hasDeck = deck && deck !== "skipped";
         return {
           userId: ep?.userId ?? null,
+          offlineMemberId: ep?.offlineMemberId ?? null,
           deckName: hasDeck ? deck.name : null,
           deckId: hasDeck ? deck.id : null,
           finalLife: p.life,
           finalPoison: p.poison,
           finalCommanderTax: p.commanderTax,
           commanderDamage: p.commanderDamage,
-          deathOrder: deathOrder.includes(p.id) ? deathOrder.indexOf(p.id) + 1 : null,
+          deathOrder: deathOrder.includes(p.id)
+            ? deathOrder.indexOf(p.id) + 1
+            : null,
           isWinner: p.id === winner.id,
         };
       }),
@@ -246,7 +321,7 @@ function LifeCounterContent() {
         seatAssignments.map((epIdx) => {
           if (epIdx === null) return null;
           const ep = eventPlayersList[epIdx];
-          return (!ep.userId || !podId) ? 'skipped' as const : null;
+          return !ep.userId || !podId ? ("skipped" as const) : null;
         }),
       );
       setSeatPickingPhase(true);
@@ -300,36 +375,95 @@ function LifeCounterContent() {
       if (layoutType === "one-top") {
         return ["180deg", "90deg", "-90deg"][index];
       }
+      // Table layouts (4-seat grid with one empty)
+      // Left column seats: -270deg, Right column seats: -90deg
+      if (layoutType === "empty-tl") {
+        // P0=BL, P1=TR, P2=BR
+        return ["-270deg", "-90deg", "-90deg"][index];
+      }
+      if (layoutType === "empty-bl") {
+        // P0=TL, P1=TR, P2=BR
+        return ["-270deg", "-90deg", "-90deg"][index];
+      }
+      if (layoutType === "empty-tr") {
+        // P0=TL, P1=BL, P2=BR
+        return ["-270deg", "-270deg", "-90deg"][index];
+      }
+      if (layoutType === "empty-br") {
+        // P0=TL, P1=BL, P2=TR
+        return ["-270deg", "-270deg", "-90deg"][index];
+      }
     }
 
     if (playerCount === 4) {
       return index < 2 ? "-270deg" : "-90deg";
     }
 
+    if (playerCount === 5) {
+      if (layoutType === "one-bottom") {
+        // P0=TL(90), P1=TR(-90), P2=ML(90), P3=MR(-90), P4=bottom(0)
+        return ["90deg", "-90deg", "90deg", "-90deg", "0deg"][index];
+      }
+      if (layoutType === "one-top") {
+        // P0=top(180), P1=ML(90), P2=MR(-90), P3=BL(90), P4=BR(-90)
+        return ["180deg", "90deg", "-90deg", "90deg", "-90deg"][index];
+      }
+      // Table layouts (2x3 grid with one empty corner)
+      // Left column: -270deg, Right column: -90deg
+      if (layoutType === "empty-tl") {
+        // P0=ML, P1=BL, P2=TR, P3=MR, P4=BR
+        return ["-270deg", "-270deg", "-90deg", "-90deg", "-90deg"][index];
+      }
+      if (layoutType === "empty-bl") {
+        // P0=TL, P1=ML, P2=TR, P3=MR, P4=BR
+        return ["-270deg", "-270deg", "-90deg", "-90deg", "-90deg"][index];
+      }
+      if (layoutType === "empty-tr") {
+        // P0=TL, P1=ML, P2=BL, P3=MR, P4=BR
+        return ["-270deg", "-270deg", "-270deg", "-90deg", "-90deg"][index];
+      }
+      if (layoutType === "empty-br") {
+        // P0=TL, P1=ML, P2=BL, P3=TR, P4=MR
+        return ["-270deg", "-270deg", "-270deg", "-90deg", "-90deg"][index];
+      }
+    }
+
+    if (playerCount === 6) {
+      // 2x3 grid: left column -270deg, right column -90deg
+      return index < 3 ? "-270deg" : "-90deg";
+    }
+
     return index === 0 || index === 1 ? "180deg" : "0deg";
   };
 
-  const SLOT_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b'];
+  const SLOT_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ec4899"];
 
   const triggerDeckSelection = (slotIdx: number, epIdx: number) => {
     const ep = eventPlayersList[epIdx];
     if (ep.userId && podId) {
       setPickingDeckSlot(slotIdx);
       setLoadingDecks(true);
-      podsApi.getMemberDecks(podId, ep.userId).then((res) => {
-        setMemberDecks(res.data ?? []);
-        setLoadingDecks(false);
-      }).catch(() => {
-        setMemberDecks([]);
-        setLoadingDecks(false);
-      });
+      podsApi
+        .getMemberDecks(podId, ep.userId)
+        .then((res) => {
+          setMemberDecks(res.data ?? []);
+          setLoadingDecks(false);
+        })
+        .catch(() => {
+          setMemberDecks([]);
+          setLoadingDecks(false);
+        });
     } else {
-      setDeckSelections((prev) => prev.map((d, i) => (i === slotIdx ? 'skipped' : d)));
+      setDeckSelections((prev) =>
+        prev.map((d, i) => (i === slotIdx ? "skipped" : d)),
+      );
     }
   };
 
   const handleSeatPicked = (slotIdx: number, epIdx: number) => {
-    setSeatAssignments((prev) => prev.map((a, i) => (i === slotIdx ? epIdx : a)));
+    setSeatAssignments((prev) =>
+      prev.map((a, i) => (i === slotIdx ? epIdx : a)),
+    );
     setPickingSlot(null);
     triggerDeckSelection(slotIdx, epIdx);
   };
@@ -337,7 +471,8 @@ function LifeCounterContent() {
   const renderSeatPickerSlot = (index: number) => {
     const rotation = getRotation(index);
     const assignedIdx = seatAssignments[index];
-    const assignedPlayer = assignedIdx !== null ? eventPlayersList[assignedIdx] : null;
+    const assignedPlayer =
+      assignedIdx !== null ? eventPlayersList[assignedIdx] : null;
     const deckSelection = deckSelections[index];
     const isReady = assignedPlayer && deckSelection !== null;
 
@@ -349,31 +484,48 @@ function LifeCounterContent() {
             triggerDeckSelection(index, assignedIdx);
           } else {
             if (assignedIdx !== null) {
-              setSeatAssignments((prev) => prev.map((a, i) => (i === index ? null : a)));
-              setDeckSelections((prev) => prev.map((d, i) => (i === index ? null : d)));
+              setSeatAssignments((prev) =>
+                prev.map((a, i) => (i === index ? null : a)),
+              );
+              setDeckSelections((prev) =>
+                prev.map((d, i) => (i === index ? null : d)),
+              );
             }
             setPickingSlot(index);
           }
         }}
-        style={{ flex: 1, backgroundColor: assignedPlayer ? '#1e293b' : SLOT_COLORS[index] }}
+        style={{
+          flex: 1,
+          backgroundColor: assignedPlayer ? "#1e293b" : SLOT_COLORS[index],
+        }}
         className="items-center justify-center"
       >
-        <View style={{ transform: [{ rotate: rotation }] }} className="items-center justify-center">
+        <View
+          style={{ transform: [{ rotate: rotation }] }}
+          className="items-center justify-center"
+        >
           {assignedPlayer ? (
             <>
-              <Text className="text-2xl font-bold text-white">{assignedPlayer.name}</Text>
-              {deckSelection && deckSelection !== 'skipped' && (
-                <Text className="mt-1 text-sm text-purple-300" numberOfLines={1}>
+              <Text className="text-2xl font-bold text-white">
+                {assignedPlayer.name}
+              </Text>
+              {deckSelection && deckSelection !== "skipped" && (
+                <Text
+                  className="mt-1 text-sm text-purple-300"
+                  numberOfLines={1}
+                >
                   {deckSelection.name}
                 </Text>
               )}
               {isReady && (
-                <Text className="mt-1 text-base text-green-400">{'\u2713'} Ready</Text>
+                <Text className="mt-1 text-base text-green-400">
+                  {"\u2713"} Ready
+                </Text>
               )}
             </>
           ) : (
             <Text className="text-center text-2xl font-bold text-white/90">
-              Tap to{'\n'}pick seat
+              Tap to{"\n"}pick seat
             </Text>
           )}
         </View>
@@ -399,12 +551,16 @@ function LifeCounterContent() {
           />
         );
       } else {
-        const focusedPlayer = players.find((p) => p.id === activeCommanderPlayer)!;
+        const focusedPlayer = players.find(
+          (p) => p.id === activeCommanderPlayer,
+        )!;
         content = (
           <CommanderDamageCounter
             player={player}
             focusedPlayer={focusedPlayer}
-            onUpdateFocusedPlayer={(updates) => updatePlayer(activeCommanderPlayer, updates)}
+            onUpdateFocusedPlayer={(updates) =>
+              updatePlayer(activeCommanderPlayer, updates)
+            }
             rotation={rotation}
           />
         );
@@ -419,6 +575,8 @@ function LifeCounterContent() {
           onSwipe={() => setActiveCommanderPlayer(player.id)}
           menuOpen={centerMenuOpen}
           insets={insets}
+          showCounters={showCounters}
+          allPlayers={players}
         />
       );
     }
@@ -431,7 +589,11 @@ function LifeCounterContent() {
       return (
         <View style={{ flex: 1 }}>
           {content}
-          <HighRollOverlay roll={roll} isWinner={isWinner} rotation={rotation} />
+          <HighRollOverlay
+            roll={roll}
+            isWinner={isWinner}
+            rotation={rotation}
+          />
         </View>
       );
     }
@@ -445,34 +607,117 @@ function LifeCounterContent() {
         options={{
           title: "Life Counter",
           headerShown: false,
+          gestureEnabled: false,
         }}
       />
 
       <View style={{ flex: 1 }} className="bg-background">
         {layoutPickingPhase && (
           <View className="flex-1 items-center justify-center bg-slate-950 px-8">
-            <Text className="mb-2 text-2xl font-bold text-white">Choose Layout</Text>
-            <Text className="mb-8 text-base text-slate-400">Select how players are arranged</Text>
-            <View className="w-full flex-row justify-center gap-6">
+            <Text className="mb-2 text-2xl font-bold text-white">
+              Choose Layout
+            </Text>
+            <Text className="mb-8 text-base text-slate-400">
+              Select how players are arranged
+            </Text>
+            <View className="w-full flex-row flex-wrap justify-center gap-4">
               {[
-                { type: "two-top", label: "2 Top, 1 Bottom", layout: (
-                  <View className="aspect-[9/16] w-24 gap-[2px]">
-                    <View style={{ flex: 2 }} className="flex-row gap-[2px]">
-                      <View className="flex-1 items-center justify-center rounded bg-yellow-400" />
-                      <View className="flex-1 items-center justify-center rounded bg-pink-500" />
+                {
+                  type: "two-top",
+                  label: "2 Top, 1 Bottom",
+                  layout: (
+                    <View className="aspect-[9/16] w-20 gap-[2px]">
+                      <View style={{ flex: 2 }} className="flex-row gap-[2px]">
+                        <View className="flex-1 items-center justify-center rounded bg-yellow-400" />
+                        <View className="flex-1 items-center justify-center rounded bg-pink-500" />
+                      </View>
+                      <View
+                        style={{ flex: 1 }}
+                        className="items-center justify-center rounded bg-purple-400"
+                      />
                     </View>
-                    <View style={{ flex: 1 }} className="items-center justify-center rounded bg-purple-400" />
-                  </View>
-                )},
-                { type: "one-top", label: "1 Top, 2 Bottom", layout: (
-                  <View className="aspect-[9/16] w-24 gap-[2px]">
-                    <View style={{ flex: 1 }} className="items-center justify-center rounded bg-yellow-400" />
-                    <View style={{ flex: 2 }} className="flex-row gap-[2px]">
-                      <View className="flex-1 items-center justify-center rounded bg-pink-500" />
-                      <View className="flex-1 items-center justify-center rounded bg-purple-400" />
+                  ),
+                },
+                {
+                  type: "one-top",
+                  label: "1 Top, 2 Bottom",
+                  layout: (
+                    <View className="aspect-[9/16] w-20 gap-[2px]">
+                      <View
+                        style={{ flex: 1 }}
+                        className="items-center justify-center rounded bg-yellow-400"
+                      />
+                      <View style={{ flex: 2 }} className="flex-row gap-[2px]">
+                        <View className="flex-1 items-center justify-center rounded bg-pink-500" />
+                        <View className="flex-1 items-center justify-center rounded bg-purple-400" />
+                      </View>
                     </View>
-                  </View>
-                )},
+                  ),
+                },
+                {
+                  type: "empty-tl",
+                  label: "Empty Top-Left",
+                  layout: (
+                    <View className="aspect-[9/16] w-20 flex-row gap-[2px]">
+                      <View className="flex-1 gap-[2px]">
+                        <View className="flex-1 rounded bg-slate-700" />
+                        <View className="flex-1 rounded bg-yellow-400" />
+                      </View>
+                      <View className="flex-1 gap-[2px]">
+                        <View className="flex-1 rounded bg-pink-500" />
+                        <View className="flex-1 rounded bg-purple-400" />
+                      </View>
+                    </View>
+                  ),
+                },
+                {
+                  type: "empty-bl",
+                  label: "Empty Bot-Left",
+                  layout: (
+                    <View className="aspect-[9/16] w-20 flex-row gap-[2px]">
+                      <View className="flex-1 gap-[2px]">
+                        <View className="flex-1 rounded bg-yellow-400" />
+                        <View className="flex-1 rounded bg-slate-700" />
+                      </View>
+                      <View className="flex-1 gap-[2px]">
+                        <View className="flex-1 rounded bg-pink-500" />
+                        <View className="flex-1 rounded bg-purple-400" />
+                      </View>
+                    </View>
+                  ),
+                },
+                {
+                  type: "empty-tr",
+                  label: "Empty Top-Right",
+                  layout: (
+                    <View className="aspect-[9/16] w-20 flex-row gap-[2px]">
+                      <View className="flex-1 gap-[2px]">
+                        <View className="flex-1 rounded bg-yellow-400" />
+                        <View className="flex-1 rounded bg-pink-500" />
+                      </View>
+                      <View className="flex-1 gap-[2px]">
+                        <View className="flex-1 rounded bg-slate-700" />
+                        <View className="flex-1 rounded bg-purple-400" />
+                      </View>
+                    </View>
+                  ),
+                },
+                {
+                  type: "empty-br",
+                  label: "Empty Bot-Right",
+                  layout: (
+                    <View className="aspect-[9/16] w-20 flex-row gap-[2px]">
+                      <View className="flex-1 gap-[2px]">
+                        <View className="flex-1 rounded bg-yellow-400" />
+                        <View className="flex-1 rounded bg-pink-500" />
+                      </View>
+                      <View className="flex-1 gap-[2px]">
+                        <View className="flex-1 rounded bg-purple-400" />
+                        <View className="flex-1 rounded bg-slate-700" />
+                      </View>
+                    </View>
+                  ),
+                },
               ].map((opt) => (
                 <Pressable
                   key={opt.type}
@@ -481,10 +726,12 @@ function LifeCounterContent() {
                     setLayoutPickingPhase(false);
                     setSeatPickingPhase(true);
                   }}
-                  className="items-center rounded-xl bg-slate-800 p-4 active:bg-slate-700"
+                  className="items-center rounded-xl bg-slate-800 p-3 active:bg-slate-700"
                 >
                   {opt.layout}
-                  <Text className="mt-3 text-sm font-medium text-white">{opt.label}</Text>
+                  <Text className="mt-2 text-xs font-medium text-white">
+                    {opt.label}
+                  </Text>
                 </Pressable>
               ))}
             </View>
@@ -499,13 +746,14 @@ function LifeCounterContent() {
 
         {!layoutPickingPhase && playerCount === 2 && players.length >= 2 && (
           <View style={{ flex: 1 }}>
-            <View style={{ flex: 1 }}>
-              {renderPlayerSlot(0)}
-            </View>
-            <View className="h-[2px] bg-white dark:bg-slate-900" />
-            <View style={{ flex: 1 }}>
-              {renderPlayerSlot(1)}
-            </View>
+            <View style={{ flex: 1 }}>{renderPlayerSlot(0)}</View>
+            <LinearGradient
+              colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={{ height: 3 }}
+            />
+            <View style={{ flex: 1 }}>{renderPlayerSlot(1)}</View>
           </View>
         )}
 
@@ -514,35 +762,168 @@ function LifeCounterContent() {
             {layoutType === "two-top" && (
               <View className="h-full w-full">
                 <View style={{ flex: 2 }} className="flex-row">
-                  <View className="flex-1">
-                    {renderPlayerSlot(0)}
-                  </View>
-                  <View className="w-[2px] bg-white dark:bg-slate-900" />
-                  <View className="flex-1">
-                    {renderPlayerSlot(1)}
-                  </View>
+                  <View className="flex-1">{renderPlayerSlot(0)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={{ width: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
                 </View>
-                <View className="h-[2px] bg-white dark:bg-slate-900" />
-                <View className="flex-1">
-                  {renderPlayerSlot(2)}
-                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={{ height: 3 }}
+                />
+                <View className="flex-1">{renderPlayerSlot(2)}</View>
               </View>
             )}
 
             {layoutType === "one-top" && (
               <View className="h-full w-full">
-                <View style={{ flex: 1 }}>
-                  {renderPlayerSlot(0)}
-                </View>
-                <View className="h-[2px] bg-white dark:bg-slate-900" />
+                <View style={{ flex: 1 }}>{renderPlayerSlot(0)}</View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={{ height: 3 }}
+                />
                 <View style={{ flex: 2 }} className="flex-row">
-                  <View className="flex-1">
-                    {renderPlayerSlot(1)}
-                  </View>
-                  <View className="w-[2px] bg-white dark:bg-slate-900" />
-                  <View className="flex-1">
-                    {renderPlayerSlot(2)}
-                  </View>
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={{ width: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(2)}</View>
+                </View>
+              </View>
+            )}
+
+            {/* Table layouts: 4-seat grid with one empty seat */}
+            {layoutType === "empty-tl" && (
+              <View className="h-full w-full flex-row">
+                <View className="flex-1">
+                  <View className="flex-1 bg-black" />
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(0)}</View>
+                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ width: 3 }}
+                />
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(2)}</View>
+                </View>
+              </View>
+            )}
+
+            {layoutType === "empty-bl" && (
+              <View className="h-full w-full flex-row">
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(0)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1 bg-black" />
+                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ width: 3 }}
+                />
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(2)}</View>
+                </View>
+              </View>
+            )}
+
+            {layoutType === "empty-tr" && (
+              <View className="h-full w-full flex-row">
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(0)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
+                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ width: 3 }}
+                />
+                <View className="flex-1">
+                  <View className="flex-1 bg-black" />
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(2)}</View>
+                </View>
+              </View>
+            )}
+
+            {layoutType === "empty-br" && (
+              <View className="h-full w-full flex-row">
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(0)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
+                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ width: 3 }}
+                />
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(2)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1 bg-black" />
                 </View>
               </View>
             )}
@@ -552,23 +933,336 @@ function LifeCounterContent() {
         {!layoutPickingPhase && playerCount === 4 && players.length >= 4 && (
           <View className="h-full w-full flex-row">
             <View className="flex-1">
-              <View className="flex-1">
-                {renderPlayerSlot(0)}
-              </View>
-              <View className="h-[2px] bg-white dark:bg-slate-900" />
-              <View className="flex-1">
-                {renderPlayerSlot(1)}
-              </View>
+              <View className="flex-1">{renderPlayerSlot(0)}</View>
+              <LinearGradient
+                colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={{ height: 3 }}
+              />
+              <View className="flex-1">{renderPlayerSlot(1)}</View>
             </View>
-            <View className="w-[2px] bg-white dark:bg-slate-900" />
+            <LinearGradient
+              colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={{ width: 3 }}
+            />
             <View className="flex-1">
-              <View className="flex-1">
-                {renderPlayerSlot(2)}
+              <View className="flex-1">{renderPlayerSlot(2)}</View>
+              <LinearGradient
+                colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={{ height: 3 }}
+              />
+              <View className="flex-1">{renderPlayerSlot(3)}</View>
+            </View>
+          </View>
+        )}
+
+        {!layoutPickingPhase && playerCount === 5 && players.length >= 5 && (
+          <>
+            {layoutType === "one-bottom" && (
+              <View className="h-full w-full">
+                <View style={{ flex: 2 }} className="flex-row">
+                  <View className="flex-1">{renderPlayerSlot(0)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={{ width: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
+                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={{ height: 3 }}
+                />
+                <View style={{ flex: 2 }} className="flex-row">
+                  <View className="flex-1">{renderPlayerSlot(2)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={{ width: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(3)}</View>
+                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={{ height: 3 }}
+                />
+                <View style={{ flex: 1.5 }}>{renderPlayerSlot(4)}</View>
               </View>
-              <View className="h-[2px] bg-white dark:bg-slate-900" />
-              <View className="flex-1">
-                {renderPlayerSlot(3)}
+            )}
+
+            {layoutType === "one-top" && (
+              <View className="h-full w-full">
+                <View style={{ flex: 1.5 }}>{renderPlayerSlot(0)}</View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={{ height: 3 }}
+                />
+                <View style={{ flex: 2 }} className="flex-row">
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={{ width: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(2)}</View>
+                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={{ height: 3 }}
+                />
+                <View style={{ flex: 2 }} className="flex-row">
+                  <View className="flex-1">{renderPlayerSlot(3)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={{ width: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(4)}</View>
+                </View>
               </View>
+            )}
+
+            {/* Table layouts: 2x3 grid with one empty corner */}
+            {layoutType === "empty-tl" && (
+              <View className="h-full w-full flex-row">
+                <View className="flex-1">
+                  <View className="flex-1 bg-black" />
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(0)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
+                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ width: 3 }}
+                />
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(2)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(3)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(4)}</View>
+                </View>
+              </View>
+            )}
+
+            {layoutType === "empty-bl" && (
+              <View className="h-full w-full flex-row">
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(0)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1 bg-black" />
+                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ width: 3 }}
+                />
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(2)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(3)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(4)}</View>
+                </View>
+              </View>
+            )}
+
+            {layoutType === "empty-tr" && (
+              <View className="h-full w-full flex-row">
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(0)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(2)}</View>
+                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ width: 3 }}
+                />
+                <View className="flex-1">
+                  <View className="flex-1 bg-black" />
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(3)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(4)}</View>
+                </View>
+              </View>
+            )}
+
+            {layoutType === "empty-br" && (
+              <View className="h-full w-full flex-row">
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(0)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(1)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(2)}</View>
+                </View>
+                <LinearGradient
+                  colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ width: 3 }}
+                />
+                <View className="flex-1">
+                  <View className="flex-1">{renderPlayerSlot(3)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1">{renderPlayerSlot(4)}</View>
+                  <LinearGradient
+                    colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={{ height: 3 }}
+                  />
+                  <View className="flex-1 bg-black" />
+                </View>
+              </View>
+            )}
+          </>
+        )}
+
+        {!layoutPickingPhase && playerCount === 6 && players.length >= 6 && (
+          <View className="h-full w-full flex-row">
+            <View className="flex-1">
+              <View className="flex-1">{renderPlayerSlot(0)}</View>
+              <LinearGradient
+                colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={{ height: 3 }}
+              />
+              <View className="flex-1">{renderPlayerSlot(1)}</View>
+              <LinearGradient
+                colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={{ height: 3 }}
+              />
+              <View className="flex-1">{renderPlayerSlot(2)}</View>
+            </View>
+            <LinearGradient
+              colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={{ width: 3 }}
+            />
+            <View className="flex-1">
+              <View className="flex-1">{renderPlayerSlot(3)}</View>
+              <LinearGradient
+                colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={{ height: 3 }}
+              />
+              <View className="flex-1">{renderPlayerSlot(4)}</View>
+              <LinearGradient
+                colors={["transparent", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "rgba(100, 60, 180, 0.4)", "transparent"]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={{ height: 3 }}
+              />
+              <View className="flex-1">{renderPlayerSlot(5)}</View>
             </View>
           </View>
         )}
@@ -582,11 +1276,14 @@ function LifeCounterContent() {
           style={{
             left: "50%",
             top:
-              playerCount === 3 && layoutType === "two-top"
-                ? "66.7%"
-                : playerCount === 3 && layoutType === "one-top"
-                  ? "33.3%"
-                  : "50%",
+              (playerCount === 3 && layoutType === "two-top") ? "66.7%"
+                : (playerCount === 3 && layoutType === "one-top") ? "33.3%"
+                : (playerCount === 5 && layoutType === "one-top") ? "27.3%"
+                : (playerCount === 5 && layoutType === "one-bottom") ? "72.7%"
+                : (playerCount === 5 && (layoutType === "empty-tl" || layoutType === "empty-tr")) ? "66.7%"
+                : (playerCount === 5 && (layoutType === "empty-bl" || layoutType === "empty-br")) ? "33.3%"
+                : playerCount === 6 ? "66.7%"
+                : "50%",
             shadowColor: "#000",
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.3,
@@ -599,28 +1296,44 @@ function LifeCounterContent() {
       )}
 
       {/* Center Menu Button */}
-      {activeCommanderPlayer === null && !seatPickingPhase && !layoutPickingPhase && (
-        <Pressable
-          onPress={() => highRollResults ? setHighRollResults(null) : setCenterMenuOpen(true)}
-          className="absolute z-50 h-16 w-16 -translate-x-8 -translate-y-8 items-center justify-center rounded-full bg-purple-600 shadow-lg active:bg-purple-700"
-          style={{
-            left: "50%",
-            top:
-              playerCount === 3 && layoutType === "two-top"
-                ? "66.7%"
-                : playerCount === 3 && layoutType === "one-top"
-                  ? "33.3%"
+      {activeCommanderPlayer === null &&
+        !seatPickingPhase &&
+        !layoutPickingPhase && (
+          <Pressable
+            onPress={() =>
+              highRollResults
+                ? setHighRollResults(null)
+                : setCenterMenuOpen(true)
+            }
+            className="absolute z-50 items-center justify-center rounded-full bg-slate-800 shadow-lg active:bg-slate-700"
+            style={{
+              left: "50%",
+              top:
+                (playerCount === 3 && layoutType === "two-top") ? "66.7%"
+                  : (playerCount === 3 && layoutType === "one-top") ? "33.3%"
+                  : (playerCount === 5 && layoutType === "one-top") ? "27.3%"
+                  : (playerCount === 5 && layoutType === "one-bottom") ? "72.7%"
+                  : (playerCount === 5 && (layoutType === "empty-tl" || layoutType === "empty-tr")) ? "66.7%"
+                  : (playerCount === 5 && (layoutType === "empty-bl" || layoutType === "empty-br")) ? "33.3%"
+                  : playerCount === 6 ? "66.7%"
                   : "50%",
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 8,
-          }}
-        >
-          {highRollResults ? <X size={32} color="white" /> : <Menu size={32} color="white" />}
-        </Pressable>
-      )}
+              width: 64,
+              height: 64,
+              transform: [{ translateX: -32 }, { translateY: -32 }],
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 8,
+            }}
+          >
+            {highRollResults ? (
+              <X size={32} color="white" />
+            ) : (
+              <Menu size={32} color="white" />
+            )}
+          </Pressable>
+        )}
 
       <CenterMenuModal
         open={centerMenuOpen}
@@ -635,23 +1348,32 @@ function LifeCounterContent() {
         onHighRoll={handleHighRoll}
         startingLife={startingLife}
         onStartingLifeChange={setStartingLife}
+        showCounters={showCounters}
+        onShowCountersChange={setShowCounters}
       />
 
       {pickingSlot !== null && pickingDeckSlot === null && (
         <View className="absolute inset-0 z-50 items-center justify-center bg-black/70">
           <View className="w-72 rounded-2xl bg-slate-800 p-6">
-            <Text className="mb-4 text-center text-xl font-bold text-white">Pick Your Seat</Text>
+            <Text className="mb-4 text-center text-xl font-bold text-white">
+              Pick Your Seat
+            </Text>
             {eventPlayersList.map((ep, epIdx) => {
-              const assignedToOther = seatAssignments.some((a, i) => a === epIdx && i !== pickingSlot);
+              const assignedToOther = seatAssignments.some(
+                (a, i) => a === epIdx && i !== pickingSlot,
+              );
               if (assignedToOther) return null;
-              const isCurrentlyAssigned = seatAssignments[pickingSlot] === epIdx;
+              const isCurrentlyAssigned =
+                seatAssignments[pickingSlot] === epIdx;
               return (
                 <Pressable
                   key={epIdx}
                   onPress={() => handleSeatPicked(pickingSlot, epIdx)}
                   className={`mb-2 rounded-xl px-4 py-3 active:bg-slate-600 ${isCurrentlyAssigned ? "bg-purple-600" : "bg-slate-700"}`}
                 >
-                  <Text className="text-center text-lg font-semibold text-white">{ep.name}</Text>
+                  <Text className="text-center text-lg font-semibold text-white">
+                    {ep.name}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -659,7 +1381,9 @@ function LifeCounterContent() {
               onPress={() => setPickingSlot(null)}
               className="mt-2 rounded-xl bg-slate-900 px-4 py-3 active:bg-slate-950"
             >
-              <Text className="text-center text-base font-medium text-slate-400">Cancel</Text>
+              <Text className="text-center text-base font-medium text-slate-400">
+                Cancel
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -668,26 +1392,35 @@ function LifeCounterContent() {
       {pickingDeckSlot !== null && (
         <View className="absolute inset-0 z-50 items-center justify-center bg-black/70">
           <View className="w-[90%] max-w-md rounded-2xl bg-slate-800 p-4">
-            <Text className="mb-1 text-center text-xl font-bold text-white">Pick Your Deck</Text>
+            <Text className="mb-1 text-center text-xl font-bold text-white">
+              Pick Your Deck
+            </Text>
             <Text className="mb-4 text-center text-sm text-slate-400">
               {seatAssignments[pickingDeckSlot] !== null
                 ? eventPlayersList[seatAssignments[pickingDeckSlot]!].name
-                : ''}
+                : ""}
             </Text>
             {loadingDecks ? (
               <ActivityIndicator color="white" className="my-8" />
             ) : memberDecks.length === 0 ? (
-              <Text className="my-4 text-center text-sm text-slate-400">No decks found</Text>
+              <Text className="my-4 text-center text-sm text-slate-400">
+                No decks found
+              </Text>
             ) : (
               <View style={{ maxHeight: windowHeight * 0.55 }} className="mb-3">
                 <ScrollView>
                   <View className="flex-row flex-wrap">
                     {memberDecks.map((deck) => (
-                      <View key={deck.id} style={{ width: '50%', height: 140, padding: 3 }}>
+                      <View
+                        key={deck.id}
+                        style={{ width: "50%", height: 140, padding: 3 }}
+                      >
                         <Pressable
                           onPress={() => {
                             setDeckSelections((prev) =>
-                              prev.map((d, i) => (i === pickingDeckSlot ? deck : d)),
+                              prev.map((d, i) =>
+                                i === pickingDeckSlot ? deck : d,
+                              ),
                             );
                             setPickingDeckSlot(null);
                           }}
@@ -697,7 +1430,7 @@ function LifeCounterContent() {
                             {deck.commanderImageCrop ? (
                               <Image
                                 source={{ uri: deck.commanderImageCrop }}
-                                style={{ width: '100%', height: '100%' }}
+                                style={{ width: "100%", height: "100%" }}
                                 resizeMode="cover"
                               />
                             ) : (
@@ -706,14 +1439,23 @@ function LifeCounterContent() {
                           </View>
                           <View
                             className="absolute bottom-0 left-0 right-0 justify-end p-2"
-                            style={{ backgroundColor: 'rgba(0, 0, 0, 0.75)', height: 56 }}
+                            style={{
+                              backgroundColor: "rgba(0, 0, 0, 0.75)",
+                              height: 56,
+                            }}
                           >
                             {deck.commanders[0] && (
-                              <Text className="text-[10px] text-white/70" numberOfLines={1}>
+                              <Text
+                                className="text-[10px] text-white/70"
+                                numberOfLines={1}
+                              >
                                 {deck.commanders[0]}
                               </Text>
                             )}
-                            <Text className="text-sm font-semibold text-white" numberOfLines={1}>
+                            <Text
+                              className="text-sm font-semibold text-white"
+                              numberOfLines={1}
+                            >
                               {deck.name}
                             </Text>
                           </View>
@@ -727,13 +1469,15 @@ function LifeCounterContent() {
             <Pressable
               onPress={() => {
                 setDeckSelections((prev) =>
-                  prev.map((d, i) => (i === pickingDeckSlot ? 'skipped' : d)),
+                  prev.map((d, i) => (i === pickingDeckSlot ? "skipped" : d)),
                 );
                 setPickingDeckSlot(null);
               }}
               className="rounded-xl bg-slate-900 px-4 py-3 active:bg-slate-950"
             >
-              <Text className="text-center text-base font-medium text-slate-400">Not Listed</Text>
+              <Text className="text-center text-base font-medium text-slate-400">
+                Not Listed
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -753,20 +1497,35 @@ function LifeCounterContent() {
   );
 }
 
-function HighRollOverlay({ roll, isWinner, rotation }: { roll: number; isWinner: boolean; rotation: string }) {
+function HighRollOverlay({
+  roll,
+  isWinner,
+  rotation,
+}: {
+  roll: number;
+  isWinner: boolean;
+  rotation: string;
+}) {
   const [size, setSize] = React.useState({ width: 0, height: 0 });
   const dimensions = useWindowDimensions();
   const isTablet = Math.min(dimensions.width, dimensions.height) > 600;
   const fontSize = isTablet ? 180 : 120;
 
   const isRotated90 =
-    rotation === "90deg" || rotation === "-90deg" ||
-    rotation === "270deg" || rotation === "-270deg";
+    rotation === "90deg" ||
+    rotation === "-90deg" ||
+    rotation === "270deg" ||
+    rotation === "-270deg";
 
   return (
     <View
       className="absolute inset-0 bg-black"
-      onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+      onLayout={(e) =>
+        setSize({
+          width: e.nativeEvent.layout.width,
+          height: e.nativeEvent.layout.height,
+        })
+      }
     >
       {size.width > 0 && (
         <View
@@ -787,7 +1546,9 @@ function HighRollOverlay({ roll, isWinner, rotation }: { roll: number; isWinner:
             {roll}
           </Text>
           {isWinner && (
-            <Text className="mt-2 text-lg font-bold text-yellow-300">HIGH ROLL</Text>
+            <Text className="mt-2 text-lg font-bold text-yellow-300">
+              HIGH ROLL
+            </Text>
           )}
         </View>
       )}
@@ -811,11 +1572,36 @@ function WinOverlay({
   saving: boolean;
 }) {
   return (
-    <View className="absolute inset-0 z-50 items-center justify-center bg-black/80">
-      <Text className="text-5xl font-black text-yellow-300">WINNER</Text>
-      <Text className="mt-4 text-3xl font-bold text-white">{winnerName}</Text>
+    <Animated.View
+      entering={FadeIn.duration(500)}
+      className="absolute inset-0 z-50 items-center justify-center"
+    >
+      <LinearGradient
+        colors={["rgba(0,0,0,0.6)", "rgba(0,0,0,0.95)", "rgba(0,0,0,0.6)"]}
+        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+      />
 
-      <View className="mt-10 gap-3" style={{ width: "70%" }}>
+      <Animated.View entering={BounceIn.delay(300).duration(600)}>
+        <Text style={{ fontSize: 64 }}>👑</Text>
+      </Animated.View>
+
+      <Animated.View entering={ZoomIn.delay(600).springify().damping(10)}>
+        <Text className="mt-2 text-5xl font-black text-yellow-300">
+          WINNER
+        </Text>
+      </Animated.View>
+
+      <Animated.View entering={FadeInUp.delay(900).duration(400)}>
+        <Text className="mt-4 text-3xl font-bold text-white">
+          {winnerName}
+        </Text>
+      </Animated.View>
+
+      <Animated.View
+        entering={FadeInUp.delay(1200).duration(400)}
+        className="mt-10 gap-3"
+        style={{ width: "70%" }}
+      >
         {isPodGame ? (
           <>
             <Pressable
@@ -853,7 +1639,7 @@ function WinOverlay({
             </Pressable>
           </>
         )}
-      </View>
-    </View>
+      </Animated.View>
+    </Animated.View>
   );
 }

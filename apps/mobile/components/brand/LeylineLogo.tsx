@@ -15,14 +15,63 @@ import Svg, {
 interface LeylineLogoProps {
   size?: "small" | "medium" | "large" | number;
   showTagline?: boolean;
+  iconOnly?: boolean;
+  color?: string;
+  glowColor?: string;
+  height?: number;
 }
 
 export function LeylineLogo({
   size = "large",
   showTagline = true,
+  iconOnly = false,
+  color,
+  glowColor,
+  height,
 }: LeylineLogoProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
+
+  // For icon-only mode, use the provided size directly for width
+  if (iconOnly) {
+    const iconWidth = typeof size === "number" ? size : 22;
+    const iconHeight = height ?? iconWidth * (64 / 44); // Use custom height or maintain aspect ratio
+    const gradientId = `leylineIconGrad-${Math.random().toString(36).slice(2, 11)}`;
+    const filterId = `leylineIconGlow-${Math.random().toString(36).slice(2, 11)}`;
+    const primaryColor = color ?? "#FFFFFF";
+    const secondaryColor = glowColor ?? "#E9D5FF";
+
+    return (
+      <Svg
+        viewBox="12 4 56 68"
+        width={iconWidth}
+        height={iconHeight}
+        preserveAspectRatio="xMidYMid slice"
+      >
+        <Defs>
+          <LinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+            <Stop offset="0%" stopColor={primaryColor} />
+            <Stop offset="100%" stopColor={secondaryColor} />
+          </LinearGradient>
+          <Filter id={filterId}>
+            <FeGaussianBlur stdDeviation="2" result="coloredBlur" />
+            <FeMerge>
+              <FeMergeNode in="coloredBlur" />
+              <FeMergeNode in="SourceGraphic" />
+            </FeMerge>
+          </Filter>
+        </Defs>
+        <Path
+          d="M20 65 L20 25 Q20 12 35 12 L60 12"
+          stroke={`url(#${gradientId})`}
+          strokeWidth="7"
+          fill="none"
+          strokeLinecap="round"
+          filter={`url(#${filterId})`}
+        />
+      </Svg>
+    );
+  }
 
   const scale = typeof size === "number"
     ? size / 280

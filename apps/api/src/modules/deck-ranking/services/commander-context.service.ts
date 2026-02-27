@@ -172,6 +172,9 @@ export class CommanderContextService {
     if (tagSet.has('land-ramp') || tagSet.has('mana-doubler')) {
       return 'ramp';
     }
+    if (tagSet.has('annihilator') || tagSet.has('big-mana-payoff') || tagSet.has('cast-trigger')) {
+      return 'eldrazi-ramp';
+    }
 
     return 'midrange';
   }

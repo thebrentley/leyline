@@ -1,6 +1,7 @@
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 import { Minus, Plus } from 'lucide-react-native';
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 
 interface ManaValueFilterProps {
   minValue?: number;
@@ -110,6 +111,7 @@ export function ManaValueFilter({
                   ? 'bg-slate-800 text-white'
                   : 'bg-slate-100 text-slate-900'
               }`}
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
             />
             <Pressable
               onPress={handleMinIncrement}
@@ -151,6 +153,7 @@ export function ManaValueFilter({
                   ? 'bg-slate-800 text-white'
                   : 'bg-slate-100 text-slate-900'
               }`}
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
             />
             <Pressable
               onPress={handleMaxIncrement}

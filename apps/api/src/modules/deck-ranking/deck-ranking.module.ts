@@ -16,6 +16,8 @@ import { CommanderContextService } from './services/commander-context.service';
 import { DensityAnalysisService } from './services/density-analysis.service';
 import { GraphAnalysisService } from './services/graph-analysis.service';
 import { ScoreComputationService } from './services/score-computation.service';
+import { ComboSyncCronService } from './services/combo-sync-cron.service';
+import { AppConfig } from '../../entities/app-config.entity';
 
 @Module({
   imports: [
@@ -28,6 +30,7 @@ import { ScoreComputationService } from './services/score-computation.service';
       Card,
       Deck,
       DeckCard,
+      AppConfig,
     ]),
   ],
   controllers: [DeckRankingController],
@@ -39,6 +42,7 @@ import { ScoreComputationService } from './services/score-computation.service';
     DensityAnalysisService,
     GraphAnalysisService,
     ScoreComputationService,
+    ComboSyncCronService,
   ],
   exports: [ScoreComputationService, CardTaggingService],
 })

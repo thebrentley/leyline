@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike, IsNull } from 'typeorm';
+import { Repository, ILike, IsNull, Not, In } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { Pod } from '../../entities/pod.entity';
 import { PodMember, PodRole } from '../../entities/pod-member.entity';
@@ -15,7 +15,13 @@ import { User } from '../../entities/user.entity';
 import { Deck } from '../../entities/deck.entity';
 import { DeckCard } from '../../entities/deck-card.entity';
 import { PodOfflineMember } from '../../entities/pod-offline-member.entity';
+import { EventOfflineRsvp } from '../../entities/event-offline-rsvp.entity';
+import { EventRsvp } from '../../entities/event-rsvp.entity';
+import { PodGameResult } from '../../entities/pod-game-result.entity';
+import { ConfigService } from '@nestjs/config';
 import { DecksService } from '../decks/decks.service';
+import { EmailService } from '../email/email.service';
+import { podInviteEmailHtml } from '../email/templates/pod-invite.template';
 
 @Injectable()
 export class PodsService {
@@ -27,7 +33,12 @@ export class PodsService {
     @InjectRepository(Deck) private deckRepo: Repository<Deck>,
     @InjectRepository(DeckCard) private deckCardRepo: Repository<DeckCard>,
     @InjectRepository(PodOfflineMember) private offlineMemberRepo: Repository<PodOfflineMember>,
+    @InjectRepository(EventOfflineRsvp) private offlineRsvpRepo: Repository<EventOfflineRsvp>,
+    @InjectRepository(EventRsvp) private rsvpRepo: Repository<EventRsvp>,
+    @InjectRepository(PodGameResult) private gameResultRepo: Repository<PodGameResult>,
     private decksService: DecksService,
+    private emailService: EmailService,
+    private configService: ConfigService,
   ) {}
 
   // ==================== Helpers ====================
@@ -156,8 +167,10 @@ export class PodsService {
     // Include pending invites for admins
     let pendingInvites: Array<{
       id: string;
+      inviteId: string;
       displayName: string | null;
       email: string;
+      isEmailInvite: boolean;
       invitedAt: string;
     }> = [];
     if (membership.role === 'admin' || membership.role === 'owner') {
@@ -167,9 +180,11 @@ export class PodsService {
         order: { createdAt: 'DESC' },
       });
       pendingInvites = invites.map((inv) => ({
-        id: inv.inviteeId,
-        displayName: inv.invitee.displayName,
-        email: inv.invitee.email,
+        id: inv.inviteeId ?? inv.id,
+        inviteId: inv.id,
+        displayName: inv.invitee?.displayName ?? null,
+        email: inv.invitee?.email ?? inv.inviteeEmail ?? '',
+        isEmailInvite: !!inv.inviteeEmail,
         invitedAt: inv.createdAt.toISOString(),
       }));
     }
@@ -234,8 +249,8 @@ export class PodsService {
     });
     await this.memberRepo.save(member);
 
-    // Auto-link offline member if email matches
-    await this.autoLinkOfflineMember(pod.id, userId);
+    // Merge offline member if email matches (converts RSVPs, deletes offline record)
+    await this.mergeOfflineMember(pod.id, userId);
 
     return {
       podId: pod.id,
@@ -244,7 +259,7 @@ export class PodsService {
     };
   }
 
-  private async autoLinkOfflineMember(podId: string, userId: string): Promise<void> {
+  private async mergeOfflineMember(podId: string, userId: string): Promise<void> {
     try {
       const user = await this.userRepo.findOne({ where: { id: userId } });
       if (!user || !user.email) {
@@ -253,7 +268,6 @@ export class PodsService {
 
       const normalizedEmail = user.email.toLowerCase().trim();
 
-      // Find offline member with matching email (not already linked)
       const offlineMember = await this.offlineMemberRepo.findOne({
         where: {
           podId,
@@ -262,15 +276,72 @@ export class PodsService {
         },
       });
 
-      if (offlineMember) {
-        offlineMember.linkedUserId = userId;
-        offlineMember.linkedAt = new Date();
-        await this.offlineMemberRepo.save(offlineMember);
+      if (!offlineMember) return;
+
+      // Backfill game results: attribute offline member's games to the real user
+      await this.backfillGameResults(offlineMember.id, userId);
+
+      // Convert offline RSVPs to regular RSVPs
+      const offlineRsvps = await this.offlineRsvpRepo.find({
+        where: { offlineMemberId: offlineMember.id },
+      });
+
+      for (const offlineRsvp of offlineRsvps) {
+        const existingRsvp = await this.rsvpRepo.findOne({
+          where: { eventId: offlineRsvp.eventId, userId },
+        });
+
+        if (!existingRsvp) {
+          const rsvp = this.rsvpRepo.create({
+            eventId: offlineRsvp.eventId,
+            userId,
+            status: offlineRsvp.status,
+            comment: offlineRsvp.comment,
+          });
+          await this.rsvpRepo.save(rsvp);
+        }
       }
+
+      // Delete the offline member (cascades to offline RSVPs)
+      await this.offlineMemberRepo.remove(offlineMember);
     } catch (error) {
-      // Don't fail pod join if linking fails
-      console.error('Error auto-linking offline member:', error);
+      // Don't fail pod join if merge fails
+      console.error('Error merging offline member:', error);
     }
+  }
+
+  private async backfillGameResults(
+    offlineMemberId: string,
+    linkedUserId: string,
+  ): Promise<void> {
+    // Update players JSONB: set userId on entries matching this offlineMemberId
+    await this.gameResultRepo.query(
+      `UPDATE pod_game_results
+       SET players = (
+         SELECT jsonb_agg(
+           CASE
+             WHEN elem->>'offlineMemberId' = $1
+             THEN jsonb_set(elem, '{userId}', to_jsonb($2::text))
+             ELSE elem
+           END
+         )
+         FROM jsonb_array_elements(players) AS elem
+       )
+       WHERE EXISTS (
+         SELECT 1 FROM jsonb_array_elements(players) AS elem
+         WHERE elem->>'offlineMemberId' = $1
+       )`,
+      [offlineMemberId, linkedUserId],
+    );
+
+    // Update winnerUserId for games where this offline member won
+    await this.gameResultRepo.query(
+      `UPDATE pod_game_results
+       SET winner_user_id = $2
+       WHERE winner_offline_member_id = $1::uuid
+         AND winner_user_id IS NULL`,
+      [offlineMemberId, linkedUserId],
+    );
   }
 
   async regenerateInviteCode(podId: string, userId: string) {
@@ -372,12 +443,186 @@ export class PodsService {
         });
         await this.memberRepo.save(member);
       }
+
+      // Merge offline member if email matches
+      await this.mergeOfflineMember(invite.podId, userId);
+
       invite.status = 'accepted';
     } else {
       invite.status = 'declined';
     }
 
     await this.inviteRepo.save(invite);
+    return { success: true };
+  }
+
+  // ==================== Email Invites ====================
+
+  private generateInviteToken(): string {
+    return randomBytes(32).toString('base64url');
+  }
+
+  async inviteByEmail(podId: string, inviterId: string, email: string) {
+    await this.requireAdmin(podId, inviterId);
+
+    const pod = await this.podRepo.findOne({ where: { id: podId } });
+    if (!pod) throw new NotFoundException('Pod not found');
+
+    const inviter = await this.userRepo.findOne({ where: { id: inviterId } });
+    if (!inviter) throw new NotFoundException('Inviter not found');
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Check if email belongs to an existing user
+    const existingUser = await this.userRepo.findOne({
+      where: { email: normalizedEmail },
+    });
+
+    if (existingUser) {
+      // Check not already a member
+      const existingMember = await this.memberRepo.findOne({
+        where: { podId, userId: existingUser.id },
+      });
+      if (existingMember) throw new ConflictException('User is already a member');
+    }
+
+    // Check no pending invite for this email/user
+    const existingInvite = await this.inviteRepo.findOne({
+      where: existingUser
+        ? { podId, inviteeId: existingUser.id, status: 'pending' }
+        : { podId, inviteeEmail: normalizedEmail, status: 'pending' },
+    });
+    if (existingInvite) throw new ConflictException('Invite already sent');
+
+    const inviteToken = this.generateInviteToken();
+    const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const invite = this.inviteRepo.create({
+      podId,
+      inviterId,
+      inviteeId: existingUser?.id ?? null,
+      inviteeEmail: normalizedEmail,
+      inviteToken,
+      tokenExpiresAt,
+    });
+    await this.inviteRepo.save(invite);
+
+    // Send email
+    const appUrl = this.configService.get('APP_URL', 'https://app.mtgleyline.com');
+    const acceptUrl = `${appUrl}/invite/${inviteToken}`;
+    const html = podInviteEmailHtml({
+      podName: pod.name,
+      inviterName: inviter.displayName || inviter.email,
+      acceptUrl,
+    });
+    await this.emailService.sendEmail(
+      normalizedEmail,
+      `You're invited to ${pod.name} on Leyline`,
+      html,
+    );
+
+    return {
+      id: invite.id,
+      podId: invite.podId,
+      inviteeEmail: invite.inviteeEmail,
+      status: invite.status,
+      createdAt: invite.createdAt.toISOString(),
+    };
+  }
+
+  async getInviteByToken(token: string) {
+    const invite = await this.inviteRepo.findOne({
+      where: { inviteToken: token },
+      relations: ['pod', 'inviter'],
+    });
+    if (!invite) throw new NotFoundException('Invite not found');
+
+    const expired = invite.tokenExpiresAt && invite.tokenExpiresAt < new Date();
+
+    return {
+      inviteId: invite.id,
+      podName: invite.pod.name,
+      podDescription: invite.pod.description,
+      inviterName: invite.inviter.displayName || invite.inviter.email,
+      status: invite.status,
+      expired: !!expired,
+    };
+  }
+
+  async acceptInviteByToken(token: string, userId: string) {
+    const invite = await this.inviteRepo.findOne({
+      where: { inviteToken: token, status: 'pending' },
+    });
+    if (!invite) throw new NotFoundException('Invite not found or already used');
+
+    if (invite.tokenExpiresAt && invite.tokenExpiresAt < new Date()) {
+      throw new BadRequestException('Invite has expired');
+    }
+
+    // Check not already a member
+    const existing = await this.memberRepo.findOne({
+      where: { podId: invite.podId, userId },
+    });
+    if (!existing) {
+      const member = this.memberRepo.create({
+        podId: invite.podId,
+        userId,
+        role: 'member' as PodRole,
+      });
+      await this.memberRepo.save(member);
+    }
+
+    // Merge offline member if email matches
+    await this.mergeOfflineMember(invite.podId, userId);
+
+    // Update invite
+    invite.status = 'accepted';
+    invite.inviteeId = userId;
+    await this.inviteRepo.save(invite);
+
+    return { success: true, podId: invite.podId };
+  }
+
+  async rescindInvite(podId: string, inviteId: string, userId: string) {
+    await this.requireAdmin(podId, userId);
+
+    const invite = await this.inviteRepo.findOne({
+      where: { id: inviteId, podId, status: 'pending' },
+    });
+    if (!invite) throw new NotFoundException('Invite not found');
+
+    await this.inviteRepo.remove(invite);
+    return { success: true };
+  }
+
+  async resendInviteEmail(podId: string, inviteId: string, userId: string) {
+    await this.requireAdmin(podId, userId);
+
+    const invite = await this.inviteRepo.findOne({
+      where: { id: inviteId, podId, status: 'pending' },
+      relations: ['pod', 'inviter'],
+    });
+    if (!invite) throw new NotFoundException('Invite not found');
+    if (!invite.inviteeEmail) throw new BadRequestException('Invite has no email');
+
+    // Regenerate token
+    invite.inviteToken = this.generateInviteToken();
+    invite.tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await this.inviteRepo.save(invite);
+
+    const appUrl = this.configService.get('APP_URL', 'https://app.mtgleyline.com');
+    const acceptUrl = `${appUrl}/invite/${invite.inviteToken}`;
+    const html = podInviteEmailHtml({
+      podName: invite.pod.name,
+      inviterName: invite.inviter.displayName || invite.inviter.email,
+      acceptUrl,
+    });
+    await this.emailService.sendEmail(
+      invite.inviteeEmail,
+      `You're invited to ${invite.pod.name} on Leyline`,
+      html,
+    );
+
     return { success: true };
   }
 
@@ -471,15 +716,26 @@ export class PodsService {
 
   // ==================== User Search & Profile ====================
 
-  async searchUsers(query: string) {
+  async searchUsers(query: string, currentUserId: string, podId?: string) {
     if (!query || query.length < 2) {
       throw new BadRequestException('Query must be at least 2 characters');
     }
 
+    // Collect user IDs to exclude: current user + existing pod members
+    const excludeIds = [currentUserId];
+
+    if (podId) {
+      const members = await this.memberRepo.find({
+        where: { podId },
+        select: ['userId'],
+      });
+      excludeIds.push(...members.map((m) => m.userId));
+    }
+
     const users = await this.userRepo.find({
       where: [
-        { displayName: ILike(`%${query}%`) },
-        { email: ILike(`%${query}%`) },
+        { displayName: ILike(`%${query}%`), id: Not(In(excludeIds)) },
+        { email: ILike(`%${query}%`), id: Not(In(excludeIds)) },
       ],
       take: 20,
       select: ['id', 'displayName', 'email'],
@@ -588,8 +844,6 @@ export class PodsService {
 
   async getMemberDecks(podId: string, requestingUserId: string, targetUserId: string) {
     await this.requireMembership(podId, requestingUserId);
-    const allDecks = await this.decksService.getUserDecks(targetUserId);
-    if (requestingUserId === targetUserId) return allDecks;
-    return allDecks.filter((d) => d.visibility === 'public' || d.visibility === 'pod');
+    return this.decksService.getUserDecks(targetUserId);
   }
 }

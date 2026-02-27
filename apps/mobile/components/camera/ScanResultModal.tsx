@@ -1,8 +1,10 @@
+import { BottomSheetView } from "@gorhom/bottom-sheet";
 import { Search, X } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
-import { FlatList, Image, Modal, Pressable, Text, View } from "react-native";
+import { FlatList, Image, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { CardSearchResult } from "~/lib/api";
+import { GlassSheet } from "../ui/GlassSheet";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 
 interface ScanResultModalProps {
@@ -27,17 +29,8 @@ export function ScanResultModal({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal
-      visible={visible}
-      transparent={false}
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <View
-        className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}
-        style={{ paddingTop: insets.top }}
-      >
+    <GlassSheet visible={visible} onDismiss={onClose} isDark={isDark}>
+      <BottomSheetView style={{ flex: 1 }}>
         {/* Header */}
         <View
           className={`flex-row items-center justify-between px-4 py-3 border-b ${
@@ -191,7 +184,7 @@ export function ScanResultModal({
             </Text>
           </Pressable>
         </View>
-      </View>
-    </Modal>
+      </BottomSheetView>
+    </GlassSheet>
   );
 }

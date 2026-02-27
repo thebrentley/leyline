@@ -1,7 +1,8 @@
 import { useRouter, useSegments } from "expo-router";
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { authApi, User } from "~/lib/api";
+import { authApi, podsApi, User } from "~/lib/api";
 import { secureStorage } from "~/lib/storage";
+import { unregisterCurrentPushToken } from "~/hooks/usePushNotifications";
 
 interface AuthContextType {
   user: User | null;
@@ -18,6 +19,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
+const PENDING_INVITE_TOKEN_KEY = "pending_invite_token";
+const PENDING_POD_REDIRECT_KEY = "pending_pod_redirect";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -41,8 +44,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Redirect to login if not authenticated
       router.replace("/(auth)/login");
     } else if (user && inAuthGroup) {
-      // Redirect to home if authenticated
-      router.replace("/(tabs)");
+      // Check for pending pod redirect (from invite flow)
+      (async () => {
+        const pendingPod = await secureStorage.getItem(PENDING_POD_REDIRECT_KEY);
+        if (pendingPod) {
+          await secureStorage.deleteItem(PENDING_POD_REDIRECT_KEY);
+          router.replace(`/pod/${pendingPod}`);
+        } else {
+          router.replace("/(tabs)");
+        }
+      })();
     }
   }, [user, segments, isLoading]);
 
@@ -93,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         setToken(response.data.accessToken);
         setUser(response.data.user);
+        await handlePendingInvite();
       }
     } catch (error) {
       console.error("Sign in failed:", error);
@@ -119,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         setToken(response.data.accessToken);
         setUser(response.data.user);
+        await handlePendingInvite();
       }
     } catch (error) {
       console.error("Sign up failed:", error);
@@ -128,8 +141,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  async function handlePendingInvite() {
+    try {
+      const pendingToken = await secureStorage.getItem(PENDING_INVITE_TOKEN_KEY);
+      if (!pendingToken) return;
+
+      await secureStorage.deleteItem(PENDING_INVITE_TOKEN_KEY);
+      const result = await podsApi.acceptInviteByToken(pendingToken);
+      if (result.data) {
+        await secureStorage.setItem(PENDING_POD_REDIRECT_KEY, result.data.podId);
+      }
+    } catch (error) {
+      console.error("Failed to accept pending invite:", error);
+    }
+  }
+
   async function signOut() {
     try {
+      await unregisterCurrentPushToken();
       await secureStorage.deleteItem(USER_KEY);
       await secureStorage.deleteItem(TOKEN_KEY);
       setToken(null);

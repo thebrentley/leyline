@@ -1,14 +1,14 @@
 # Build stage
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
-COPY apps/landing/package*.json ./apps/landing/
+COPY package.json yarn.lock ./
+COPY apps/landing/package.json ./apps/landing/
 
 # Install dependencies
-RUN npm ci
+RUN yarn install --frozen-lockfile
 
 # Copy source files
 COPY apps/landing ./apps/landing
@@ -16,10 +16,10 @@ COPY apps/landing ./apps/landing
 # Build the application with production env vars
 WORKDIR /app/apps/landing
 ENV NEXT_PUBLIC_APP_URL=https://app.mtgleyline.com
-RUN npm run build
+RUN yarn build
 
 # Production stage
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 
 WORKDIR /app
 

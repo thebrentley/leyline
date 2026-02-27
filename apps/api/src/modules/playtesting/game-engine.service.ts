@@ -2211,7 +2211,7 @@ export class GameEngineService {
 
         const costPart = line.trim().substring(0, colonIdx);
         // Extract mana symbols, excluding {T} (tap cost)
-        const manaSymbols = costPart.match(/\{[WUBRGC\d]+\}/gi) || [];
+        const manaSymbols = (costPart.match(/\{[WUBRGC\d]+\}/gi) || []) as string[];
         const manaCostSymbols = manaSymbols.filter(
           (s) => s.toUpperCase() !== "{T}",
         );

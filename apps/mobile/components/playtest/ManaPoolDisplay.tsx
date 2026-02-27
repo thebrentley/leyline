@@ -1,20 +1,11 @@
 import { Text, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 import type { ManaPool } from '~/types/playtesting';
+import { MANA_POOL_COLORS } from '~/components/deck/deck-detail-constants';
 
 interface ManaPoolDisplayProps {
   manaPool: ManaPool;
 }
-
-// Mana colors matching the standard MTG colors
-const MANA_COLORS: Record<keyof ManaPool, { bg: string; text: string; border: string }> = {
-  W: { bg: '#F9FAF4', text: '#1a1a1a', border: '#e2e8f0' },
-  U: { bg: '#0E68AB', text: '#ffffff', border: '#0E68AB' },
-  B: { bg: '#150B00', text: '#ffffff', border: '#4a4a4a' },
-  R: { bg: '#D3202A', text: '#ffffff', border: '#D3202A' },
-  G: { bg: '#00733E', text: '#ffffff', border: '#00733E' },
-  C: { bg: '#9ca3af', text: '#1a1a1a', border: '#6b7280' },
-};
 
 const MANA_ORDER: (keyof ManaPool)[] = ['W', 'U', 'B', 'R', 'G', 'C'];
 
@@ -66,14 +57,14 @@ export function ManaPoolDisplay({ manaPool }: ManaPoolDisplayProps) {
             key={color}
             className="w-4 h-4 rounded-full items-center justify-center"
             style={{
-              backgroundColor: MANA_COLORS[color].bg,
+              backgroundColor: MANA_POOL_COLORS[color].bg,
               borderWidth: 1,
-              borderColor: MANA_COLORS[color].border,
+              borderColor: MANA_POOL_COLORS[color].border,
             }}
           >
             <Text
               className="text-[8px] font-bold"
-              style={{ color: MANA_COLORS[color].text }}
+              style={{ color: MANA_POOL_COLORS[color].text }}
             >
               {manaPool[color]}
             </Text>

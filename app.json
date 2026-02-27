@@ -4,6 +4,9 @@
       "eas": {
         "projectId": "2786bb73-2628-4706-8519-b5a9b8ea16fa"
       }
+    },
+    "ios": {
+      "bundleIdentifier": "com.thebrentley.leyline"
     }
   }
 }

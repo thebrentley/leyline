@@ -95,6 +95,17 @@ export default function LoginScreen() {
                 returnKeyType="go"
                 onSubmitEditing={handleLogin}
               />
+              <View className="flex-row justify-end mt-1">
+                <Link href="/(auth)/forgot-password" asChild>
+                  <Text
+                    className={`text-sm font-medium ${
+                      isDark ? "text-purple-400" : "text-purple-600"
+                    }`}
+                  >
+                    Forgot password?
+                  </Text>
+                </Link>
+              </View>
             </View>
 
             {error ? (

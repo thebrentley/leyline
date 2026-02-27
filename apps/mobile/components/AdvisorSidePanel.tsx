@@ -22,6 +22,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColorScheme } from "nativewind";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 import { Button } from "~/components/ui/button";
 import { AdvisorQuickActions } from "~/components/AdvisorQuickActions";
 import {
@@ -128,6 +129,7 @@ function SidePanelInput({
           editable={!sending}
           accessibilityLabel="Message input"
           accessibilityHint="Type your question about the deck"
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
         <Pressable
           onPress={handleSend}

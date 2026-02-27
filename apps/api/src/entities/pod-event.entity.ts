@@ -44,6 +44,9 @@ export class PodEvent {
   @Column({ type: 'varchar', default: 'upcoming' })
   status: EventStatus;
 
+  @Column({ name: 'reminder_sent', type: 'boolean', default: false })
+  reminderSent: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

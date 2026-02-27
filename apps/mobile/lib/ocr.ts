@@ -1,157 +1,179 @@
 import TextRecognition from "@react-native-ml-kit/text-recognition";
 import {
   base64ToUri,
-  cropToCardName,
-  cropToSetCode,
   preprocessForOCR,
 } from "./image-processing";
 
 export interface OCRResult {
   cardName: string;
-  setCode?: string;
   collectorNumber?: string;
   rawText: string;
 }
 
-export interface SetInfo {
-  setCode?: string;
-  collectorNumber?: string;
+/** OCR line with spatial data from ML Kit */
+interface OCRLine {
+  text: string;
+  top: number;
+  left: number;
+}
+
+function cleanLine(raw: string): string {
+  return raw
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\|/g, "I");
 }
 
 /**
- * Clean OCR text to fix common errors
- * @param raw - Raw OCR text
- * @returns Cleaned text
+ * Extract OCR lines with frame data from ML Kit result, sorted top→bottom.
  */
-export function cleanOCRText(raw: string): string {
-  return (
-    raw
-      // Remove extra whitespace
-      .replace(/\s+/g, " ")
-      .trim()
-      // Fix common OCR errors
-      .replace(/\|/g, "I") // Pipe to I
-      // Note: Only replace 0 with O in card names if it looks wrong
-      // Same with 1 to l - context dependent
-      // Keep numbers as-is for now, can refine later
-  );
+function extractLines(result: { blocks?: any[] }): OCRLine[] {
+  const lines: OCRLine[] = [];
+  for (const block of result.blocks ?? []) {
+    for (const line of block.lines ?? []) {
+      const cleaned = cleanLine(line.text);
+      if (cleaned.length > 0) {
+        const frame = line.frame ?? block.frame ?? {};
+        lines.push({
+          text: cleaned,
+          top: frame.top ?? 0,
+          left: frame.left ?? 0,
+        });
+      }
+    }
+  }
+  lines.sort((a, b) => a.top - b.top);
+  return lines;
+}
+
+// --- Card name extraction heuristics ---
+
+const TYPE_LINE_RE = /^(Creature|Instant|Sorcery|Enchantment|Artifact|Land|Planeswalker|Battle|Legendary|Tribal|Snow|Basic|Kindred)/i;
+const KEYWORD_RE = /^(Flying|Trample|Haste|Vigilance|Deathtouch|Lifelink|Reach|First strike|Double strike|Hexproof|Indestructible|Menace|Ward|Flash|Defender|Prowess|Protection|Equip|Cycling|Kicker|Cascade|Convoke|Delve|Affinity|Crew|Ninjutsu)/i;
+const RULES_RE = /^(When |Whenever |At the |If |Pay |You |Each |Target |Exile |Return |Destroy |Deal |Draw |Discard|Search |Sacrifice |Create |Counter |Put |Tap |Untap |Choose |Look at |Reveal |Mill |Scry |Surveil |This |That |It |As |For each|At end)/i;
+const SHORT_CODE_RE = /^[A-Z0-9]{2,5}$/;
+const PT_RE = /^\d+\s*\/\s*\d+$/;
+const COPYRIGHT_RE = /wizards|coast|©|\u00a9/i;
+const MANA_RE = /^\{.*\}$/;
+const JUST_NUMBERS_RE = /^\d{1,4}$/;
+
+function isCardNameCandidate(text: string): boolean {
+  if (text.length < 3 || text.length > 50) return false;
+  if (SHORT_CODE_RE.test(text)) return false;
+  if (PT_RE.test(text)) return false;
+  if (JUST_NUMBERS_RE.test(text)) return false;
+  if (MANA_RE.test(text)) return false;
+  if (TYPE_LINE_RE.test(text)) return false;
+  if (KEYWORD_RE.test(text)) return false;
+  if (RULES_RE.test(text)) return false;
+  if (COPYRIGHT_RE.test(text) && text.length > 20) return false;
+  return true;
+}
+
+function pickCardNameLine(lines: OCRLine[]): string {
+  const candidates = lines.slice(0, 10);
+  for (const line of candidates) {
+    if (isCardNameCandidate(line.text)) {
+      return line.text;
+    }
+  }
+  return candidates.find(l => l.text.length >= 3)?.text || "";
 }
 
 /**
- * Parse set information from OCR text
- * Format: "MH3 042" or "M10•146"
- * @param ocrText - Raw OCR text from set code region
- * @returns Set code and collector number
+ * Extract collector number from the bottom-left area of the card.
+ * Uses "Wizards" / "Coast" text as a spatial anchor for the bottom-right,
+ * then looks for numbers to its left at similar Y.
  */
-export function parseSetInfo(ocrText: string): SetInfo {
-  // Clean the text
-  const cleaned = ocrText.replace(/[•·]/g, " ").trim();
+function pickCollectorNumber(lines: OCRLine[]): string | undefined {
+  const wizardsLine = lines.find(l => /wizards|coast/i.test(l.text));
 
-  // Match pattern: 3-4 letters/numbers + space + numbers
-  const match = cleaned.match(/([A-Z0-9]{2,5})\s+(\d+)/i);
-
-  if (match) {
-    return {
-      setCode: match[1].toUpperCase(),
-      collectorNumber: match[2],
-    };
+  // Lines to search: bottom-left candidates if we have the anchor, otherwise bottom lines
+  let candidates: OCRLine[];
+  if (wizardsLine) {
+    const yTolerance = 60;
+    candidates = lines.filter(l =>
+      Math.abs(l.top - wizardsLine.top) < yTolerance &&
+      l.left < wizardsLine.left
+    );
+  } else {
+    // Fallback: bottom 6 lines
+    candidates = [...lines].sort((a, b) => b.top - a.top).slice(0, 6);
   }
 
-  // Try alternate format without space: "MH3042"
-  const compactMatch = cleaned.match(/([A-Z]{2,4})(\d{1,4})/i);
-  if (compactMatch) {
-    return {
-      setCode: compactMatch[1].toUpperCase(),
-      collectorNumber: compactMatch[2],
-    };
+  for (const line of candidates) {
+    // "069/261" or "069/261 R"
+    const slashed = line.text.match(/0*(\d{1,4})\s*\/\s*\d{1,4}/);
+    if (slashed) return slashed[1];
   }
 
-  return {};
+  // Fallback: grab first bare number sequence from candidates
+  for (const line of candidates) {
+    const nums = line.text.match(/(\d{2,4})/);
+    if (nums) return nums[1];
+  }
+
+  return undefined;
 }
 
 /**
- * Extract card name from image using OCR
- * @param imageUri - Image URI or base64
- * @returns Card name
+ * Check whether the OCR output looks like it came from a real MTG card.
+ * Requires copyright text + at least one other MTG structural signal.
  */
-export async function extractCardName(imageUri: string): Promise<string> {
-  try {
-    // Convert base64 to URI if needed
-    const uri = base64ToUri(imageUri);
+function looksLikeMTGCard(lines: OCRLine[]): boolean {
+  const allText = lines.map(l => l.text).join(" ");
 
-    // Crop to card name region (top 20%)
-    const croppedUri = await cropToCardName(uri);
+  // Gate 1: Must find Wizards of the Coast copyright text
+  const hasCopyright = /wizards|coast/i.test(allText);
+  if (!hasCopyright) return false;
 
-    // Preprocess for better OCR
-    const processedUri = await preprocessForOCR(croppedUri);
+  // Gate 2: Need at least one more structural signal
+  const hasTypeLine = lines.some(l => TYPE_LINE_RE.test(l.text));
+  const hasCollectorNum = lines.some(l => /\d{1,4}\s*\/\s*\d{1,4}/.test(l.text));
+  const hasEnoughLines = lines.length >= 6;
 
-    // Run OCR
-    const result = await TextRecognition.recognize(processedUri);
-
-    // Extract and clean text
-    const rawText = result.text;
-    const cleaned = cleanOCRText(rawText);
-
-    // Card name is usually on the first line
-    const lines = cleaned.split("\n");
-    const cardName = lines[0] || cleaned;
-
-    return cardName;
-  } catch (error) {
-    console.error("Error extracting card name:", error);
-    return "";
-  }
+  return hasTypeLine || hasCollectorNum || hasEnoughLines;
 }
 
 /**
- * Extract set code and collector number from image
- * @param imageUri - Image URI or base64
- * @returns Set information
- */
-export async function extractSetInfo(imageUri: string): Promise<SetInfo> {
-  try {
-    // Convert base64 to URI if needed
-    const uri = base64ToUri(imageUri);
-
-    // Crop to set code region (bottom right)
-    const croppedUri = await cropToSetCode(uri);
-
-    // Preprocess for better OCR
-    const processedUri = await preprocessForOCR(croppedUri);
-
-    // Run OCR
-    const result = await TextRecognition.recognize(processedUri);
-
-    // Parse set info from text
-    return parseSetInfo(result.text);
-  } catch (error) {
-    console.error("Error extracting set info:", error);
-    return {};
-  }
-}
-
-/**
- * Perform full OCR on a card image
- * Extracts card name, set code, and collector number
- * @param imageUri - Image URI or base64
- * @returns Complete OCR result
+ * Perform full OCR on a card image.
+ * Single OCR pass — extracts card name and collector number.
+ * Returns empty result if the image doesn't look like an MTG card.
  */
 export async function recognizeCard(imageUri: string): Promise<OCRResult> {
   try {
-    // Run both extractions in parallel
-    const [cardName, setInfo] = await Promise.all([
-      extractCardName(imageUri),
-      extractSetInfo(imageUri),
-    ]);
+    console.log("[CardScan:OCR] recognizeCard starting...");
+    const startTime = Date.now();
+
+    const uri = base64ToUri(imageUri);
+    const processedUri = await preprocessForOCR(uri);
+
+    const result = await TextRecognition.recognize(processedUri);
+    const lines = extractLines(result);
+
+    console.log("[CardScan:OCR] OCR lines (top→bottom):", lines.slice(0, 8).map(l =>
+      `"${l.text}" (x=${Math.round(l.left)}, y=${Math.round(l.top)})`
+    ));
+
+    if (!looksLikeMTGCard(lines)) {
+      const elapsed = Date.now() - startTime;
+      console.log(`[CardScan:OCR] rejected — not an MTG card (${elapsed}ms, ${lines.length} lines)`);
+      return { cardName: "", rawText: "" };
+    }
+
+    const cardName = pickCardNameLine(lines);
+    const collectorNumber = pickCollectorNumber(lines);
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[CardScan:OCR] recognizeCard complete in ${elapsed}ms:`, { cardName, collectorNumber });
 
     return {
       cardName,
-      setCode: setInfo.setCode,
-      collectorNumber: setInfo.collectorNumber,
-      rawText: `${cardName} ${setInfo.setCode || ""} ${setInfo.collectorNumber || ""}`,
+      collectorNumber,
+      rawText: cardName,
     };
-  } catch (error) {
-    console.error("Error recognizing card:", error);
+  } catch (error: any) {
+    console.error("[CardScan:OCR] recognizeCard ERROR:", error?.message || error);
     return {
       cardName: "",
       rawText: "",

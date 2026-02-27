@@ -96,7 +96,7 @@ export function CommanderDamageCounter({
           {/* Damage Total */}
           <View style={{ height: damageFontSize, justifyContent: "center" }}>
             <Text
-              className="font-black text-black drop-shadow-lg text-center"
+              className="font-black text-white drop-shadow-lg text-center"
               style={{ fontSize: damageFontSize, lineHeight: damageFontSize }}
             >
               {damage}
@@ -104,7 +104,7 @@ export function CommanderDamageCounter({
           </View>
 
           {/* Label */}
-          <Text className="text-sm font-semibold text-black/50 mt-1">
+          <Text className="text-sm font-semibold text-white/70 mt-1">
             CMD DMG
           </Text>
 
@@ -113,9 +113,9 @@ export function CommanderDamageCounter({
             onPress={() => { if (!longPressActive.current) changeDamage(-1); }}
             onLongPress={() => startLongPress(-10)}
             onPressOut={clearLongPress}
-            className="absolute left-0 top-0 bottom-0 w-1/2 items-center justify-center active:bg-black/10"
+            className="absolute left-0 top-0 bottom-0 w-1/2 items-center justify-center active:bg-white/10"
           >
-            <Minus size={64} color="rgba(0,0,0,0.3)" strokeWidth={3} />
+            <Minus size={64} color="rgba(255,255,255,0.4)" strokeWidth={3} />
           </Pressable>
 
           {/* Plus Button (Right) */}
@@ -123,9 +123,9 @@ export function CommanderDamageCounter({
             onPress={() => { if (!longPressActive.current) changeDamage(1); }}
             onLongPress={() => startLongPress(10)}
             onPressOut={clearLongPress}
-            className="absolute right-0 top-0 bottom-0 w-1/2 items-center justify-center active:bg-black/10"
+            className="absolute right-0 top-0 bottom-0 w-1/2 items-center justify-center active:bg-white/10"
           >
-            <Plus size={64} color="rgba(0,0,0,0.3)" strokeWidth={3} />
+            <Plus size={64} color="rgba(255,255,255,0.4)" strokeWidth={3} />
           </Pressable>
         </View>
       )}

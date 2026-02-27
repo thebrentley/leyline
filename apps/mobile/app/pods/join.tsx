@@ -5,6 +5,7 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { podsApi } from "~/lib/api";
 import { showToast } from "~/lib/toast";
+import { KEYBOARD_ACCESSORY_ID } from "~/components/ui/KeyboardDoneAccessory";
 
 export default function JoinPodScreen() {
   const { colorScheme } = useColorScheme();
@@ -30,14 +31,17 @@ export default function JoinPodScreen() {
     <>
       <Stack.Screen
         options={{
+          headerShown: true,
+          headerShadowVisible: false,
           title: "Join Pod",
           headerStyle: { backgroundColor: isDark ? "#020617" : "#ffffff" },
           headerTintColor: isDark ? "#e2e8f0" : "#1e293b",
+          headerBackTitle: "Pods",
         }}
       />
       <SafeAreaView
         className={`flex-1 ${isDark ? "bg-slate-950" : "bg-white"}`}
-        edges={[]}
+        edges={["bottom"]}
       >
         <View className="gap-6 p-6">
           <Text
@@ -69,6 +73,7 @@ export default function JoinPodScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               autoFocus
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
             />
           </View>
 
