@@ -96,6 +96,9 @@ export class AuthService {
     password: string,
     displayName?: string,
   ): Promise<{ accessToken: string; user: SanitizedUser }> {
+    // Normalize email to prevent case-sensitive duplicates and login mismatches
+    email = email.toLowerCase().trim();
+
     // Check if email already exists
     const existing = await this.userRepository.findOne({ where: { email } });
     if (existing) {
@@ -138,6 +141,9 @@ export class AuthService {
     email: string,
     password: string,
   ): Promise<{ accessToken: string; user: SanitizedUser }> {
+    // Normalize email to match stored format (always lowercase/trimmed)
+    email = email.toLowerCase().trim();
+
     const user = await this.userRepository.findOne({ where: { email } });
 
     if (!user) {
