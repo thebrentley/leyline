@@ -266,11 +266,37 @@ export class DecksService {
   async getDeckWithCards(deckId: string, userId: string) {
     const deck = await this.getDeck(deckId, userId);
 
-    // Get user's collection to check which cards they own
-    const collectionCards = await this.collectionRepository.find({
-      where: { userId },
-      relations: ["card"],
-    });
+    // Collect the scryfallIds and card names from the deck to filter the collection query
+    const deckScryfallIds = deck.cards
+      .map((c) => c.scryfallId)
+      .filter(Boolean);
+    const deckCardNames = deck.cards
+      .map((c) => c.card?.name)
+      .filter((n): n is string => !!n);
+
+    // Only fetch collection cards that match the deck's cards (by scryfallId or name)
+    // instead of loading the entire collection
+    let collectionCards: CollectionCard[] = [];
+    if (deckScryfallIds.length > 0 || deckCardNames.length > 0) {
+      const qb = this.collectionRepository
+        .createQueryBuilder("cc")
+        .leftJoinAndSelect("cc.card", "card")
+        .where("cc.userId = :userId", { userId });
+
+      const conditions: string[] = [];
+      if (deckScryfallIds.length > 0) {
+        conditions.push("cc.scryfallId IN (:...scryfallIds)");
+      }
+      if (deckCardNames.length > 0) {
+        conditions.push("card.name IN (:...cardNames)");
+      }
+      qb.andWhere(`(${conditions.join(" OR ")})`, {
+        ...(deckScryfallIds.length > 0 && { scryfallIds: deckScryfallIds }),
+        ...(deckCardNames.length > 0 && { cardNames: deckCardNames }),
+      });
+
+      collectionCards = await qb.getMany();
+    }
 
     // Build lookup maps for collection
     const collectionByScryfall = new Map<string, any>();
