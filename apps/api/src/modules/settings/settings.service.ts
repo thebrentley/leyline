@@ -61,12 +61,17 @@ export class SettingsService {
   }
 
   /**
-   * Set multiple settings for a user
+   * Set multiple settings for a user in a single query
    */
   async setMany(userId: string, settings: Record<string, string | null>): Promise<void> {
-    for (const [key, value] of Object.entries(settings)) {
-      await this.set(userId, key, value);
-    }
+    const entities = Object.entries(settings).map(([key, value]) =>
+      this.settingRepository.create({ userId, key, value }),
+    );
+
+    await this.settingRepository.upsert(entities, {
+      conflictPaths: ['userId', 'key'],
+      skipUpdateIfNoValuesChanged: true,
+    });
   }
 
   /**
