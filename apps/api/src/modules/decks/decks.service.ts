@@ -6,7 +6,7 @@ import {
   forwardRef,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import axios from "axios";
 import { Deck } from "../../entities/deck.entity";
 import { DeckCard } from "../../entities/deck-card.entity";
@@ -167,66 +167,59 @@ export class DecksService {
       : [];
     const scoresByDeckId = new Map(allScores.map((s) => [s.deckId, s]));
 
-    return Promise.all(
-      decks.map(async (deck) => {
-        // Get all cards to calculate total quantity (not just count of unique cards)
-        const allCards = await this.deckCardRepository.find({
-          where: { deckId: deck.id },
-        });
-        const cardCount = allCards.reduce((sum, c) => sum + c.quantity, 0);
-
-        const commanders = await this.deckCardRepository.find({
-          where: { deckId: deck.id, isCommander: true },
+    // Batch-fetch all deck cards and commanders in two queries instead of 2*N
+    const allDeckCards = deckIds.length > 0
+      ? await this.deckCardRepository.find({
+          where: { deckId: In(deckIds) },
+        })
+      : [];
+    const allCommanders = deckIds.length > 0
+      ? await this.deckCardRepository.find({
+          where: { deckId: In(deckIds), isCommander: true },
           relations: ["card"],
-        });
+        })
+      : [];
 
-        // Get primary commander (first one) for image
-        const primaryCommander = commanders[0]?.card;
+    // Group by deckId for O(1) lookups
+    const cardsByDeckId = new Map<string, DeckCard[]>();
+    for (const card of allDeckCards) {
+      const list = cardsByDeckId.get(card.deckId);
+      if (list) list.push(card);
+      else cardsByDeckId.set(card.deckId, [card]);
+    }
+    const commandersByDeckId = new Map<string, DeckCard[]>();
+    for (const cmd of allCommanders) {
+      const list = commandersByDeckId.get(cmd.deckId);
+      if (list) list.push(cmd);
+      else commandersByDeckId.set(cmd.deckId, [cmd]);
+    }
 
-        // Debug logging
-        if (commanders.length > 0) {
-          // console.log(
-          //   `[Deck ${deck.name}] Commanders found:`,
-          //   commanders.length,
-          // );
-          // console.log(
-          //   `[Deck ${deck.name}] Primary commander:`,
-          //   primaryCommander?.name,
-          // );
-          // console.log(
-          //   `[Deck ${deck.name}] imageArtCrop:`,
-          //   primaryCommander?.imageArtCrop?.substring(0, 50) || "null",
-          // );
-          // console.log(
-          //   `[Deck ${deck.name}] imageNormal:`,
-          //   primaryCommander?.imageNormal?.substring(0, 50) || "null",
-          // );
-        } else {
-          console.log(`[Deck ${deck.name}] No commanders found`);
-        }
+    return decks.map((deck) => {
+      const deckCards = cardsByDeckId.get(deck.id) || [];
+      const cardCount = deckCards.reduce((sum, c) => sum + c.quantity, 0);
+      const commanders = commandersByDeckId.get(deck.id) || [];
+      const primaryCommander = commanders[0]?.card;
+      const score = scoresByDeckId.get(deck.id);
 
-        const score = scoresByDeckId.get(deck.id);
-
-        return {
-          id: deck.id,
-          archidektId: deck.archidektId,
-          name: deck.name,
-          format: deck.format,
-          visibility: deck.visibility,
-          lastSyncedAt: deck.lastSyncedAt,
-          syncStatus: deck.syncStatus,
-          syncError: deck.syncError,
-          cardCount,
-          commanders: commanders.map((c) => c.card?.name).filter(Boolean),
-          commanderImageCrop: primaryCommander?.imageArtCrop || null,
-          commanderImageFull: primaryCommander?.imageNormal || null,
-          colors: this.extractColors(commanders),
-          scores: score
-            ? { power: score.power, salt: score.salt, fear: score.fear, airtime: score.airtime }
-            : null,
-        };
-      }),
-    );
+      return {
+        id: deck.id,
+        archidektId: deck.archidektId,
+        name: deck.name,
+        format: deck.format,
+        visibility: deck.visibility,
+        lastSyncedAt: deck.lastSyncedAt,
+        syncStatus: deck.syncStatus,
+        syncError: deck.syncError,
+        cardCount,
+        commanders: commanders.map((c) => c.card?.name).filter(Boolean),
+        commanderImageCrop: primaryCommander?.imageArtCrop || null,
+        commanderImageFull: primaryCommander?.imageNormal || null,
+        colors: this.extractColors(commanders),
+        scores: score
+          ? { power: score.power, salt: score.salt, fear: score.fear, airtime: score.airtime }
+          : null,
+      };
+    });
   }
 
   /**
