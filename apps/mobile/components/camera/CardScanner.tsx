@@ -113,7 +113,7 @@ export function CardScanner({
     }
   }, [batchCards]);
 
-  // Auto-scan: capture a frame every 2s when camera is active and idle
+  // Auto-scan: capture a frame rapidly when camera is active and idle
   useEffect(() => {
     const hasPermission = permission?.granted;
     if (!visible || !hasPermission) return;
@@ -133,7 +133,7 @@ export function CardScanner({
       isProcessingRef.current = true;
       try {
         const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.8,
+          quality: 0.5,
           base64: true,
           shutterSound: false,
         });
@@ -163,7 +163,7 @@ export function CardScanner({
         );
         isProcessingRef.current = false;
       }
-    }, 500);
+    }, 250);
 
     return () => clearInterval(interval);
   }, [visible, permission?.granted]);

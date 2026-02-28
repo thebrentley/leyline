@@ -67,10 +67,10 @@ export async function preprocessForOCR(uri: string): Promise<string> {
     const result = await manipulateAsync(
       uri,
       [
-        { resize: { width: 900 } },
+        { resize: { width: 640 } },
       ],
       {
-        compress: 0.9,
+        compress: 0.7,
         format: SaveFormat.JPEG,
       }
     );
