@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { AdminGuard } from '../../common/guards/admin.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../../entities/user.entity';
 import { Deck } from '../../entities/deck.entity';
@@ -91,19 +92,22 @@ export class DeckRankingController {
     };
   }
 
-  // === Admin endpoints ===
+  // === Admin endpoints (requires ADMIN_EMAILS env var) ===
 
   @Post('admin/start-tagging')
+  @UseGuards(AdminGuard)
   async startTagging() {
     return this.cardTagging.startBulkTagging();
   }
 
   @Get('admin/tagging-status/:jobId')
+  @UseGuards(AdminGuard)
   async getTaggingStatus(@Param('jobId') jobId: string) {
     return this.cardTagging.getJobStatus(jobId);
   }
 
   @Post('admin/sync-combos')
+  @UseGuards(AdminGuard)
   async syncCombos() {
     return this.comboDetection.syncFromSpellbook();
   }
