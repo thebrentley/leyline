@@ -693,7 +693,7 @@ export class CollectionService {
       where: { userId },
     });
 
-    let linked = 0;
+    const toSave: typeof collection = [];
     for (const collectionCard of collection) {
       // Skip if already linked
       if (collectionCard.linkedDeckCard) continue;
@@ -701,12 +701,15 @@ export class CollectionService {
       const deckInfo = deckCardMap.get(collectionCard.scryfallId);
       if (deckInfo) {
         collectionCard.linkedDeckCard = deckInfo;
-        await this.collectionRepository.save(collectionCard);
-        linked++;
+        toSave.push(collectionCard);
       }
     }
 
-    return { linked, total: collection.length };
+    if (toSave.length > 0) {
+      await this.collectionRepository.save(toSave);
+    }
+
+    return { linked: toSave.length, total: collection.length };
   }
 
   /**
@@ -766,6 +769,9 @@ export class CollectionService {
 
     let linked = 0;
     let added = 0;
+    const collectionToSave: CollectionCard[] = [];
+    const deckCardsToSave: DeckCard[] = [];
+    const newDeckCardsToSave: DeckCard[] = [];
 
     for (const scryfallId of importedScryfallIds) {
       const collectionCard = collectionMap.get(scryfallId);
@@ -781,7 +787,7 @@ export class CollectionService {
 
       if (exactMatch) {
         collectionCard.linkedDeckCard = { deckId, deckName: deck.name };
-        await this.collectionRepository.save(collectionCard);
+        collectionToSave.push(collectionCard);
         claimedDeckCardIds.add(exactMatch.id);
         existingLinkedScryfallIds.add(scryfallId);
         linked++;
@@ -801,11 +807,11 @@ export class CollectionService {
         if (nameMatch) {
           // Update the deck card to point to the imported card's scryfallId
           nameMatch.scryfallId = scryfallId;
-          await this.deckCardRepository.save(nameMatch);
+          deckCardsToSave.push(nameMatch);
 
           // Link the collection card
           collectionCard.linkedDeckCard = { deckId, deckName: deck.name };
-          await this.collectionRepository.save(collectionCard);
+          collectionToSave.push(collectionCard);
           claimedDeckCardIds.add(nameMatch.id);
           existingLinkedScryfallIds.add(scryfallId);
           linked++;
@@ -822,15 +828,26 @@ export class CollectionService {
           categories: ['Mainboard'],
           isCommander: false,
         });
-        await this.deckCardRepository.save(newDeckCard);
+        newDeckCardsToSave.push(newDeckCard);
 
         collectionCard.linkedDeckCard = { deckId, deckName: deck.name };
-        await this.collectionRepository.save(collectionCard);
+        collectionToSave.push(collectionCard);
         existingLinkedScryfallIds.add(scryfallId);
         linked++;
         added++;
         continue;
       }
+    }
+
+    // Batch save all modified entities
+    if (newDeckCardsToSave.length > 0) {
+      await this.deckCardRepository.save(newDeckCardsToSave);
+    }
+    if (deckCardsToSave.length > 0) {
+      await this.deckCardRepository.save(deckCardsToSave);
+    }
+    if (collectionToSave.length > 0) {
+      await this.collectionRepository.save(collectionToSave);
     }
 
     return { linked, added };
