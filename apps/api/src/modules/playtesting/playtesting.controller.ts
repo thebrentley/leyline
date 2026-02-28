@@ -66,7 +66,7 @@ export class PlaytestingController {
     @Param('deckId') deckId: string,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    const gameState = this.playtestingService.getGameState(deckId);
+    const gameState = this.playtestingService.getGameState(deckId, user.userId);
     if (!gameState) {
       return { success: false, gameState: null };
     }
@@ -81,7 +81,7 @@ export class PlaytestingController {
     @Param('deckId') deckId: string,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    const running = this.playtestingService.isGameRunning(deckId);
+    const running = this.playtestingService.isGameRunning(deckId, user.userId);
     return { success: true, running };
   }
 
@@ -93,7 +93,7 @@ export class PlaytestingController {
     @Param('deckId') deckId: string,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    const paused = this.playtestingService.pauseGame(deckId);
+    const paused = this.playtestingService.pauseGame(deckId, user.userId);
     return { success: paused };
   }
 
@@ -105,7 +105,7 @@ export class PlaytestingController {
     @Param('deckId') deckId: string,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    const resumed = this.playtestingService.resumeGame(deckId);
+    const resumed = this.playtestingService.resumeGame(deckId, user.userId);
     return { success: resumed };
   }
 
@@ -137,7 +137,7 @@ export class PlaytestingController {
     @Param('deckId') deckId: string,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    const loading = this.playtestingService.isGameLoading(deckId);
+    const loading = this.playtestingService.isGameLoading(deckId, user.userId);
     return { success: true, loading };
   }
 
@@ -149,7 +149,7 @@ export class PlaytestingController {
     @Param('deckId') deckId: string,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    const ended = this.playtestingService.endGame(deckId);
+    const ended = this.playtestingService.endGame(deckId, user.userId);
     return { success: ended };
   }
 }
