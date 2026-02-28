@@ -186,7 +186,10 @@ export class SyncQueueService implements OnModuleDestroy {
   private startProcessing(): void {
     if (this.isProcessing) return;
     this.isProcessing = true;
-    this.processQueue();
+    this.processQueue().catch((error) => {
+      console.error('[SyncQueue] Fatal error in queue processing:', error);
+      this.isProcessing = false;
+    });
   }
 
   /**
