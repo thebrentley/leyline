@@ -1,10 +1,11 @@
 import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
-import { IsArray, IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
+import { IsArray, IsOptional, IsString, IsInt, Min, Max, ArrayMaxSize } from 'class-validator';
 import { CardsService } from './cards.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 class BatchFetchDto {
   @IsArray()
+  @ArrayMaxSize(500)
   @IsString({ each: true})
   scryfallIds: string[];
 }
