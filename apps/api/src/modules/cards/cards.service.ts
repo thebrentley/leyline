@@ -505,17 +505,18 @@ export class CardsService {
   ): Promise<Card[]> {
     if (cards.length === 0) return [];
 
-    // Check which cards we already have in the database
+    // Batch-lookup all cards in a single query instead of one SELECT per card
+    const existingCards = await this.batchLookupBySetCollector(cards);
+    const existingMap = new Map(
+      existingCards.map((c) => [`${c.setCode}|${c.collectorNumber}`, c]),
+    );
+
     const cached: Card[] = [];
     const toFetch: Array<{ setCode: string; collectorNumber: string }> = [];
 
     for (const card of cards) {
-      const existing = await this.cardRepository.findOne({
-        where: {
-          setCode: card.setCode.toLowerCase(),
-          collectorNumber: card.collectorNumber,
-        },
-      });
+      const key = `${card.setCode.toLowerCase()}|${card.collectorNumber}`;
+      const existing = existingMap.get(key);
       if (existing && !this.isStale(existing.fetchedAt)) {
         cached.push(existing);
       } else {
@@ -545,19 +546,44 @@ export class CardsService {
   ): Promise<Card[]> {
     if (cards.length === 0) return [];
 
-    const results: Card[] = [];
-    for (const card of cards) {
-      const existing = await this.cardRepository.findOne({
-        where: {
-          setCode: card.setCode.toLowerCase(),
-          collectorNumber: card.collectorNumber,
-        },
+    return this.batchLookupBySetCollector(cards);
+  }
+
+  /**
+   * Batch-lookup cards by (setCode, collectorNumber) in a single query.
+   * Processes in chunks of 500 to avoid exceeding SQL parameter limits.
+   */
+  private async batchLookupBySetCollector(
+    cards: Array<{ setCode: string; collectorNumber: string }>,
+  ): Promise<Card[]> {
+    if (cards.length === 0) return [];
+
+    const CHUNK_SIZE = 500;
+    const allResults: Card[] = [];
+
+    for (let i = 0; i < cards.length; i += CHUNK_SIZE) {
+      const chunk = cards.slice(i, i + CHUNK_SIZE);
+      const conditions: string[] = [];
+
+      chunk.forEach((card, idx) => {
+        const setParam = `set_${i + idx}`;
+        const numParam = `num_${i + idx}`;
+        conditions.push(`(card.set_code = :${setParam} AND card.collector_number = :${numParam})`);
       });
-      if (existing) {
-        results.push(existing);
-      }
+
+      const qb = this.cardRepository.createQueryBuilder('card');
+      qb.where(conditions.join(' OR '));
+
+      chunk.forEach((card, idx) => {
+        qb.setParameter(`set_${i + idx}`, card.setCode.toLowerCase());
+        qb.setParameter(`num_${i + idx}`, card.collectorNumber);
+      });
+
+      const results = await qb.getMany();
+      allResults.push(...results);
     }
-    return results;
+
+    return allResults;
   }
 
   private async fetchCollectionBySetCollector(
