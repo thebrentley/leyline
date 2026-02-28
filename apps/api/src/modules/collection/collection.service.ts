@@ -260,8 +260,8 @@ export class CollectionService {
    * Get user's collection with optional folder/deck filters
    */
   async getUserCollection(userId: string, options?: CollectionFilterOptions) {
-    const page = options?.page || 1;
-    const pageSize = options?.pageSize || 50;
+    const page = Math.max(options?.page || 1, 1);
+    const pageSize = Math.min(Math.max(options?.pageSize || 50, 1), 100);
     const skip = (page - 1) * pageSize;
 
     const queryBuilder = this.collectionRepository
