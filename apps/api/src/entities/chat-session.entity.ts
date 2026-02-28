@@ -2,6 +2,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  Index,
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
@@ -28,6 +29,7 @@ interface DeckChange {
 }
 
 @Entity('chat_sessions')
+@Index(['userId', 'deckId'])
 export class ChatSession {
   @PrimaryGeneratedColumn('uuid')
   id: string;

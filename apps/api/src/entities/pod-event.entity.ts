@@ -2,6 +2,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  Index,
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
@@ -16,6 +17,7 @@ import { EventOfflineRsvp } from './event-offline-rsvp.entity';
 export type EventStatus = 'upcoming' | 'completed';
 
 @Entity('pod_events')
+@Index(['status', 'startsAt'])
 export class PodEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;
