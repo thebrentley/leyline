@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { DataSource, Repository } from "typeorm";
 import Anthropic from "@anthropic-ai/sdk";
 import { ChatSession } from "../../entities/chat-session.entity";
 import { Deck } from "../../entities/deck.entity";
@@ -44,6 +44,7 @@ export class AdvisorService {
     private collectionCardRepository: Repository<CollectionCard>,
     private decksService: DecksService,
     private configService: ConfigService,
+    private dataSource: DataSource,
   ) {
     const apiKey = this.configService.get("ANTHROPIC_API_KEY");
     if (apiKey) {
@@ -381,51 +382,14 @@ export class AdvisorService {
       change.status = status;
     });
 
-    // If accepted, apply all changes to the deck
+    // If accepted, apply all changes to the deck inside a transaction
+    // so partial failures roll back instead of corrupting the deck
     if (status === "accepted") {
       try {
         console.log(
           `[BULK UPDATE] Applying ${changesToUpdate.length} changes to deck ${session.deckId}`,
         );
-        // Apply all changes
-        for (const change of changesToUpdate) {
-          switch (change.action) {
-            case "add":
-              await this.decksService.updateCardQuantity(
-                session.deckId,
-                change.cardName,
-                change.quantity,
-                userId,
-              );
-              break;
 
-            case "remove":
-              await this.decksService.updateCardQuantity(
-                session.deckId,
-                change.cardName,
-                -change.quantity,
-                userId,
-              );
-              break;
-
-            case "swap":
-              await this.decksService.updateCardQuantity(
-                session.deckId,
-                change.cardName,
-                -change.quantity,
-                userId,
-              );
-              await this.decksService.updateCardQuantity(
-                session.deckId,
-                change.targetCardName!,
-                change.quantity,
-                userId,
-              );
-              break;
-          }
-        }
-
-        // Create a single version snapshot for all changes
         const changeSummary = changesToUpdate
           .map((c) => {
             if (c.action === "swap") {
@@ -435,15 +399,57 @@ export class AdvisorService {
           })
           .join(", ");
 
-        console.log(
-          `[BULK UPDATE] Creating single version entry for all changes: ${changeSummary}`,
-        );
-        await this.decksService.createVersion(
-          session.deckId,
-          userId,
-          "advisor",
-          `AI Advisor (bulk): ${changeSummary}`,
-        );
+        await this.dataSource.transaction(async () => {
+          // Apply all changes
+          for (const change of changesToUpdate) {
+            switch (change.action) {
+              case "add":
+                await this.decksService.updateCardQuantity(
+                  session.deckId,
+                  change.cardName,
+                  change.quantity,
+                  userId,
+                );
+                break;
+
+              case "remove":
+                await this.decksService.updateCardQuantity(
+                  session.deckId,
+                  change.cardName,
+                  -change.quantity,
+                  userId,
+                );
+                break;
+
+              case "swap":
+                await this.decksService.updateCardQuantity(
+                  session.deckId,
+                  change.cardName,
+                  -change.quantity,
+                  userId,
+                );
+                await this.decksService.updateCardQuantity(
+                  session.deckId,
+                  change.targetCardName!,
+                  change.quantity,
+                  userId,
+                );
+                break;
+            }
+          }
+
+          // Create a single version snapshot for all changes
+          console.log(
+            `[BULK UPDATE] Creating single version entry for all changes: ${changeSummary}`,
+          );
+          await this.decksService.createVersion(
+            session.deckId,
+            userId,
+            "advisor",
+            `AI Advisor (bulk): ${changeSummary}`,
+          );
+        });
+
         console.log(
           `[BULK UPDATE] Successfully applied all changes and created version`,
         );
