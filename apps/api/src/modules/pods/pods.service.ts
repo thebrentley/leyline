@@ -281,24 +281,31 @@ export class PodsService {
       // Backfill game results: attribute offline member's games to the real user
       await this.backfillGameResults(offlineMember.id, userId);
 
-      // Convert offline RSVPs to regular RSVPs
+      // Convert offline RSVPs to regular RSVPs (batched to avoid N+1)
       const offlineRsvps = await this.offlineRsvpRepo.find({
         where: { offlineMemberId: offlineMember.id },
       });
 
-      for (const offlineRsvp of offlineRsvps) {
-        const existingRsvp = await this.rsvpRepo.findOne({
-          where: { eventId: offlineRsvp.eventId, userId },
+      if (offlineRsvps.length > 0) {
+        const eventIds = offlineRsvps.map((r) => r.eventId);
+        const existingRsvps = await this.rsvpRepo.find({
+          where: { eventId: In(eventIds), userId },
         });
+        const existingEventIds = new Set(existingRsvps.map((r) => r.eventId));
 
-        if (!existingRsvp) {
-          const rsvp = this.rsvpRepo.create({
-            eventId: offlineRsvp.eventId,
-            userId,
-            status: offlineRsvp.status,
-            comment: offlineRsvp.comment,
-          });
-          await this.rsvpRepo.save(rsvp);
+        const newRsvps = offlineRsvps
+          .filter((r) => !existingEventIds.has(r.eventId))
+          .map((r) =>
+            this.rsvpRepo.create({
+              eventId: r.eventId,
+              userId,
+              status: r.status,
+              comment: r.comment,
+            }),
+          );
+
+        if (newRsvps.length > 0) {
+          await this.rsvpRepo.save(newRsvps);
         }
       }
 
