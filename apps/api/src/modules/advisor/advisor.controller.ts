@@ -10,7 +10,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { IsString, IsNotEmpty, IsOptional, IsIn, IsArray } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsIn, IsArray, MaxLength, ArrayMaxSize } from 'class-validator';
 import { AdvisorService } from './advisor.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
@@ -22,12 +22,14 @@ class CreateSessionDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   name?: string;
 }
 
 class SendMessageDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(10000)
   message: string;
 
   @IsOptional()
@@ -48,6 +50,7 @@ class UpdateChangeStatusDto {
 
 class BulkUpdateChangesDto {
   @IsArray()
+  @ArrayMaxSize(100)
   @IsString({ each: true })
   @IsNotEmpty({ each: true })
   changeIds: string[];

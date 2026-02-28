@@ -300,7 +300,7 @@ export class AdvisorService {
       sendEvent("done", {});
     } catch (error: any) {
       console.error("Chat streaming error:", error);
-      sendEvent("error", { error: error.message || "An error occurred" });
+      sendEvent("error", { error: "An error occurred while processing your message" });
     } finally {
       res.end();
     }
