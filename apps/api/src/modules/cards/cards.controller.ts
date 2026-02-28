@@ -89,8 +89,8 @@ export class CardsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    const pageNum = page ? parseInt(page, 10) : 1;
-    const pageSize = limit ? parseInt(limit, 10) : 50;
+    const pageNum = Math.max(page ? parseInt(page, 10) || 1 : 1, 1);
+    const pageSize = Math.min(Math.max(limit ? parseInt(limit, 10) || 50 : 50, 1), 100);
     const result = await this.cardsService.searchLocal(query, pageNum, pageSize);
 
     // Format for mobile (same format as regular search for compatibility)
