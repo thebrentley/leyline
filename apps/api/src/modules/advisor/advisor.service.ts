@@ -301,7 +301,22 @@ export class AdvisorService {
       sendEvent("done", {});
     } catch (error: any) {
       console.error("Chat streaming error:", error);
-      sendEvent("error", { error: "An error occurred while processing your message" });
+      const isContextOverflow =
+        error?.status === 400 &&
+        (error?.message?.includes("too long") ||
+          error?.message?.includes("token") ||
+          error?.error?.message?.includes("too long") ||
+          error?.error?.message?.includes("token"));
+      if (isContextOverflow) {
+        sendEvent("error", {
+          error:
+            "This conversation has grown too long. Please start a new session to continue.",
+        });
+      } else {
+        sendEvent("error", {
+          error: "An error occurred while processing your message",
+        });
+      }
     } finally {
       res.end();
     }
@@ -1147,8 +1162,20 @@ Be specific and actionable. This analysis will guide all future card suggestions
 
   private buildMessages(
     messages: ChatMessage[],
+    maxMessages = 30,
   ): Array<{ role: "user" | "assistant"; content: string }> {
-    return messages.map((m) => ({
+    // Cap messages sent to Claude to avoid exceeding context window limits.
+    // The full history is retained in the database for UI display, but only
+    // the most recent messages are included in the API call.
+    let recent = messages;
+    if (messages.length > maxMessages) {
+      recent = messages.slice(-maxMessages);
+      // Ensure we start with a user message (Claude requires it)
+      if (recent[0]?.role === "assistant") {
+        recent = recent.slice(1);
+      }
+    }
+    return recent.map((m) => ({
       role: m.role,
       content: m.content,
     }));

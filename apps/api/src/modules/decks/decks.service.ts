@@ -103,20 +103,6 @@ export class DecksService {
     const podIds = user1Pods.map(m => m.podId);
 
     // Check if user2 is in any of those pods
-    const sharedMembership = await this.podMemberRepository.findOne({
-      where: {
-        userId: userId2,
-        podId: podIds.length > 0
-          ? podIds.length === 1
-            ? podIds[0]
-            : (undefined as any) // TypeORM's In() will be used in the real implementation
-          : undefined,
-      },
-    });
-
-    // Better approach using query builder for IN clause
-    if (podIds.length === 0) return false;
-
     const count = await this.podMemberRepository
       .createQueryBuilder('pm')
       .where('pm.userId = :userId2', { userId2 })
