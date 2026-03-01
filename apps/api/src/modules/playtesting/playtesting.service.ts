@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -102,7 +102,7 @@ export class PlaytestingService {
       pauseOnSpellCast: config?.pauseOnSpellCast ?? false,
     };
 
-    const gameState = this.initializeFullGameState(sessionId, deck1, deck2, gameConfig);
+    const gameState = this.initializeFullGameState(sessionId, userId, deck1, deck2, gameConfig);
 
     // Store game state
     this.gameStates.set(player1DeckId, gameState);
@@ -122,16 +122,37 @@ export class PlaytestingService {
   }
 
   /**
+   * Verify that the game belongs to the requesting user
+   */
+  private verifyGameOwnership(deckId: string, userId: string): FullPlaytestGameState {
+    const gameState = this.gameStates.get(deckId) || this.gameLoopService.getGameState(deckId);
+    if (!gameState) {
+      throw new NotFoundException('No active game found for this deck');
+    }
+    if (gameState.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this game');
+    }
+    return gameState;
+  }
+
+  /**
    * Get the current game state for a deck
    */
-  getGameState(deckId: string): FullPlaytestGameState | null {
-    return this.gameStates.get(deckId) || this.gameLoopService.getGameState(deckId);
+  getGameState(deckId: string, userId: string): FullPlaytestGameState | null {
+    const gameState = this.gameStates.get(deckId) || this.gameLoopService.getGameState(deckId);
+    if (!gameState) return null;
+    if (gameState.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this game');
+    }
+    return gameState;
   }
 
   /**
    * End a playtest game
    */
-  endGame(deckId: string): boolean {
+  endGame(deckId: string, userId: string): boolean {
+    this.verifyGameOwnership(deckId, userId);
+
     // Stop the game loop
     this.gameLoopService.stopGame(deckId);
 
@@ -146,14 +167,16 @@ export class PlaytestingService {
   /**
    * Pause a running game
    */
-  pauseGame(deckId: string): boolean {
+  pauseGame(deckId: string, userId: string): boolean {
+    this.verifyGameOwnership(deckId, userId);
     return this.gameLoopService.pauseGame(deckId);
   }
 
   /**
    * Resume a paused game
    */
-  resumeGame(deckId: string): boolean {
+  resumeGame(deckId: string, userId: string): boolean {
+    this.verifyGameOwnership(deckId, userId);
     return this.gameLoopService.resumeGame(deckId);
   }
 
@@ -196,8 +219,9 @@ export class PlaytestingService {
       throw new ConflictException('Failed to start playtest session');
     }
 
-    // Update the session ID in the game state
+    // Update the session ID and ensure userId is set to the authenticated user
     gameState.sessionId = sessionId;
+    gameState.userId = userId;
     gameState.updatedAt = new Date().toISOString();
 
     // Store game state
@@ -228,14 +252,16 @@ export class PlaytestingService {
   /**
    * Check if a game is currently loading
    */
-  isGameLoading(deckId: string): boolean {
+  isGameLoading(deckId: string, userId: string): boolean {
+    this.verifyGameOwnership(deckId, userId);
     return this.gameLoopService.isGameLoading(deckId);
   }
 
   /**
    * Check if a game is currently running
    */
-  isGameRunning(deckId: string): boolean {
+  isGameRunning(deckId: string, userId: string): boolean {
+    this.verifyGameOwnership(deckId, userId);
     return this.gameLoopService.isGameRunning(deckId);
   }
 
@@ -244,6 +270,7 @@ export class PlaytestingService {
    */
   private initializeFullGameState(
     sessionId: string,
+    userId: string,
     deck1: Deck,
     deck2: Deck,
     config: GameConfig,
@@ -432,6 +459,7 @@ export class PlaytestingService {
 
     return {
       sessionId,
+      userId,
       deckId: deck1.id,
       opponentDeckId: deck2.id,
       deckName: deck1.name,

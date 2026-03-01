@@ -6,7 +6,7 @@ import {
   forwardRef,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import axios from "axios";
 import { Deck } from "../../entities/deck.entity";
 import { DeckCard } from "../../entities/deck-card.entity";
@@ -103,20 +103,6 @@ export class DecksService {
     const podIds = user1Pods.map(m => m.podId);
 
     // Check if user2 is in any of those pods
-    const sharedMembership = await this.podMemberRepository.findOne({
-      where: {
-        userId: userId2,
-        podId: podIds.length > 0
-          ? podIds.length === 1
-            ? podIds[0]
-            : (undefined as any) // TypeORM's In() will be used in the real implementation
-          : undefined,
-      },
-    });
-
-    // Better approach using query builder for IN clause
-    if (podIds.length === 0) return false;
-
     const count = await this.podMemberRepository
       .createQueryBuilder('pm')
       .where('pm.userId = :userId2', { userId2 })
@@ -167,66 +153,59 @@ export class DecksService {
       : [];
     const scoresByDeckId = new Map(allScores.map((s) => [s.deckId, s]));
 
-    return Promise.all(
-      decks.map(async (deck) => {
-        // Get all cards to calculate total quantity (not just count of unique cards)
-        const allCards = await this.deckCardRepository.find({
-          where: { deckId: deck.id },
-        });
-        const cardCount = allCards.reduce((sum, c) => sum + c.quantity, 0);
-
-        const commanders = await this.deckCardRepository.find({
-          where: { deckId: deck.id, isCommander: true },
+    // Batch-fetch all deck cards and commanders in two queries instead of 2*N
+    const allDeckCards = deckIds.length > 0
+      ? await this.deckCardRepository.find({
+          where: { deckId: In(deckIds) },
+        })
+      : [];
+    const allCommanders = deckIds.length > 0
+      ? await this.deckCardRepository.find({
+          where: { deckId: In(deckIds), isCommander: true },
           relations: ["card"],
-        });
+        })
+      : [];
 
-        // Get primary commander (first one) for image
-        const primaryCommander = commanders[0]?.card;
+    // Group by deckId for O(1) lookups
+    const cardsByDeckId = new Map<string, DeckCard[]>();
+    for (const card of allDeckCards) {
+      const list = cardsByDeckId.get(card.deckId);
+      if (list) list.push(card);
+      else cardsByDeckId.set(card.deckId, [card]);
+    }
+    const commandersByDeckId = new Map<string, DeckCard[]>();
+    for (const cmd of allCommanders) {
+      const list = commandersByDeckId.get(cmd.deckId);
+      if (list) list.push(cmd);
+      else commandersByDeckId.set(cmd.deckId, [cmd]);
+    }
 
-        // Debug logging
-        if (commanders.length > 0) {
-          // console.log(
-          //   `[Deck ${deck.name}] Commanders found:`,
-          //   commanders.length,
-          // );
-          // console.log(
-          //   `[Deck ${deck.name}] Primary commander:`,
-          //   primaryCommander?.name,
-          // );
-          // console.log(
-          //   `[Deck ${deck.name}] imageArtCrop:`,
-          //   primaryCommander?.imageArtCrop?.substring(0, 50) || "null",
-          // );
-          // console.log(
-          //   `[Deck ${deck.name}] imageNormal:`,
-          //   primaryCommander?.imageNormal?.substring(0, 50) || "null",
-          // );
-        } else {
-          console.log(`[Deck ${deck.name}] No commanders found`);
-        }
+    return decks.map((deck) => {
+      const deckCards = cardsByDeckId.get(deck.id) || [];
+      const cardCount = deckCards.reduce((sum, c) => sum + c.quantity, 0);
+      const commanders = commandersByDeckId.get(deck.id) || [];
+      const primaryCommander = commanders[0]?.card;
+      const score = scoresByDeckId.get(deck.id);
 
-        const score = scoresByDeckId.get(deck.id);
-
-        return {
-          id: deck.id,
-          archidektId: deck.archidektId,
-          name: deck.name,
-          format: deck.format,
-          visibility: deck.visibility,
-          lastSyncedAt: deck.lastSyncedAt,
-          syncStatus: deck.syncStatus,
-          syncError: deck.syncError,
-          cardCount,
-          commanders: commanders.map((c) => c.card?.name).filter(Boolean),
-          commanderImageCrop: primaryCommander?.imageArtCrop || null,
-          commanderImageFull: primaryCommander?.imageNormal || null,
-          colors: this.extractColors(commanders),
-          scores: score
-            ? { power: score.power, salt: score.salt, fear: score.fear, airtime: score.airtime }
-            : null,
-        };
-      }),
-    );
+      return {
+        id: deck.id,
+        archidektId: deck.archidektId,
+        name: deck.name,
+        format: deck.format,
+        visibility: deck.visibility,
+        lastSyncedAt: deck.lastSyncedAt,
+        syncStatus: deck.syncStatus,
+        syncError: deck.syncError,
+        cardCount,
+        commanders: commanders.map((c) => c.card?.name).filter(Boolean),
+        commanderImageCrop: primaryCommander?.imageArtCrop || null,
+        commanderImageFull: primaryCommander?.imageNormal || null,
+        colors: this.extractColors(commanders),
+        scores: score
+          ? { power: score.power, salt: score.salt, fear: score.fear, airtime: score.airtime }
+          : null,
+      };
+    });
   }
 
   /**
@@ -273,11 +252,37 @@ export class DecksService {
   async getDeckWithCards(deckId: string, userId: string) {
     const deck = await this.getDeck(deckId, userId);
 
-    // Get user's collection to check which cards they own
-    const collectionCards = await this.collectionRepository.find({
-      where: { userId },
-      relations: ["card"],
-    });
+    // Collect the scryfallIds and card names from the deck to filter the collection query
+    const deckScryfallIds = deck.cards
+      .map((c) => c.scryfallId)
+      .filter(Boolean);
+    const deckCardNames = deck.cards
+      .map((c) => c.card?.name)
+      .filter((n): n is string => !!n);
+
+    // Only fetch collection cards that match the deck's cards (by scryfallId or name)
+    // instead of loading the entire collection
+    let collectionCards: CollectionCard[] = [];
+    if (deckScryfallIds.length > 0 || deckCardNames.length > 0) {
+      const qb = this.collectionRepository
+        .createQueryBuilder("cc")
+        .leftJoinAndSelect("cc.card", "card")
+        .where("cc.userId = :userId", { userId });
+
+      const conditions: string[] = [];
+      if (deckScryfallIds.length > 0) {
+        conditions.push("cc.scryfallId IN (:...scryfallIds)");
+      }
+      if (deckCardNames.length > 0) {
+        conditions.push("card.name IN (:...cardNames)");
+      }
+      qb.andWhere(`(${conditions.join(" OR ")})`, {
+        ...(deckScryfallIds.length > 0 && { scryfallIds: deckScryfallIds }),
+        ...(deckCardNames.length > 0 && { cardNames: deckCardNames }),
+      });
+
+      collectionCards = await qb.getMany();
+    }
 
     // Build lookup maps for collection
     const collectionByScryfall = new Map<string, any>();

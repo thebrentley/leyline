@@ -299,6 +299,7 @@ export interface LinkedExile {
 
 export interface FullPlaytestGameState {
   sessionId: string;
+  userId: string; // Owner who started the game
   deckId: string; // Primary deck (player 1)
   opponentDeckId: string; // Opponent deck (player 2)
   deckName: string;

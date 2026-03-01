@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { IsString, IsInt, IsOptional, Min, ValidateNested, IsArray, IsBoolean } from 'class-validator';
+import { IsString, IsInt, IsOptional, Min, ValidateNested, IsArray, IsBoolean, ArrayMaxSize } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CollectionService } from './collection.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -82,6 +82,7 @@ class BulkImportOptionsDto {
 
 class BulkImportDto {
   @IsArray()
+  @ArrayMaxSize(1000)
   @IsString({ each: true })
   lines: string[];
 
@@ -93,6 +94,7 @@ class BulkImportDto {
 
 class LinkToDeckDto {
   @IsArray()
+  @ArrayMaxSize(1000)
   @IsString({ each: true })
   scryfallIds: string[];
 
@@ -120,6 +122,7 @@ class RenameFolderDto {
 
 class MoveCardsDto {
   @IsArray()
+  @ArrayMaxSize(1000)
   @IsString({ each: true })
   cardIds: string[];
 
@@ -130,6 +133,7 @@ class MoveCardsDto {
 
 class BulkDeleteDto {
   @IsArray()
+  @ArrayMaxSize(1000)
   @IsString({ each: true })
   cardIds: string[];
 }

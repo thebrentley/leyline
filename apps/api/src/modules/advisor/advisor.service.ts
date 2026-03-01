@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { DataSource, Repository } from "typeorm";
 import Anthropic from "@anthropic-ai/sdk";
 import { ChatSession } from "../../entities/chat-session.entity";
 import { Deck } from "../../entities/deck.entity";
@@ -44,6 +44,7 @@ export class AdvisorService {
     private collectionCardRepository: Repository<CollectionCard>,
     private decksService: DecksService,
     private configService: ConfigService,
+    private dataSource: DataSource,
   ) {
     const apiKey = this.configService.get("ANTHROPIC_API_KEY");
     if (apiKey) {
@@ -300,7 +301,22 @@ export class AdvisorService {
       sendEvent("done", {});
     } catch (error: any) {
       console.error("Chat streaming error:", error);
-      sendEvent("error", { error: error.message || "An error occurred" });
+      const isContextOverflow =
+        error?.status === 400 &&
+        (error?.message?.includes("too long") ||
+          error?.message?.includes("token") ||
+          error?.error?.message?.includes("too long") ||
+          error?.error?.message?.includes("token"));
+      if (isContextOverflow) {
+        sendEvent("error", {
+          error:
+            "This conversation has grown too long. Please start a new session to continue.",
+        });
+      } else {
+        sendEvent("error", {
+          error: "An error occurred while processing your message",
+        });
+      }
     } finally {
       res.end();
     }
@@ -381,51 +397,14 @@ export class AdvisorService {
       change.status = status;
     });
 
-    // If accepted, apply all changes to the deck
+    // If accepted, apply all changes to the deck inside a transaction
+    // so partial failures roll back instead of corrupting the deck
     if (status === "accepted") {
       try {
         console.log(
           `[BULK UPDATE] Applying ${changesToUpdate.length} changes to deck ${session.deckId}`,
         );
-        // Apply all changes
-        for (const change of changesToUpdate) {
-          switch (change.action) {
-            case "add":
-              await this.decksService.updateCardQuantity(
-                session.deckId,
-                change.cardName,
-                change.quantity,
-                userId,
-              );
-              break;
 
-            case "remove":
-              await this.decksService.updateCardQuantity(
-                session.deckId,
-                change.cardName,
-                -change.quantity,
-                userId,
-              );
-              break;
-
-            case "swap":
-              await this.decksService.updateCardQuantity(
-                session.deckId,
-                change.cardName,
-                -change.quantity,
-                userId,
-              );
-              await this.decksService.updateCardQuantity(
-                session.deckId,
-                change.targetCardName!,
-                change.quantity,
-                userId,
-              );
-              break;
-          }
-        }
-
-        // Create a single version snapshot for all changes
         const changeSummary = changesToUpdate
           .map((c) => {
             if (c.action === "swap") {
@@ -435,15 +414,57 @@ export class AdvisorService {
           })
           .join(", ");
 
-        console.log(
-          `[BULK UPDATE] Creating single version entry for all changes: ${changeSummary}`,
-        );
-        await this.decksService.createVersion(
-          session.deckId,
-          userId,
-          "advisor",
-          `AI Advisor (bulk): ${changeSummary}`,
-        );
+        await this.dataSource.transaction(async () => {
+          // Apply all changes
+          for (const change of changesToUpdate) {
+            switch (change.action) {
+              case "add":
+                await this.decksService.updateCardQuantity(
+                  session.deckId,
+                  change.cardName,
+                  change.quantity,
+                  userId,
+                );
+                break;
+
+              case "remove":
+                await this.decksService.updateCardQuantity(
+                  session.deckId,
+                  change.cardName,
+                  -change.quantity,
+                  userId,
+                );
+                break;
+
+              case "swap":
+                await this.decksService.updateCardQuantity(
+                  session.deckId,
+                  change.cardName,
+                  -change.quantity,
+                  userId,
+                );
+                await this.decksService.updateCardQuantity(
+                  session.deckId,
+                  change.targetCardName!,
+                  change.quantity,
+                  userId,
+                );
+                break;
+            }
+          }
+
+          // Create a single version snapshot for all changes
+          console.log(
+            `[BULK UPDATE] Creating single version entry for all changes: ${changeSummary}`,
+          );
+          await this.decksService.createVersion(
+            session.deckId,
+            userId,
+            "advisor",
+            `AI Advisor (bulk): ${changeSummary}`,
+          );
+        });
+
         console.log(
           `[BULK UPDATE] Successfully applied all changes and created version`,
         );
@@ -1141,8 +1162,20 @@ Be specific and actionable. This analysis will guide all future card suggestions
 
   private buildMessages(
     messages: ChatMessage[],
+    maxMessages = 30,
   ): Array<{ role: "user" | "assistant"; content: string }> {
-    return messages.map((m) => ({
+    // Cap messages sent to Claude to avoid exceeding context window limits.
+    // The full history is retained in the database for UI display, but only
+    // the most recent messages are included in the API call.
+    let recent = messages;
+    if (messages.length > maxMessages) {
+      recent = messages.slice(-maxMessages);
+      // Ensure we start with a user message (Claude requires it)
+      if (recent[0]?.role === "assistant") {
+        recent = recent.slice(1);
+      }
+    }
+    return recent.map((m) => ({
       role: m.role,
       content: m.content,
     }));

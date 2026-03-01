@@ -115,39 +115,56 @@ export class PodsService {
       relations: ['pod'],
     });
 
-    const results = await Promise.all(
-      memberships.map(async (m) => {
-        const [onlineCount, offlineCount] = await Promise.all([
-          this.memberRepo.count({ where: { podId: m.podId } }),
-          this.offlineMemberRepo.count({
-            where: { podId: m.podId, linkedUserId: IsNull() },
-          }),
-        ]);
-        const memberCount = onlineCount + offlineCount;
+    if (memberships.length === 0) return [];
 
-        // Get next upcoming event
-        const nextEvent = await this.podRepo.manager
-          .createQueryBuilder('pod_events', 'e')
-          .where('e.pod_id = :podId', { podId: m.podId })
-          .andWhere('e.starts_at > NOW()')
-          .orderBy('e.starts_at', 'ASC')
-          .limit(1)
-          .getRawOne();
+    const podIds = memberships.map((m) => m.podId);
 
-        return {
-          id: m.pod.id,
-          name: m.pod.name,
-          description: m.pod.description,
-          coverImage: m.pod.coverImage,
-          memberCount,
-          role: m.role,
-          nextEventAt: nextEvent?.e_starts_at?.toISOString() ?? null,
-          createdAt: m.pod.createdAt.toISOString(),
-        };
-      }),
-    );
+    // Batch all counts and next events in 3 queries instead of 3×N
+    const [onlineCounts, offlineCounts, nextEvents] = await Promise.all([
+      this.memberRepo
+        .createQueryBuilder('m')
+        .select('m.pod_id', 'podId')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('m.pod_id IN (:...podIds)', { podIds })
+        .groupBy('m.pod_id')
+        .getRawMany<{ podId: string; cnt: string }>(),
+      this.offlineMemberRepo
+        .createQueryBuilder('o')
+        .select('o.pod_id', 'podId')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('o.pod_id IN (:...podIds)', { podIds })
+        .andWhere('o.linked_user_id IS NULL')
+        .groupBy('o.pod_id')
+        .getRawMany<{ podId: string; cnt: string }>(),
+      this.podRepo.manager
+        .createQueryBuilder('pod_events', 'e')
+        .select('DISTINCT ON (e.pod_id) e.pod_id', 'podId')
+        .addSelect('e.starts_at', 'startsAt')
+        .where('e.pod_id IN (:...podIds)', { podIds })
+        .andWhere('e.starts_at > NOW()')
+        .orderBy('e.pod_id')
+        .addOrderBy('e.starts_at', 'ASC')
+        .getRawMany<{ podId: string; startsAt: Date }>(),
+    ]);
 
-    return results;
+    const onlineMap = new Map(onlineCounts.map((r) => [r.podId, parseInt(r.cnt, 10)]));
+    const offlineMap = new Map(offlineCounts.map((r) => [r.podId, parseInt(r.cnt, 10)]));
+    const nextEventMap = new Map(nextEvents.map((r) => [r.podId, r.startsAt]));
+
+    return memberships.map((m) => {
+      const memberCount = (onlineMap.get(m.podId) ?? 0) + (offlineMap.get(m.podId) ?? 0);
+      const nextEventAt = nextEventMap.get(m.podId);
+      return {
+        id: m.pod.id,
+        name: m.pod.name,
+        description: m.pod.description,
+        coverImage: m.pod.coverImage,
+        memberCount,
+        role: m.role,
+        nextEventAt: nextEventAt ? new Date(nextEventAt).toISOString() : null,
+        createdAt: m.pod.createdAt.toISOString(),
+      };
+    });
   }
 
   async getPod(podId: string, userId: string) {
@@ -281,24 +298,31 @@ export class PodsService {
       // Backfill game results: attribute offline member's games to the real user
       await this.backfillGameResults(offlineMember.id, userId);
 
-      // Convert offline RSVPs to regular RSVPs
+      // Convert offline RSVPs to regular RSVPs (batched to avoid N+1)
       const offlineRsvps = await this.offlineRsvpRepo.find({
         where: { offlineMemberId: offlineMember.id },
       });
 
-      for (const offlineRsvp of offlineRsvps) {
-        const existingRsvp = await this.rsvpRepo.findOne({
-          where: { eventId: offlineRsvp.eventId, userId },
+      if (offlineRsvps.length > 0) {
+        const eventIds = offlineRsvps.map((r) => r.eventId);
+        const existingRsvps = await this.rsvpRepo.find({
+          where: { eventId: In(eventIds), userId },
         });
+        const existingEventIds = new Set(existingRsvps.map((r) => r.eventId));
 
-        if (!existingRsvp) {
-          const rsvp = this.rsvpRepo.create({
-            eventId: offlineRsvp.eventId,
-            userId,
-            status: offlineRsvp.status,
-            comment: offlineRsvp.comment,
-          });
-          await this.rsvpRepo.save(rsvp);
+        const newRsvps = offlineRsvps
+          .filter((r) => !existingEventIds.has(r.eventId))
+          .map((r) =>
+            this.rsvpRepo.create({
+              eventId: r.eventId,
+              userId,
+              status: r.status,
+              comment: r.comment,
+            }),
+          );
+
+        if (newRsvps.length > 0) {
+          await this.rsvpRepo.save(newRsvps);
         }
       }
 
@@ -395,33 +419,49 @@ export class PodsService {
       order: { createdAt: 'DESC' },
     });
 
-    const results = await Promise.all(
-      invites.map(async (inv) => {
-        const [onlineCount, offlineCount] = await Promise.all([
-          this.memberRepo.count({ where: { podId: inv.podId } }),
-          this.offlineMemberRepo.count({
-            where: { podId: inv.podId, linkedUserId: IsNull() },
-          }),
-        ]);
-        const memberCount = onlineCount + offlineCount;
-        return {
-          id: inv.id,
-          pod: {
-            id: inv.pod.id,
-            name: inv.pod.name,
-            description: inv.pod.description,
-            memberCount,
-          },
-          inviter: {
-            displayName: inv.inviter.displayName,
-            email: inv.inviter.email,
-          },
-          createdAt: inv.createdAt.toISOString(),
-        };
-      }),
-    );
+    if (invites.length === 0) return [];
 
-    return results;
+    const podIds = invites.map((inv) => inv.podId);
+
+    // Batch member counts in 2 queries instead of 2×N
+    const [onlineCounts, offlineCounts] = await Promise.all([
+      this.memberRepo
+        .createQueryBuilder('m')
+        .select('m.pod_id', 'podId')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('m.pod_id IN (:...podIds)', { podIds })
+        .groupBy('m.pod_id')
+        .getRawMany<{ podId: string; cnt: string }>(),
+      this.offlineMemberRepo
+        .createQueryBuilder('o')
+        .select('o.pod_id', 'podId')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('o.pod_id IN (:...podIds)', { podIds })
+        .andWhere('o.linked_user_id IS NULL')
+        .groupBy('o.pod_id')
+        .getRawMany<{ podId: string; cnt: string }>(),
+    ]);
+
+    const onlineMap = new Map(onlineCounts.map((r) => [r.podId, parseInt(r.cnt, 10)]));
+    const offlineMap = new Map(offlineCounts.map((r) => [r.podId, parseInt(r.cnt, 10)]));
+
+    return invites.map((inv) => {
+      const memberCount = (onlineMap.get(inv.podId) ?? 0) + (offlineMap.get(inv.podId) ?? 0);
+      return {
+        id: inv.id,
+        pod: {
+          id: inv.pod.id,
+          name: inv.pod.name,
+          description: inv.pod.description,
+          memberCount,
+        },
+        inviter: {
+          displayName: inv.inviter.displayName,
+          email: inv.inviter.email,
+        },
+        createdAt: inv.createdAt.toISOString(),
+      };
+    });
   }
 
   async respondToInvite(inviteId: string, userId: string, accept: boolean) {

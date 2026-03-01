@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, forwardRef, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import axios from 'axios';
 import { Deck, DeckSyncStatus } from '../../entities/deck.entity';
 import { DeckCard } from '../../entities/deck-card.entity';
@@ -63,6 +63,7 @@ export class SyncQueueService implements OnModuleDestroy {
     private eventsGateway: EventsGateway,
     @Inject(forwardRef(() => AuthService))
     private authService: AuthService,
+    private dataSource: DataSource,
   ) {}
 
   onModuleDestroy() {
@@ -186,7 +187,10 @@ export class SyncQueueService implements OnModuleDestroy {
   private startProcessing(): void {
     if (this.isProcessing) return;
     this.isProcessing = true;
-    this.processQueue();
+    this.processQueue().catch((error) => {
+      console.error('[SyncQueue] Fatal error in queue processing:', error);
+      this.isProcessing = false;
+    });
   }
 
   /**
@@ -258,22 +262,6 @@ export class SyncQueueService implements OnModuleDestroy {
         description: archidektDeck.description || null,
       });
 
-      // Delete existing cards and color tags
-      await this.deckCardRepository.delete({ deckId: job.deckId });
-      await this.colorTagRepository.delete({ deckId: job.deckId });
-
-      // Create color tag entities and build lookup map
-      const colorToTagId = new Map<string, string>();
-      for (const color of colorTagSet) {
-        const tag = this.colorTagRepository.create({
-          deckId: job.deckId,
-          name: color,
-          color: color,
-        });
-        const saved = await this.colorTagRepository.save(tag);
-        colorToTagId.set(color, saved.id);
-      }
-
       // 20% - Ready to fetch cards
       this.eventsGateway.emitDeckSyncStatus(job.userId, job.deckId, 'syncing', null, 20);
 
@@ -300,8 +288,14 @@ export class SyncQueueService implements OnModuleDestroy {
         cardMap.set(key, card.scryfallId);
       }
 
-      // Create deck cards only for cards that exist in our database
-      const deckCards: any[] = [];
+      // Build deck cards and track skipped ones before touching the DB
+      const pendingDeckCards: Array<{
+        scryfallId: string;
+        quantity: number;
+        colorTagColor: string | null;
+        categories: string[];
+        isCommander: boolean;
+      }> = [];
       const skippedCards: Array<{ name: string; set: string; collector: string }> = [];
 
       for (const archCard of archidektDeck.cards) {
@@ -314,25 +308,22 @@ export class SyncQueueService implements OnModuleDestroy {
           );
 
           // Extract color tag from label field (format: ',#656565')
-          let cardColorTagId: string | null = null;
+          let colorTagColor: string | null = null;
           const label = (archCard as any).label;
           if (label && typeof label === 'string') {
             const match = label.match(/#[0-9A-Fa-f]{6}/);
             if (match) {
-              cardColorTagId = colorToTagId.get(match[0].toUpperCase()) ?? null;
+              colorTagColor = match[0].toUpperCase();
             }
           }
 
-          deckCards.push(
-            this.deckCardRepository.create({
-              deckId: job.deckId,
-              scryfallId,
-              quantity: archCard.quantity,
-              colorTagId: cardColorTagId,
-              categories: archCard.categories,
-              isCommander,
-            }),
-          );
+          pendingDeckCards.push({
+            scryfallId,
+            quantity: archCard.quantity,
+            colorTagColor,
+            categories: archCard.categories,
+            isCommander,
+          });
         } else {
           skippedCards.push({
             name: archCard.card.oracleCard.name,
@@ -342,12 +333,52 @@ export class SyncQueueService implements OnModuleDestroy {
         }
       }
 
-      // 85% - Created deck cards
+      // 85% - Ready to write deck cards
       this.eventsGateway.emitDeckSyncStatus(job.userId, job.deckId, 'syncing', null, 85);
 
-      if (deckCards.length > 0) {
-        await this.deckCardRepository.save(deckCards);
-      }
+      // Wrap delete-and-recreate in a transaction so a failure doesn't leave the deck empty
+      await this.dataSource.transaction(async (manager) => {
+        // Delete existing cards and color tags
+        await manager.delete(DeckCard, { deckId: job.deckId });
+        await manager.delete(ColorTag, { deckId: job.deckId });
+
+        // Create color tag entities and build lookup map
+        const colorToTagId = new Map<string, string>();
+        for (const color of colorTagSet) {
+          const tag = manager.create(ColorTag, {
+            deckId: job.deckId,
+            name: color,
+            color: color,
+          });
+          const saved = await manager.save(tag);
+          colorToTagId.set(color, saved.id);
+        }
+
+        // Create deck card entities with resolved color tag IDs
+        const deckCards = pendingDeckCards.map((pending) =>
+          manager.create(DeckCard, {
+            deckId: job.deckId,
+            scryfallId: pending.scryfallId,
+            quantity: pending.quantity,
+            colorTagId: pending.colorTagColor
+              ? colorToTagId.get(pending.colorTagColor) ?? null
+              : null,
+            categories: pending.categories,
+            isCommander: pending.isCommander,
+          }),
+        );
+
+        if (deckCards.length > 0) {
+          await manager.save(deckCards);
+        }
+
+        // Update status to synced within the same transaction
+        await manager.update(Deck, job.deckId, {
+          syncStatus: 'synced' as DeckSyncStatus,
+          lastSyncedAt: new Date(),
+          syncError: null,
+        });
+      });
 
       // Log if some cards were skipped
       if (skippedCards.length > 0) {
@@ -356,13 +387,6 @@ export class SyncQueueService implements OnModuleDestroy {
           skippedCards,
         );
       }
-
-      // Update status to synced
-      await this.deckRepository.update(job.deckId, {
-        syncStatus: 'synced',
-        lastSyncedAt: new Date(),
-        syncError: null,
-      });
 
       // Create a version snapshot
       await this.createVersionSnapshot(job.deckId);

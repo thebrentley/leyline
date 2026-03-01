@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
-import { IsArray, IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
+import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { IsArray, IsOptional, IsString, IsInt, Min, Max, ArrayMaxSize } from 'class-validator';
 import { CardsService } from './cards.service';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 class BatchFetchDto {
   @IsArray()
+  @ArrayMaxSize(500)
   @IsString({ each: true})
   scryfallIds: string[];
 }
@@ -34,6 +36,7 @@ class FuzzyMatchDto {
 }
 
 @Controller('cards')
+@UseGuards(JwtAuthGuard)
 export class CardsController {
   constructor(private cardsService: CardsService) {}
 
@@ -87,8 +90,8 @@ export class CardsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    const pageNum = page ? parseInt(page, 10) : 1;
-    const pageSize = limit ? parseInt(limit, 10) : 50;
+    const pageNum = Math.max(page ? parseInt(page, 10) || 1 : 1, 1);
+    const pageSize = Math.min(Math.max(limit ? parseInt(limit, 10) || 50 : 50, 1), 100);
     const result = await this.cardsService.searchLocal(query, pageNum, pageSize);
 
     // Format for mobile (same format as regular search for compatibility)

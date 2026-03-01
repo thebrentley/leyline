@@ -210,46 +210,47 @@ export class CollectionService {
   // ==================== Deck Groups ====================
 
   async getDeckGroups(userId: string) {
-    const collection = await this.collectionRepository.find({
-      where: { userId },
-      relations: ['card'],
-    });
+    // Aggregate deck groups in SQL instead of loading all cards into memory
+    const linkedRows = await this.collectionRepository
+      .createQueryBuilder('cc')
+      .select("cc.linked_deck_card->>'deckId'", 'deckId')
+      .addSelect("cc.linked_deck_card->>'deckName'", 'deckName')
+      .addSelect('COUNT(*)::int', 'cardCount')
+      .addSelect(
+        'COALESCE(SUM(cc.quantity * COALESCE(card.price_usd, 0) + cc.foil_quantity * COALESCE(card.price_usd_foil, 0)), 0)',
+        'totalValue',
+      )
+      .leftJoin('cc.card', 'card')
+      .where('cc.user_id = :userId', { userId })
+      .andWhere('cc.linked_deck_card IS NOT NULL')
+      .groupBy("cc.linked_deck_card->>'deckId'")
+      .addGroupBy("cc.linked_deck_card->>'deckName'")
+      .getRawMany();
 
-    const deckMap = new Map<string, { deckName: string; cardCount: number; totalValue: number }>();
-    let unlinkedCount = 0;
-    let unlinkedValue = 0;
-    let totalCards = 0;
+    const unlinkedRow = await this.collectionRepository
+      .createQueryBuilder('cc')
+      .select('COUNT(*)::int', 'cardCount')
+      .addSelect(
+        'COALESCE(SUM(cc.quantity * COALESCE(card.price_usd, 0) + cc.foil_quantity * COALESCE(card.price_usd_foil, 0)), 0)',
+        'totalValue',
+      )
+      .leftJoin('cc.card', 'card')
+      .where('cc.user_id = :userId', { userId })
+      .andWhere('cc.linked_deck_card IS NULL')
+      .getRawOne();
 
-    for (const item of collection) {
-      totalCards++;
-      const cardValue =
-        (item.quantity * Number(item.card?.priceUsd || 0)) +
-        (item.foilQuantity * Number(item.card?.priceUsdFoil || 0));
+    const decks = linkedRows
+      .map((row) => ({
+        deckId: row.deckId,
+        deckName: row.deckName,
+        cardCount: parseInt(row.cardCount, 10),
+        totalValue: parseFloat(row.totalValue) || 0,
+      }))
+      .sort((a, b) => a.deckName.localeCompare(b.deckName));
 
-      if (item.linkedDeckCard) {
-        const { deckId, deckName } = item.linkedDeckCard;
-        const existing = deckMap.get(deckId);
-        if (existing) {
-          existing.cardCount++;
-          existing.totalValue += cardValue;
-        } else {
-          deckMap.set(deckId, { deckName, cardCount: 1, totalValue: cardValue });
-        }
-      } else {
-        unlinkedCount++;
-        unlinkedValue += cardValue;
-      }
-    }
-
-    const decks = Array.from(deckMap.entries()).map(([deckId, data]) => ({
-      deckId,
-      deckName: data.deckName,
-      cardCount: data.cardCount,
-      totalValue: data.totalValue,
-    }));
-
-    // Sort by deck name
-    decks.sort((a, b) => a.deckName.localeCompare(b.deckName));
+    const unlinkedCount = parseInt(unlinkedRow?.cardCount, 10) || 0;
+    const unlinkedValue = parseFloat(unlinkedRow?.totalValue) || 0;
+    const totalCards = decks.reduce((sum, d) => sum + d.cardCount, 0) + unlinkedCount;
 
     return { decks, totalCards, unlinkedCount, unlinkedValue };
   }
@@ -260,8 +261,8 @@ export class CollectionService {
    * Get user's collection with optional folder/deck filters
    */
   async getUserCollection(userId: string, options?: CollectionFilterOptions) {
-    const page = options?.page || 1;
-    const pageSize = options?.pageSize || 50;
+    const page = Math.max(options?.page || 1, 1);
+    const pageSize = Math.min(Math.max(options?.pageSize || 50, 1), 100);
     const skip = (page - 1) * pageSize;
 
     const queryBuilder = this.collectionRepository
@@ -692,7 +693,7 @@ export class CollectionService {
       where: { userId },
     });
 
-    let linked = 0;
+    const toSave: typeof collection = [];
     for (const collectionCard of collection) {
       // Skip if already linked
       if (collectionCard.linkedDeckCard) continue;
@@ -700,12 +701,15 @@ export class CollectionService {
       const deckInfo = deckCardMap.get(collectionCard.scryfallId);
       if (deckInfo) {
         collectionCard.linkedDeckCard = deckInfo;
-        await this.collectionRepository.save(collectionCard);
-        linked++;
+        toSave.push(collectionCard);
       }
     }
 
-    return { linked, total: collection.length };
+    if (toSave.length > 0) {
+      await this.collectionRepository.save(toSave);
+    }
+
+    return { linked: toSave.length, total: collection.length };
   }
 
   /**
@@ -765,6 +769,9 @@ export class CollectionService {
 
     let linked = 0;
     let added = 0;
+    const collectionToSave: CollectionCard[] = [];
+    const deckCardsToSave: DeckCard[] = [];
+    const newDeckCardsToSave: DeckCard[] = [];
 
     for (const scryfallId of importedScryfallIds) {
       const collectionCard = collectionMap.get(scryfallId);
@@ -780,7 +787,7 @@ export class CollectionService {
 
       if (exactMatch) {
         collectionCard.linkedDeckCard = { deckId, deckName: deck.name };
-        await this.collectionRepository.save(collectionCard);
+        collectionToSave.push(collectionCard);
         claimedDeckCardIds.add(exactMatch.id);
         existingLinkedScryfallIds.add(scryfallId);
         linked++;
@@ -800,11 +807,11 @@ export class CollectionService {
         if (nameMatch) {
           // Update the deck card to point to the imported card's scryfallId
           nameMatch.scryfallId = scryfallId;
-          await this.deckCardRepository.save(nameMatch);
+          deckCardsToSave.push(nameMatch);
 
           // Link the collection card
           collectionCard.linkedDeckCard = { deckId, deckName: deck.name };
-          await this.collectionRepository.save(collectionCard);
+          collectionToSave.push(collectionCard);
           claimedDeckCardIds.add(nameMatch.id);
           existingLinkedScryfallIds.add(scryfallId);
           linked++;
@@ -821,15 +828,26 @@ export class CollectionService {
           categories: ['Mainboard'],
           isCommander: false,
         });
-        await this.deckCardRepository.save(newDeckCard);
+        newDeckCardsToSave.push(newDeckCard);
 
         collectionCard.linkedDeckCard = { deckId, deckName: deck.name };
-        await this.collectionRepository.save(collectionCard);
+        collectionToSave.push(collectionCard);
         existingLinkedScryfallIds.add(scryfallId);
         linked++;
         added++;
         continue;
       }
+    }
+
+    // Batch save all modified entities
+    if (newDeckCardsToSave.length > 0) {
+      await this.deckCardRepository.save(newDeckCardsToSave);
+    }
+    if (deckCardsToSave.length > 0) {
+      await this.deckCardRepository.save(deckCardsToSave);
+    }
+    if (collectionToSave.length > 0) {
+      await this.collectionRepository.save(collectionToSave);
     }
 
     return { linked, added };
