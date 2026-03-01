@@ -129,23 +129,12 @@ export function CardScanner({
         return;
       }
 
-      console.log("[CardScan] Taking picture...");
       isProcessingRef.current = true;
       try {
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.5,
           base64: true,
           shutterSound: false,
-        });
-
-        console.log("[CardScan] Photo result:", {
-          hasPhoto: !!photo,
-          hasBase64: !!photo?.base64,
-          base64Length: photo?.base64?.length,
-          hasUri: !!photo?.uri,
-          uri: photo?.uri,
-          width: photo?.width,
-          height: photo?.height,
         });
 
         if (photo?.base64) {
@@ -177,11 +166,15 @@ export function CardScanner({
         return;
       }
 
-      const matchResult = await cardsApi.fuzzyMatch(ocrResult.cardName, {
+      const searchParams = {
+        setCode: ocrResult.setCode,
         collectorNumber: ocrResult.collectorNumber,
         maxDistance: 5,
         limit: 5,
-      });
+      };
+      console.log(`[CardScan] fuzzyMatch: "${ocrResult.cardName}"`, searchParams);
+
+      const matchResult = await cardsApi.fuzzyMatch(ocrResult.cardName, searchParams);
 
       const topMatch = matchResult.data?.matches?.[0];
 
@@ -189,6 +182,8 @@ export function CardScanner({
         isProcessingRef.current = false;
         return;
       }
+
+      console.log(`[CardScan] matched: ${topMatch.name} [${topMatch.setCode.toUpperCase()} #${topMatch.collectorNumber}] (confidence: ${topMatch.confidence.toFixed(2)})`);
 
       // Skip if same card as last match (still in frame)
       if (topMatch.scryfallId === lastMatchRef.current) {

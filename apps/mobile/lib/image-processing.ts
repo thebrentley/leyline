@@ -63,7 +63,6 @@ export async function cropToSetCode(uri: string): Promise<string> {
  */
 export async function preprocessForOCR(uri: string): Promise<string> {
   try {
-    console.log("[CardScan:IMG] preprocessForOCR input:", uri.substring(0, 50) + "...");
     const result = await manipulateAsync(
       uri,
       [
@@ -75,7 +74,6 @@ export async function preprocessForOCR(uri: string): Promise<string> {
       }
     );
 
-    console.log("[CardScan:IMG] preprocessForOCR output:", result.uri.substring(0, 50) + "...", { width: result.width, height: result.height });
     return result.uri;
   } catch (error: any) {
     console.error("[CardScan:IMG] preprocessForOCR ERROR:", error?.message || error);
@@ -91,15 +89,12 @@ export async function preprocessForOCR(uri: string): Promise<string> {
 export function base64ToUri(base64: string): string {
   // If it's already a URI, return it
   if (base64.startsWith("file://") || base64.startsWith("http")) {
-    console.log("[CardScan:IMG] base64ToUri: already a URI:", base64.substring(0, 60) + "...");
     return base64;
   }
 
   if (base64.startsWith("data:")) {
-    console.log("[CardScan:IMG] base64ToUri: already a data URI");
     return base64;
   }
 
-  console.log("[CardScan:IMG] base64ToUri: converting raw base64 to data URI, length:", base64.length);
   return `data:image/jpeg;base64,${base64}`;
 }

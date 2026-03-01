@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   Text,
   View,
 } from "react-native";
@@ -45,8 +46,12 @@ export default function LoginScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1"
       >
-        <View className="flex-1 justify-center px-6 lg:px-8">
-          <View className="w-full max-w-md mx-auto">
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+        >
+          <View className="w-full max-w-md mx-auto px-6 lg:px-8">
             {/* Logo / Header */}
             <View className="mb-10 items-center">
               <LeylineLogo size="medium" />
@@ -141,7 +146,7 @@ export default function LoginScreen() {
               </Link>
             </View>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

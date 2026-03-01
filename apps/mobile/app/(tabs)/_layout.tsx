@@ -107,10 +107,15 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
     }
   });
 
-  const loadPods = useCallback(async () => {
+  const lastFetchRef = useCallback(() => ({ ts: 0 }), [])();
+
+  const loadPods = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastFetchRef.ts < 30_000) return;
+    lastFetchRef.ts = now;
     const result = await podsApi.list();
     if (result.data) setPods(result.data);
-  }, []);
+  }, [lastFetchRef]);
 
   useFocusEffect(
     useCallback(() => {
@@ -420,6 +425,7 @@ export default function DrawerLayout() {
           width: 320,
         },
         swipeEnabled: true,
+        freezeOnBlur: true,
       }}
     >
       <Drawer.Screen

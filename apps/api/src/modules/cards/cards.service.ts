@@ -300,7 +300,6 @@ export class CardsService {
    */
   async getPrints(cardName: string): Promise<Card[]> {
     try {
-      console.log(`[Scryfall] Fetching prints for: "${cardName}"`);
       await this.rateLimitDelay();
 
       // Use Scryfall search with unique:prints to get all printings
@@ -313,8 +312,6 @@ export class CardsService {
           dir: 'desc',
         },
       });
-
-      console.log(`[Scryfall] Found ${response.data.total_cards} printings`);
 
       const prints: Card[] = [];
 
@@ -334,7 +331,6 @@ export class CardsService {
         data = nextResponse.data;
       }
 
-      console.log(`[Scryfall] Successfully cached ${prints.length} printings`);
       return prints;
     } catch (error: any) {
       console.error(`[Scryfall] Failed to get prints for: "${cardName}"`, error.response?.data || error.message);
@@ -363,11 +359,28 @@ export class CardsService {
     const limit = options?.limit || 5;
 
     try {
-      // First try: Search Scryfall with the query
-      // This handles some fuzzy matching on Scryfall's end
-      let query = cardName;
+      // First: try to resolve exact printing from local DB (no API calls)
+      if (options?.collectorNumber) {
+        const exactPrinting = await this.findExactPrinting(
+          cardName,
+          options.setCode,
+          options.collectorNumber,
+        );
+        if (exactPrinting) {
+          const dist = distance(cardName.toLowerCase(), exactPrinting.name.toLowerCase());
+          if (dist <= maxDist) {
+            const maxLength = Math.max(cardName.length, exactPrinting.name.length);
+            return [{
+              card: exactPrinting,
+              distance: dist,
+              confidence: Math.min(1, 1 - dist / maxLength + 0.3),
+            }];
+          }
+        }
+      }
 
-      // If set code provided, add it to query for better accuracy
+      // Search Scryfall for fuzzy name matching
+      let query = cardName;
       if (options?.setCode) {
         query = `${cardName} set:${options.setCode}`;
       }
@@ -376,52 +389,56 @@ export class CardsService {
       const scryfallResults = await this.searchScryfall(query, 1);
 
       if (scryfallResults.data && scryfallResults.data.length > 0) {
-        // Cache and rank the results
         const cards = await Promise.all(
           scryfallResults.data.map((card) => this.upsertCard(card)),
         );
 
-        // Calculate Levenshtein distance for ranking
         const rankedResults = cards
           .map((card) => {
             const dist = distance(
               cardName.toLowerCase(),
               card.name.toLowerCase(),
             );
-
-            // Calculate confidence score (0-1)
-            // Lower distance = higher confidence
             const maxLength = Math.max(cardName.length, card.name.length);
-            const confidence = Math.max(0, 1 - dist / maxLength);
+            let confidence = Math.max(0, 1 - dist / maxLength);
 
-            // Bonus for matching set code
-            let adjustedConfidence = confidence;
             if (options?.setCode && card.setCode === options.setCode.toLowerCase()) {
-              adjustedConfidence = Math.min(1, confidence + 0.2);
+              confidence = Math.min(1, confidence + 0.2);
             }
-
-            // Bonus for matching collector number
             if (options?.collectorNumber && card.collectorNumber === options.collectorNumber) {
-              adjustedConfidence = Math.min(1, adjustedConfidence + 0.1);
+              confidence = Math.min(1, confidence + 0.1);
             }
 
-            return {
-              card,
-              distance: dist,
-              confidence: adjustedConfidence,
-            };
+            return { card, distance: dist, confidence };
           })
           .filter((result) => result.distance <= maxDist)
           .sort((a, b) => a.distance - b.distance)
           .slice(0, limit);
 
         if (rankedResults.length > 0) {
+          // Now that we have the correct card name from Scryfall, try exact printing from DB
+          const topMatch = rankedResults[0];
+          if (options?.collectorNumber && topMatch.distance <= 2) {
+            const exactPrinting = await this.findExactPrinting(
+              topMatch.card.name,
+              options.setCode,
+              options.collectorNumber,
+            );
+            if (exactPrinting) {
+              return [{
+                card: exactPrinting,
+                distance: topMatch.distance,
+                confidence: Math.min(1, topMatch.confidence + 0.3),
+              }];
+            }
+          }
+
           return rankedResults;
         }
       }
 
       // Fallback: Get all unique card names from database and compute distances
-      console.log('[FuzzyMatch] Using database fallback for:', cardName);
+      // Database fallback
       const allCards = await this.cardRepository
         .createQueryBuilder('card')
         .select(['card.scryfallId', 'card.name'])
@@ -461,6 +478,71 @@ export class CardsService {
     } catch (error: any) {
       console.error('[FuzzyMatch] Error:', error.message);
       return [];
+    }
+  }
+
+  /**
+   * Try to find the exact printing by set code + collector number.
+   * If set code is provided, does a direct Scryfall lookup.
+   * Otherwise, fetches all printings and matches by collector number.
+   */
+  private async findExactPrinting(
+    cardName: string,
+    setCode?: string,
+    collectorNumber?: string,
+  ): Promise<Card | null> {
+    if (!collectorNumber) return null;
+
+    try {
+      // If we have both set code and collector number, do a direct Scryfall lookup
+      if (setCode) {
+        const exact = await this.getBySetAndNumber(setCode, collectorNumber);
+        if (exact) return exact;
+      }
+
+      // Check local DB first — avoids extra Scryfall API calls
+      const dbQuery: any = {
+        name: cardName,
+        collectorNumber: collectorNumber,
+      };
+      if (setCode) {
+        dbQuery.setCode = setCode.toLowerCase();
+      }
+      const dbMatches = await this.cardRepository.find({ where: dbQuery });
+
+      if (setCode && dbMatches.length >= 1) {
+        return dbMatches[0];
+      }
+      if (dbMatches.length === 1) {
+        return dbMatches[0];
+      }
+      if (dbMatches.length > 1) {
+        // Multiple printings share this collector number — return most recent
+        return dbMatches.sort((a, b) =>
+          new Date(b.fetchedAt).getTime() - new Date(a.fetchedAt).getTime()
+        )[0];
+      }
+
+      // DB miss — fetch all printings from Scryfall and match
+      const prints = await this.getPrints(cardName);
+      if (prints.length === 0) return null;
+
+      if (setCode) {
+        const setAndNumMatch = prints.find(
+          p => p.setCode === setCode.toLowerCase() && p.collectorNumber === collectorNumber,
+        );
+        if (setAndNumMatch) return setAndNumMatch;
+      }
+
+      const numMatches = prints.filter(p => p.collectorNumber === collectorNumber);
+      if (numMatches.length >= 1) {
+        return numMatches[0];
+      }
+
+      return null;
+    } catch (error: any) {
+      console.error('[FuzzyMatch] findExactPrinting error:', error.message);
+      return null;
     }
   }
 

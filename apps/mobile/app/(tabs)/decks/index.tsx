@@ -1,4 +1,5 @@
 import { router, useNavigation } from "expo-router";
+import { InteractionManager } from "react-native";
 import {
   AlertCircle,
   CheckCircle,
@@ -401,12 +402,15 @@ export default function DecksScreen() {
   };
 
   useEffect(() => {
-    loadDecks();
+    const task = InteractionManager.runAfterInteractions(() => {
+      loadDecks();
+    });
+    return () => task.cancel();
   }, [loadDecks]);
 
   // Check if Archidekt is connected
   useEffect(() => {
-    const checkArchidektConnection = async () => {
+    const task = InteractionManager.runAfterInteractions(async () => {
       try {
         const result = await authApi.getArchidektStatus();
         if (result.data) {
@@ -417,8 +421,8 @@ export default function DecksScreen() {
       } catch (err) {
         console.error("Failed to check Archidekt status:", err);
       }
-    };
-    checkArchidektConnection();
+    });
+    return () => task.cancel();
   }, []);
 
   // Listen for real-time deck sync status updates

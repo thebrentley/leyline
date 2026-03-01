@@ -45,6 +45,7 @@ import {
   Dimensions,
   FlatList,
   Image,
+  InteractionManager,
   Keyboard,
   Modal,
   Platform,
@@ -2678,14 +2679,17 @@ export default function CollectionScreen() {
   }, [sortBy]);
 
   useEffect(() => {
-    loadBrowseData();
-    cache.get<"list" | "grid">(CACHE_KEYS.VIEW_MODE).then((mode) => {
-      if (mode) {
-        setViewMode(mode);
-      } else {
-        setViewMode(isDesktop || isTablet ? "grid" : "list");
-      }
+    const task = InteractionManager.runAfterInteractions(() => {
+      loadBrowseData();
+      cache.get<"list" | "grid">(CACHE_KEYS.VIEW_MODE).then((mode) => {
+        if (mode) {
+          setViewMode(mode);
+        } else {
+          setViewMode(isDesktop || isTablet ? "grid" : "list");
+        }
+      });
     });
+    return () => task.cancel();
   }, [loadBrowseData]);
 
   const toggleViewMode = () => {

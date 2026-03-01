@@ -34,7 +34,6 @@ async function request<T>(
       (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
     }
 
-    console.log(`${API_URL}${endpoint}`);
     const response = await fetch(`${API_URL}${endpoint}`, {
       ...options,
       headers,

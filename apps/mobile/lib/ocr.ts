@@ -7,6 +7,7 @@ import {
 export interface OCRResult {
   cardName: string;
   collectorNumber?: string;
+  setCode?: string;
   rawText: string;
 }
 
@@ -81,39 +82,87 @@ function pickCardNameLine(lines: OCRLine[]): string {
 }
 
 /**
- * Extract collector number from the bottom-left area of the card.
- * Uses "Wizards" / "Coast" text as a spatial anchor for the bottom-right,
- * then looks for numbers to its left at similar Y.
+ * Set code pattern: 3-4 uppercase letters only (e.g., MKM, DSK, WOE, PLST).
+ * MTG set codes are always pure letters — excludes mixed alphanumeric like "M21" false positives.
  */
-function pickCollectorNumber(lines: OCRLine[]): string | undefined {
+const SET_CODE_RE = /\b([A-Z]{3,4})\b/;
+const SET_CODE_FALSE_POSITIVES = new Set([
+  "THE", "AND", "FOR", "NOT", "ALL", "ARE", "BUT", "HAS", "ITS", "MAY",
+  "USE", "YOU", "TEN", "TWO", "END", "PUT", "TAP", "ADD",
+]);
+
+/** Strip leading zeros: "035" → "35", but keep "0" as "0" */
+function stripLeadingZeros(num: string): string {
+  return num.replace(/^0+(?=\d)/, "");
+}
+
+/**
+ * Extract collector number and set code from the bottom area of the card.
+ * Collector number: bottom-left (e.g., "069/261" or "R 0035")
+ * Set code: nearby line, separate from collector number (e.g., "WOT · EN")
+ */
+function pickCollectorInfo(lines: OCRLine[]): { collectorNumber?: string; setCode?: string } {
   const wizardsLine = lines.find(l => /wizards|coast/i.test(l.text));
 
-  // Lines to search: bottom-left candidates if we have the anchor, otherwise bottom lines
-  let candidates: OCRLine[];
+  // Bottom area lines for collector number (left of copyright)
+  let numCandidates: OCRLine[];
   if (wizardsLine) {
     const yTolerance = 60;
-    candidates = lines.filter(l =>
+    numCandidates = lines.filter(l =>
       Math.abs(l.top - wizardsLine.top) < yTolerance &&
       l.left < wizardsLine.left
     );
   } else {
-    // Fallback: bottom 6 lines
-    candidates = [...lines].sort((a, b) => b.top - a.top).slice(0, 6);
+    numCandidates = [...lines].sort((a, b) => b.top - a.top).slice(0, 6);
   }
 
-  for (const line of candidates) {
-    // "069/261" or "069/261 R"
-    const slashed = line.text.match(/0*(\d{1,4})\s*\/\s*\d{1,4}/);
-    if (slashed) return slashed[1];
+  // Broader bottom area for set code (can be anywhere at the bottom)
+  const bottomLines = [...lines].sort((a, b) => b.top - a.top).slice(0, 8);
+
+  let collectorNumber: string | undefined;
+  let collectorLineIdx = -1;
+
+  // Try slashed format first: "069/261"
+  for (let i = 0; i < numCandidates.length; i++) {
+    const slashed = numCandidates[i].text.match(/0*(\d{1,4})\s*\/\s*\d{1,4}/);
+    if (slashed) {
+      collectorNumber = stripLeadingZeros(slashed[1]);
+      collectorLineIdx = i;
+      break;
+    }
   }
 
-  // Fallback: grab first bare number sequence from candidates
-  for (const line of candidates) {
-    const nums = line.text.match(/(\d{2,4})/);
-    if (nums) return nums[1];
+  // Fallback: bare number
+  if (!collectorNumber) {
+    for (let i = 0; i < numCandidates.length; i++) {
+      const nums = numCandidates[i].text.match(/(\d{2,4})/);
+      if (nums) {
+        collectorNumber = stripLeadingZeros(nums[1]);
+        collectorLineIdx = i;
+        break;
+      }
+    }
   }
 
-  return undefined;
+  // Look for set code on bottom lines that are NOT the collector number line
+  // and NOT the copyright line
+  let setCode: string | undefined;
+  const collectorLine = collectorLineIdx >= 0 ? numCandidates[collectorLineIdx] : null;
+
+  for (const line of bottomLines) {
+    // Skip the line that had the collector number
+    if (collectorLine && line.text === collectorLine.text && line.top === collectorLine.top) continue;
+    // Skip copyright lines
+    if (COPYRIGHT_RE.test(line.text)) continue;
+
+    const setMatch = line.text.match(SET_CODE_RE);
+    if (setMatch && !SET_CODE_FALSE_POSITIVES.has(setMatch[1])) {
+      setCode = setMatch[1].toLowerCase();
+      break;
+    }
+  }
+
+  return { collectorNumber, setCode };
 }
 
 /**
@@ -142,34 +191,23 @@ function looksLikeMTGCard(lines: OCRLine[]): boolean {
  */
 export async function recognizeCard(imageUri: string): Promise<OCRResult> {
   try {
-    console.log("[CardScan:OCR] recognizeCard starting...");
-    const startTime = Date.now();
-
     const uri = base64ToUri(imageUri);
     const processedUri = await preprocessForOCR(uri);
 
     const result = await TextRecognition.recognize(processedUri);
     const lines = extractLines(result);
 
-    console.log("[CardScan:OCR] OCR lines (top→bottom):", lines.slice(0, 8).map(l =>
-      `"${l.text}" (x=${Math.round(l.left)}, y=${Math.round(l.top)})`
-    ));
-
     if (!looksLikeMTGCard(lines)) {
-      const elapsed = Date.now() - startTime;
-      console.log(`[CardScan:OCR] rejected — not an MTG card (${elapsed}ms, ${lines.length} lines)`);
       return { cardName: "", rawText: "" };
     }
 
     const cardName = pickCardNameLine(lines);
-    const collectorNumber = pickCollectorNumber(lines);
-
-    const elapsed = Date.now() - startTime;
-    console.log(`[CardScan:OCR] recognizeCard complete in ${elapsed}ms:`, { cardName, collectorNumber });
+    const { collectorNumber, setCode } = pickCollectorInfo(lines);
 
     return {
       cardName,
       collectorNumber,
+      setCode,
       rawText: cardName,
     };
   } catch (error: any) {
