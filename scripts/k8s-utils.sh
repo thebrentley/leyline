@@ -29,7 +29,7 @@ usage() {
     echo "  shell <pod>           Open shell in pod"
     echo "  delete <service>      Delete a deployment"
     echo ""
-    echo "Services: api, landing"
+    echo "Services: api, app, landing"
     echo ""
     echo "Examples:"
     echo "  $0 status"
@@ -63,8 +63,8 @@ SERVICE="${2:-}"
 # Convert service to deployment name
 get_deployment_name() {
     local svc=$1
-    if [[ "$svc" == "api" || "$svc" == "landing" ]]; then
-        echo "leyline-${svc}"
+    if [[ "$svc" == "api" || "$svc" == "app" || "$svc" == "landing" ]]; then
+        echo "${svc}"
     else
         echo "$svc"
     fi
@@ -79,18 +79,18 @@ case $COMMAND in
             kubectl get deployment ${DEPLOYMENT} -n ${NAMESPACE} -o wide
             echo ""
             echo -e "${BLUE}Pods:${NC}"
-            kubectl get pods -l app=${DEPLOYMENT} -n ${NAMESPACE}
+            kubectl get pods -l app.kubernetes.io/instance=${DEPLOYMENT} -n ${NAMESPACE}
             echo ""
             echo -e "${BLUE}Rollout History:${NC}"
             kubectl rollout history deployment/${DEPLOYMENT} -n ${NAMESPACE}
         else
-            kubectl get deployments -n ${NAMESPACE} -l 'app in (leyline-api,leyline-landing)' -o wide
+            kubectl get deployments -n ${NAMESPACE} -l 'app.kubernetes.io/instance in (api,app,landing)' -o wide
             echo ""
             echo -e "${BLUE}Pods:${NC}"
-            kubectl get pods -n ${NAMESPACE} -l 'app in (leyline-api,leyline-landing)'
+            kubectl get pods -n ${NAMESPACE} -l 'app.kubernetes.io/instance in (api,app,landing)'
             echo ""
             echo -e "${BLUE}Services:${NC}"
-            kubectl get services -n ${NAMESPACE} -l 'app in (leyline-api,leyline-landing)'
+            kubectl get services -n ${NAMESPACE} -l 'app.kubernetes.io/instance in (api,app,landing)'
         fi
         ;;
 
@@ -156,6 +156,8 @@ case $COMMAND in
         fi
         if [ "$SERVICE" = "api" ]; then
             PORT=3001
+        elif [ "$SERVICE" = "app" ]; then
+            PORT=80
         elif [ "$SERVICE" = "landing" ]; then
             PORT=3000
         else
@@ -175,9 +177,9 @@ case $COMMAND in
             usage
         fi
         # If it's a service name, get a pod from that deployment
-        if [[ "$SERVICE" == "api" || "$SERVICE" == "landing" ]]; then
+        if [[ "$SERVICE" == "api" || "$SERVICE" == "app" || "$SERVICE" == "landing" ]]; then
             DEPLOYMENT=$(get_deployment_name "$SERVICE")
-            POD=$(kubectl get pods -l app=${DEPLOYMENT} -n ${NAMESPACE} -o jsonpath='{.items[0].metadata.name}')
+            POD=$(kubectl get pods -l app.kubernetes.io/instance=${DEPLOYMENT} -n ${NAMESPACE} -o jsonpath='{.items[0].metadata.name}')
         else
             POD=$SERVICE
         fi
@@ -191,12 +193,11 @@ case $COMMAND in
             usage
         fi
         DEPLOYMENT=$(get_deployment_name "$SERVICE")
-        echo -e "${RED}WARNING: This will delete the ${DEPLOYMENT} deployment${NC}"
+        echo -e "${RED}WARNING: This will uninstall the ${DEPLOYMENT} Helm release${NC}"
         read -p "Are you sure? (yes/no) " -r
         if [[ $REPLY == "yes" ]]; then
-            kubectl delete deployment/${DEPLOYMENT} -n ${NAMESPACE}
-            kubectl delete service/${DEPLOYMENT} -n ${NAMESPACE}
-            echo -e "${GREEN}✓ Deleted ${DEPLOYMENT}${NC}"
+            helm uninstall ${DEPLOYMENT} -n ${NAMESPACE}
+            echo -e "${GREEN}✓ Uninstalled ${DEPLOYMENT}${NC}"
         else
             echo -e "${YELLOW}Cancelled${NC}"
         fi

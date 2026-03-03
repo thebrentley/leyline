@@ -1,0 +1,179 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Service to deploy (api, app, landing, or all)"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - api
+          - app
+          - landing
+
+env:
+  REGISTRY: registry.digitalocean.com/leyline
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Detect which apps changed (skip unchanged on push, deploy all on dispatch)
+  # ---------------------------------------------------------------------------
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      app: ${{ steps.filter.outputs.app }}
+      landing: ${{ steps.filter.outputs.landing }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'push'
+        with:
+          filters: |
+            api:
+              - 'apps/api/**'
+              - 'packages/**'
+            app:
+              - 'apps/mobile/**'
+              - 'packages/**'
+            landing:
+              - 'apps/landing/**'
+              - 'packages/**'
+
+  # ---------------------------------------------------------------------------
+  # Build & push images  (runs on native amd64 — no QEMU needed)
+  # ---------------------------------------------------------------------------
+  build-api:
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.service == 'all' || github.event.inputs.service == 'api')
+      || (github.event_name == 'push' && needs.changes.outputs.api == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - run: doctl registry login
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/leyline-api:${{ github.sha }}
+            ${{ env.REGISTRY }}/leyline-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-app:
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.service == 'all' || github.event.inputs.service == 'app')
+      || (github.event_name == 'push' && needs.changes.outputs.app == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - run: doctl registry login
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/mobile/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/leyline-app:${{ github.sha }}
+            ${{ env.REGISTRY }}/leyline-app:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-landing:
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.service == 'all' || github.event.inputs.service == 'landing')
+      || (github.event_name == 'push' && needs.changes.outputs.landing == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - run: doctl registry login
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/landing/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/leyline-landing:${{ github.sha }}
+            ${{ env.REGISTRY }}/leyline-landing:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # Deploy to DOKS  (checks out infra repo for helm charts)
+  # ---------------------------------------------------------------------------
+  deploy-api:
+    needs: build-api
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: thebrentley/leyline-infra
+          ssh-key: ${{ secrets.INFRA_DEPLOY_KEY }}
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - run: doctl kubernetes cluster kubeconfig save leyline
+      - run: |
+          helm upgrade --install leyline-api charts/api \
+            --namespace default \
+            --set image.tag=${{ github.sha }} \
+            --wait --timeout 5m
+
+  deploy-app:
+    needs: build-app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: thebrentley/leyline-infra
+          ssh-key: ${{ secrets.INFRA_DEPLOY_KEY }}
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - run: doctl kubernetes cluster kubeconfig save leyline
+      - run: |
+          helm upgrade --install leyline-app charts/app \
+            --namespace default \
+            --set image.tag=${{ github.sha }} \
+            --wait --timeout 5m
+
+  deploy-landing:
+    needs: build-landing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: thebrentley/leyline-infra
+          ssh-key: ${{ secrets.INFRA_DEPLOY_KEY }}
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - run: doctl kubernetes cluster kubeconfig save leyline
+      - run: |
+          helm upgrade --install leyline-landing charts/landing \
+            --namespace default \
+            --set image.tag=${{ github.sha }} \
+            --wait --timeout 5m

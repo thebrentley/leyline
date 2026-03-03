@@ -2,16 +2,16 @@
 set -e
 
 # Configuration
-AWS_REGION="us-west-1"
-AWS_ACCOUNT_ID="394802158542"
+REGISTRY="registry.digitalocean.com/leyline"
 NAMESPACE="default"
+INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../infra"
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 # Navigate to monorepo root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,7 +23,7 @@ usage() {
     echo "Usage: $0 <service> <version> [options]"
     echo ""
     echo "Arguments:"
-    echo "  service     Service to deploy: api, landing, or all"
+    echo "  service     Service to deploy: api, app, landing, or all"
     echo "  version     Version tag (e.g., v1.0.0, latest)"
     echo ""
     echo "Options:"
@@ -33,7 +33,7 @@ usage() {
     echo ""
     echo "Examples:"
     echo "  $0 api v1.0.0"
-    echo "  $0 landing latest --skip-build"
+    echo "  $0 app latest --skip-build"
     echo "  $0 all v1.2.0"
     echo "  $0 api v1.0.0 --rollback"
     exit 1
@@ -74,8 +74,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate service
-if [[ "$SERVICE" != "api" && "$SERVICE" != "landing" && "$SERVICE" != "all" ]]; then
-    echo -e "${RED}Error: Service must be 'api', 'landing', or 'all'${NC}"
+if [[ "$SERVICE" != "api" && "$SERVICE" != "app" && "$SERVICE" != "landing" && "$SERVICE" != "all" ]]; then
+    echo -e "${RED}Error: Service must be 'api', 'app', 'landing', or 'all'${NC}"
     usage
 fi
 
@@ -85,65 +85,56 @@ build_and_push() {
     local version=$2
 
     echo -e "${BLUE}[BUILD] Building and pushing ${service}:${version}...${NC}"
-
-    if [ "$service" = "api" ]; then
-        ./scripts/push-api-ecr.sh "$version"
-    elif [ "$service" = "landing" ]; then
-        ./scripts/push-landing-ecr.sh "$version"
-    fi
+    ./scripts/push-${service}.sh "$version"
 }
 
 # Function to rollback deployment
 rollback_deployment() {
     local service=$1
-    local deployment_name="leyline-${service}"
+    local release_name="leyline-${service}"
 
-    echo -e "${YELLOW}[ROLLBACK] Rolling back ${deployment_name}...${NC}"
-    kubectl rollout undo deployment/${deployment_name} -n ${NAMESPACE}
-    kubectl rollout status deployment/${deployment_name} -n ${NAMESPACE}
-    echo -e "${GREEN}✓ Rollback completed for ${deployment_name}${NC}"
+    echo -e "${YELLOW}[ROLLBACK] Rolling back ${release_name}...${NC}"
+    helm rollback ${release_name} -n ${NAMESPACE}
+    echo -e "${GREEN}Rollback completed for ${release_name}${NC}"
 }
 
-# Function to deploy service
+# Function to deploy service via Helm
 deploy_service() {
     local service=$1
     local version=$2
-    local ecr_repo="leyline-${service}"
-    local image_uri="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ecr_repo}:${version}"
-    local deployment_name="leyline-${service}"
+    local chart_dir="${INFRA_DIR}/charts/${service}"
+    local release_name="leyline-${service}"
+    local image_uri="${REGISTRY}/leyline-${service}"
 
     echo -e "${BLUE}[DEPLOY] Deploying ${service} version ${version}...${NC}"
 
-    # Update the image in the deployment
     if [ "$DRY_RUN" = true ]; then
-        echo -e "${YELLOW}[DRY-RUN] Would update ${deployment_name} to ${image_uri}${NC}"
+        echo -e "${YELLOW}[DRY-RUN] Would upgrade ${release_name} with image ${image_uri}:${version}${NC}"
+        helm upgrade --install ${release_name} ${chart_dir} \
+            --namespace ${NAMESPACE} \
+            --set image.tag="${version}" \
+            --dry-run
     else
-        # Set the new image
-        kubectl set image deployment/${deployment_name} \
-            ${service}=${image_uri} \
-            -n ${NAMESPACE} \
-            --record
+        helm upgrade --install ${release_name} ${chart_dir} \
+            --namespace ${NAMESPACE} \
+            --set image.tag="${version}"
 
-        # Wait for rollout to complete
         echo -e "${YELLOW}Waiting for rollout to complete...${NC}"
-        kubectl rollout status deployment/${deployment_name} -n ${NAMESPACE}
-
-        # Verify deployment
-        echo -e "${GREEN}✓ Deployment completed successfully${NC}"
-        kubectl get pods -l app=${deployment_name} -n ${NAMESPACE}
+        kubectl rollout status deployment/${release_name} -n ${NAMESPACE}
+        echo -e "${GREEN}Deployment completed successfully${NC}"
     fi
 }
 
 # Function to show deployment info
 show_deployment_info() {
     local service=$1
-    local deployment_name="leyline-${service}"
+    local release_name="leyline-${service}"
 
     echo -e "${BLUE}[INFO] Current ${service} deployment:${NC}"
-    kubectl get deployment ${deployment_name} -n ${NAMESPACE} -o wide
+    kubectl get deployment ${release_name} -n ${NAMESPACE} -o wide
     echo ""
-    echo -e "${BLUE}[INFO] Rollout history:${NC}"
-    kubectl rollout history deployment/${deployment_name} -n ${NAMESPACE}
+    echo -e "${BLUE}[INFO] Helm release:${NC}"
+    helm status ${release_name} -n ${NAMESPACE} --short 2>/dev/null || true
 }
 
 # Main deployment logic
@@ -154,28 +145,36 @@ echo ""
 echo -e "Service:   ${GREEN}${SERVICE}${NC}"
 echo -e "Version:   ${GREEN}${VERSION}${NC}"
 echo -e "Namespace: ${GREEN}${NAMESPACE}${NC}"
+echo -e "Registry:  ${GREEN}${REGISTRY}${NC}"
 echo ""
 
-# Check if kubectl is available
+ALL_SERVICES=("api" "app" "landing")
+
+# Check prerequisites
 if ! command -v kubectl &> /dev/null; then
     echo -e "${RED}Error: kubectl is not installed${NC}"
     exit 1
 fi
 
-# Check if connected to cluster
+if ! command -v helm &> /dev/null; then
+    echo -e "${RED}Error: helm is not installed${NC}"
+    exit 1
+fi
+
 if ! kubectl cluster-info &> /dev/null; then
     echo -e "${RED}Error: Not connected to a Kubernetes cluster${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}✓ Connected to cluster${NC}"
+echo -e "${GREEN}Connected to cluster${NC}"
 echo ""
 
 # Handle rollback
 if [ "$ROLLBACK" = true ]; then
     if [ "$SERVICE" = "all" ]; then
-        rollback_deployment "api"
-        rollback_deployment "landing"
+        for svc in "${ALL_SERVICES[@]}"; do
+            rollback_deployment "$svc"
+        done
     else
         rollback_deployment "$SERVICE"
     fi
@@ -185,8 +184,9 @@ fi
 # Build and push images
 if [ "$SKIP_BUILD" = false ]; then
     if [ "$SERVICE" = "all" ]; then
-        build_and_push "api" "$VERSION"
-        build_and_push "landing" "$VERSION"
+        for svc in "${ALL_SERVICES[@]}"; do
+            build_and_push "$svc" "$VERSION"
+        done
     else
         build_and_push "$SERVICE" "$VERSION"
     fi
@@ -198,9 +198,10 @@ echo ""
 
 # Deploy services
 if [ "$SERVICE" = "all" ]; then
-    deploy_service "api" "$VERSION"
-    echo ""
-    deploy_service "landing" "$VERSION"
+    for svc in "${ALL_SERVICES[@]}"; do
+        deploy_service "$svc" "$VERSION"
+        echo ""
+    done
 else
     deploy_service "$SERVICE" "$VERSION"
 fi
@@ -213,20 +214,22 @@ echo ""
 
 # Show deployment info
 if [ "$SERVICE" = "all" ]; then
-    show_deployment_info "api"
-    echo ""
-    show_deployment_info "landing"
+    for svc in "${ALL_SERVICES[@]}"; do
+        show_deployment_info "$svc"
+        echo ""
+    done
 else
     show_deployment_info "$SERVICE"
 fi
 
 echo ""
-echo -e "${GREEN}✓ Deployment completed successfully!${NC}"
+echo -e "${GREEN}Deployment completed successfully!${NC}"
 echo ""
 echo "To check logs, run:"
 if [ "$SERVICE" = "all" ]; then
-    echo "  kubectl logs -f deployment/leyline-api -n ${NAMESPACE}"
-    echo "  kubectl logs -f deployment/leyline-landing -n ${NAMESPACE}"
+    for svc in "${ALL_SERVICES[@]}"; do
+        echo "  kubectl logs -f deployment/leyline-${svc} -n ${NAMESPACE}"
+    done
 else
     echo "  kubectl logs -f deployment/leyline-${SERVICE} -n ${NAMESPACE}"
 fi
