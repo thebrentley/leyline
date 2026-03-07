@@ -39,6 +39,10 @@ class LinkedDeckCardDto {
 
   @IsString()
   deckName: string;
+
+  @IsInt()
+  @Min(1)
+  quantity: number;
 }
 
 class UpdateCollectionCardDto {

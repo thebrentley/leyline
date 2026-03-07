@@ -234,6 +234,7 @@ export interface DeckGroup {
 export interface DeckGroupsResponse {
   decks: DeckGroup[];
   totalCards: number;
+  totalValue: number;
   unlinkedCount: number;
   unlinkedValue: number;
 }
@@ -244,7 +245,7 @@ export interface CollectionCard {
   quantity: number;
   foilQuantity: number;
   folderId?: string | null;
-  linkedDeckCards?: Array<{ deckId: string; deckName: string }>;
+  linkedDeckCards?: Array<{ deckId: string; deckName: string; quantity: number }>;
   addedAt: string;
   name?: string;
   setCode?: string;
@@ -551,7 +552,7 @@ export const decksApi = {
   ): Promise<
     ApiResponse<{
       success: boolean;
-      linkedDeckCards?: Array<{ deckId: string; deckName: string }>;
+      linkedDeckCards?: Array<{ deckId: string; deckName: string; quantity: number }>;
       availablePrintings?: Array<{
         id: string;
         scryfallId: string;
@@ -560,7 +561,7 @@ export const decksApi = {
         collectorNumber: string;
         quantity: number;
         foilQuantity: number;
-        linkedTo?: Array<{ deckId: string; deckName: string }>;
+        linkedTo?: Array<{ deckId: string; deckName: string; quantity: number }>;
       }>;
       needsSelection?: boolean;
       editionChanged?: boolean;
@@ -782,7 +783,7 @@ export const collectionApi = {
     data: {
       quantity?: number;
       foilQuantity?: number;
-      linkedDeckCards?: Array<{ deckId: string; deckName: string }> | null;
+      linkedDeckCards?: Array<{ deckId: string; deckName: string; quantity: number }> | null;
     },
   ): Promise<ApiResponse<CollectionCard>> {
     return request<CollectionCard>(`/collection/${id}`, {

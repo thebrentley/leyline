@@ -12,6 +12,8 @@ interface DonutChartProps {
   segments: DonutSegment[];
   size?: number;
   strokeWidth?: number;
+  /** Override the center total (e.g. to avoid double-counting overlapping segments) */
+  centerTotal?: number;
 }
 
 const PALETTE = [
@@ -35,6 +37,7 @@ export function DonutChart({
   segments,
   size = 180,
   strokeWidth = 18,
+  centerTotal,
 }: DonutChartProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -80,9 +83,10 @@ export function DonutChart({
     };
   });
 
-  // Format the total as dollars + cents
-  const dollars = Math.floor(total);
-  const cents = Math.round((total - dollars) * 100)
+  // Format the center total as dollars + cents
+  const displayTotal = centerTotal ?? total;
+  const dollars = Math.floor(displayTotal);
+  const cents = Math.round((displayTotal - dollars) * 100)
     .toString()
     .padStart(2, "0");
 

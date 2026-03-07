@@ -17,7 +17,7 @@ interface AddToCollectionDto {
 interface UpdateCollectionCardDto {
   quantity?: number;
   foilQuantity?: number;
-  linkedDeckCards?: Array<{ deckId: string; deckName: string }> | null;
+  linkedDeckCards?: Array<{ deckId: string; deckName: string; quantity: number }> | null;
 }
 
 interface CollectionFilterOptions {
@@ -213,13 +213,21 @@ export class CollectionService {
   // ==================== Deck Groups ====================
 
   async getDeckGroups(userId: string) {
-    // Aggregate deck groups by unnesting the JSONB array of linked decks
+    // Per-deck counts using the link's quantity (how many copies allocated to each deck)
+    // Price per copy = total card value / total copies owned
     const linkedRows = await this.collectionRepository.query(
       `SELECT
         elem->>'deckId' AS "deckId",
         elem->>'deckName' AS "deckName",
-        COALESCE(SUM(cc.quantity + cc.foil_quantity), 0)::int AS "cardCount",
-        COALESCE(SUM(cc.quantity * COALESCE(card.price_usd, 0) + cc.foil_quantity * COALESCE(card.price_usd_foil, 0)), 0) AS "totalValue"
+        COALESCE(SUM(COALESCE((elem->>'quantity')::int, 1)), 0)::int AS "cardCount",
+        COALESCE(SUM(
+          COALESCE((elem->>'quantity')::int, 1) *
+          CASE WHEN (cc.quantity + cc.foil_quantity) > 0
+            THEN (cc.quantity * COALESCE(card.price_usd, 0) + cc.foil_quantity * COALESCE(card.price_usd_foil, 0))
+                 / (cc.quantity + cc.foil_quantity)
+            ELSE 0
+          END
+        ), 0) AS "totalValue"
       FROM collection_cards cc
       LEFT JOIN cards card ON cc.scryfall_id = card.scryfall_id
       CROSS JOIN jsonb_array_elements(cc.linked_deck_card) AS elem
@@ -230,17 +238,36 @@ export class CollectionService {
       [userId],
     );
 
-    const unlinkedRow = await this.collectionRepository
-      .createQueryBuilder('cc')
-      .select('COALESCE(SUM(cc.quantity + cc.foil_quantity), 0)::int', 'cardCount')
-      .addSelect(
-        'COALESCE(SUM(cc.quantity * COALESCE(card.price_usd, 0) + cc.foil_quantity * COALESCE(card.price_usd_foil, 0)), 0)',
-        'totalValue',
-      )
-      .leftJoin('cc.card', 'card')
-      .where('cc.user_id = :userId', { userId })
-      .andWhere('(cc.linked_deck_card IS NULL OR jsonb_array_length(cc.linked_deck_card) = 0)')
-      .getRawOne();
+    // Unlinked = total owned minus all allocated link quantities
+    // Cards with no links at all contribute their full quantity
+    // Cards with partial links contribute the remainder
+    const unlinkedRow = await this.collectionRepository.query(
+      `SELECT
+        COALESCE(SUM(
+          (cc.quantity + cc.foil_quantity) -
+          COALESCE((
+            SELECT SUM(COALESCE((e->>'quantity')::int, 1))
+            FROM jsonb_array_elements(COALESCE(cc.linked_deck_card, '[]'::jsonb)) AS e
+          ), 0)
+        ), 0)::int AS "cardCount",
+        COALESCE(SUM(
+          CASE WHEN (cc.quantity + cc.foil_quantity) > 0
+            THEN (
+              (cc.quantity + cc.foil_quantity) -
+              COALESCE((
+                SELECT SUM(COALESCE((e->>'quantity')::int, 1))
+                FROM jsonb_array_elements(COALESCE(cc.linked_deck_card, '[]'::jsonb)) AS e
+              ), 0)
+            ) * (cc.quantity * COALESCE(card.price_usd, 0) + cc.foil_quantity * COALESCE(card.price_usd_foil, 0))
+                / (cc.quantity + cc.foil_quantity)
+            ELSE 0
+          END
+        ), 0) AS "totalValue"
+      FROM collection_cards cc
+      LEFT JOIN cards card ON cc.scryfall_id = card.scryfall_id
+      WHERE cc.user_id = $1`,
+      [userId],
+    );
 
     const decks = (linkedRows as Array<{ deckId: string; deckName: string; cardCount: string; totalValue: string }>)
       .map((row) => ({
@@ -251,19 +278,14 @@ export class CollectionService {
       }))
       .sort((a: { deckName: string }, b: { deckName: string }) => a.deckName.localeCompare(b.deckName));
 
-    const unlinkedCount = parseInt(unlinkedRow?.cardCount, 10) || 0;
-    const unlinkedValue = parseFloat(unlinkedRow?.totalValue) || 0;
+    const unlinkedCount = Math.max(0, parseInt(unlinkedRow[0]?.cardCount, 10) || 0);
+    const unlinkedValue = Math.max(0, parseFloat(unlinkedRow[0]?.totalValue) || 0);
 
-    // Total cards = sum of ALL card quantities (not sum of per-deck counts, which double-counts multi-deck cards)
-    const totalRow = await this.collectionRepository.query(
-      `SELECT COALESCE(SUM(cc.quantity + cc.foil_quantity), 0)::int AS "totalCards"
-      FROM collection_cards cc
-      WHERE cc.user_id = $1`,
-      [userId],
-    );
-    const totalCards = parseInt(totalRow[0]?.totalCards, 10) || 0;
+    // Sums now add up correctly: per-deck totals + unlinked = total collection
+    const totalCards = decks.reduce((sum: number, d: { cardCount: number }) => sum + d.cardCount, 0) + unlinkedCount;
+    const totalValue = decks.reduce((sum: number, d: { totalValue: number }) => sum + d.totalValue, 0) + unlinkedValue;
 
-    return { decks, totalCards, unlinkedCount, unlinkedValue };
+    return { decks, totalCards, totalValue, unlinkedCount, unlinkedValue };
   }
 
   // ==================== Collection List & Stats ====================
@@ -685,13 +707,13 @@ export class CollectionService {
       relations: ['cards'],
     });
 
-    // Build a map of scryfallId -> all deck infos that use this card
-    const deckCardMap = new Map<string, Array<{ deckId: string; deckName: string }>>();
+    // Build a map of scryfallId -> all deck infos that use this card (with wanted qty)
+    const deckCardMap = new Map<string, Array<{ deckId: string; deckName: string; wantedQty: number }>>();
     for (const deck of decks) {
       for (const deckCard of deck.cards) {
         const existing = deckCardMap.get(deckCard.scryfallId) || [];
         if (!existing.some((d) => d.deckId === deck.id)) {
-          existing.push({ deckId: deck.id, deckName: deck.name });
+          existing.push({ deckId: deck.id, deckName: deck.name, wantedQty: deckCard.quantity });
           deckCardMap.set(deckCard.scryfallId, existing);
         }
       }
@@ -707,16 +729,29 @@ export class CollectionService {
       const deckInfos = deckCardMap.get(collectionCard.scryfallId);
       if (!deckInfos) continue;
 
-      const currentLinks = collectionCard.linkedDeckCards || [];
-      let changed = false;
+      const totalOwned = collectionCard.quantity + collectionCard.foilQuantity;
+      let remaining = totalOwned;
+
+      // Rebuild links from scratch with quantity allocation
+      const newLinks: Array<{ deckId: string; deckName: string; quantity: number }> = [];
       for (const info of deckInfos) {
-        if (!currentLinks.some((l) => l.deckId === info.deckId)) {
-          currentLinks.push(info);
-          changed = true;
-        }
+        if (remaining <= 0) break;
+        const allocated = Math.min(info.wantedQty, remaining);
+        newLinks.push({ deckId: info.deckId, deckName: info.deckName, quantity: allocated });
+        remaining -= allocated;
       }
-      if (changed) {
-        collectionCard.linkedDeckCards = currentLinks;
+
+      // Check if links changed
+      const oldLinks = collectionCard.linkedDeckCards || [];
+      const linksChanged =
+        oldLinks.length !== newLinks.length ||
+        newLinks.some((nl) => {
+          const ol = oldLinks.find((l) => l.deckId === nl.deckId);
+          return !ol || ol.quantity !== nl.quantity;
+        });
+
+      if (linksChanged) {
+        collectionCard.linkedDeckCards = newLinks;
         toSave.push(collectionCard);
       }
     }
@@ -789,12 +824,22 @@ export class CollectionService {
     const deckCardsToSave: DeckCard[] = [];
     const newDeckCardsToSave: DeckCard[] = [];
 
-    const addDeckLink = (card: CollectionCard) => {
+    const addDeckLink = (card: CollectionCard, deckCardQty: number) => {
       const links = card.linkedDeckCards || [];
-      if (!links.some((l) => l.deckId === deckId)) {
-        links.push({ deckId, deckName: deck.name });
-        card.linkedDeckCards = links;
+      const totalOwned = card.quantity + card.foilQuantity;
+      const alreadyAllocated = links.reduce((sum, l) => sum + (l.quantity || 0), 0);
+      const remaining = totalOwned - alreadyAllocated;
+      if (remaining <= 0) return false; // no copies left to allocate
+
+      const allocated = Math.min(deckCardQty, remaining);
+      const existing = links.find((l) => l.deckId === deckId);
+      if (existing) {
+        existing.quantity = (existing.quantity || 0) + allocated;
+      } else {
+        links.push({ deckId, deckName: deck.name, quantity: allocated });
       }
+      card.linkedDeckCards = links;
+      return true;
     };
 
     for (const scryfallId of importedScryfallIds) {
@@ -810,11 +855,12 @@ export class CollectionService {
       );
 
       if (exactMatch) {
-        addDeckLink(collectionCard);
-        collectionToSave.push(collectionCard);
-        claimedDeckCardIds.add(exactMatch.id);
-        alreadyLinkedToDeck.add(scryfallId);
-        linked++;
+        if (addDeckLink(collectionCard, exactMatch.quantity)) {
+          collectionToSave.push(collectionCard);
+          claimedDeckCardIds.add(exactMatch.id);
+          alreadyLinkedToDeck.add(scryfallId);
+          linked++;
+        }
         continue;
       }
 
@@ -834,11 +880,12 @@ export class CollectionService {
           deckCardsToSave.push(nameMatch);
 
           // Link the collection card
-          addDeckLink(collectionCard);
-          collectionToSave.push(collectionCard);
-          claimedDeckCardIds.add(nameMatch.id);
-          alreadyLinkedToDeck.add(scryfallId);
-          linked++;
+          if (addDeckLink(collectionCard, nameMatch.quantity)) {
+            collectionToSave.push(collectionCard);
+            claimedDeckCardIds.add(nameMatch.id);
+            alreadyLinkedToDeck.add(scryfallId);
+            linked++;
+          }
           continue;
         }
       }
@@ -854,11 +901,12 @@ export class CollectionService {
         });
         newDeckCardsToSave.push(newDeckCard);
 
-        addDeckLink(collectionCard);
-        collectionToSave.push(collectionCard);
-        alreadyLinkedToDeck.add(scryfallId);
-        linked++;
-        added++;
+        if (addDeckLink(collectionCard, 1)) {
+          collectionToSave.push(collectionCard);
+          alreadyLinkedToDeck.add(scryfallId);
+          linked++;
+          added++;
+        }
         continue;
       }
     }

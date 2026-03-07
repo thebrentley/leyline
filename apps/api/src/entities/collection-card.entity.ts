@@ -15,6 +15,8 @@ import { CollectionFolder } from './collection-folder.entity';
 export interface LinkedDeckCard {
   deckId: string;
   deckName: string;
+  /** Number of copies allocated to this deck */
+  quantity: number;
 }
 
 @Entity('collection_cards')
