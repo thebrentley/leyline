@@ -7,7 +7,7 @@ interface PrintingInfo {
   quantity: number;
   foilQuantity: number;
   scryfallId: string;
-  linkedTo?: { deckId: string; deckName: string };
+  linkedTo?: Array<{ deckId: string; deckName: string }>;
 }
 
 interface PrintingSelectionModalProps {
@@ -80,7 +80,7 @@ export function PrintingSelectionModal({
                 printing.foilQuantity > 0
                   ? ` (${printing.foilQuantity} foil)`
                   : "";
-              const isLinked = !!printing.linkedTo;
+              const isLinked = printing.linkedTo && printing.linkedTo.length > 0;
               return (
                 <Pressable
                   key={printing.id}
@@ -119,7 +119,7 @@ export function PrintingSelectionModal({
                         isDark ? "text-amber-400" : "text-amber-600"
                       }`}
                     >
-                      Already linked to {printing.linkedTo!.deckName}
+                      Already linked to {printing.linkedTo!.map((l) => l.deckName).join(", ")}
                     </Text>
                   )}
                 </Pressable>

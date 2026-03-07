@@ -73,7 +73,7 @@ export function useDeckCardActions(
       quantity: number;
       foilQuantity: number;
       scryfallId: string;
-      linkedTo?: { deckId: string; deckName: string };
+      linkedTo?: Array<{ deckId: string; deckName: string }>;
     }>;
     currentScryfallId: string;
   }>({
@@ -81,18 +81,6 @@ export function useDeckCardActions(
     cardName: "",
     printings: [],
     currentScryfallId: "",
-  });
-
-  // Already linked confirmation state
-  const [alreadyLinkedConfirm, setAlreadyLinkedConfirm] = useState<{
-    visible: boolean;
-    cardName: string;
-    linkedDeck: { deckId: string; deckName: string };
-    collectionCardId?: string;
-  }>({
-    visible: false,
-    cardName: "",
-    linkedDeck: { deckId: "", deckName: "" },
   });
 
   // Export & other modals
@@ -427,15 +415,6 @@ export function useDeckCardActions(
 
         if (result.error) {
           showToast.error(result.error);
-        } else if (result.data?.alreadyLinked) {
-          setActionLoading(false);
-          setAlreadyLinkedConfirm({
-            visible: true,
-            cardName: actionSheetCard.name,
-            linkedDeck: result.data.alreadyLinked,
-            collectionCardId,
-          });
-          return;
         } else if (
           result.data?.needsSelection &&
           result.data.availablePrintings
@@ -520,6 +499,7 @@ export function useDeckCardActions(
     const deckId = deck.id;
 
     closeActionSheet();
+    closeCardModal();
 
     setConfirmDialog({
       visible: true,
@@ -550,7 +530,7 @@ export function useDeckCardActions(
         performRemove();
       },
     });
-  }, [actionSheetCard, deck, closeActionSheet, loadDeck]);
+  }, [actionSheetCard, deck, closeActionSheet, closeCardModal, loadDeck]);
 
   const handleLandQuantityChange = useCallback(
     async (landName: string, delta: number) => {
@@ -665,8 +645,6 @@ export function useDeckCardActions(
     setConfirmDialog,
     printingSelection,
     setPrintingSelection,
-    alreadyLinkedConfirm,
-    setAlreadyLinkedConfirm,
 
     // Modal visibility
     exportModalVisible,

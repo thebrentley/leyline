@@ -321,20 +321,13 @@ export class DecksService {
 
       // Check if this card is linked to this deck in collection
       const linkedCollectionCard = cardsWithSameName.find(
-        (cc) => cc.linkedDeckCard?.deckId === deck.id,
+        (cc) => cc.linkedDeckCards?.some((l: any) => l.deckId === deck.id),
       );
       const isLinkedToCollection = !!linkedCollectionCard;
 
-      // Check if there are any available (unlinked) collection cards to link
-      // A card is available if it's not linked to a different deck
-      const availableExact =
-        exactCollectionCard &&
-        (!exactCollectionCard.linkedDeckCard ||
-          exactCollectionCard.linkedDeckCard.deckId === deck.id);
-      const availableDifferent = differentPrintCards.some(
-        (cc) => !cc.linkedDeckCard || cc.linkedDeckCard.deckId === deck.id,
-      );
-      const hasAvailableCollectionCard = availableExact || availableDifferent;
+      // Check if there are any available collection cards to link
+      // With multi-deck linking, any card in collection is available
+      const hasAvailableCollectionCard = !!exactCollectionCard || differentPrintCards.length > 0;
 
       const cardData = {
         id: deckCard.id,
@@ -416,6 +409,28 @@ export class DecksService {
       throw new NotFoundException("Deck not found");
     }
 
+    // Remove this deck from linkedDeckCards arrays on all collection cards
+    const linkedCards = await this.collectionRepository
+      .createQueryBuilder("cc")
+      .where("cc.userId = :userId", { userId })
+      .andWhere(
+        `EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(cc.linked_deck_card, '[]'::jsonb)) AS elem WHERE elem->>'deckId' = :deckId)`,
+        { deckId },
+      )
+      .getMany();
+
+    if (linkedCards.length > 0) {
+      for (const card of linkedCards) {
+        card.linkedDeckCards = (card.linkedDeckCards || []).filter(
+          (l) => l.deckId !== deckId,
+        );
+        if (card.linkedDeckCards.length === 0) {
+          card.linkedDeckCards = null;
+        }
+      }
+      await this.collectionRepository.save(linkedCards);
+    }
+
     await this.deckRepository.remove(deck);
   }
 
@@ -473,6 +488,20 @@ export class DecksService {
     const newQuantity = Math.max(0, deckCard.quantity + delta);
 
     if (newQuantity === 0) {
+      // Remove this deck from the collection card's linked decks
+      const collectionCard = await this.collectionRepository.findOne({
+        where: { userId, scryfallId: deckCard.scryfallId },
+      });
+      if (collectionCard && collectionCard.linkedDeckCards?.some((l) => l.deckId === deckId)) {
+        collectionCard.linkedDeckCards = collectionCard.linkedDeckCards.filter(
+          (l) => l.deckId !== deckId,
+        );
+        if (collectionCard.linkedDeckCards.length === 0) {
+          collectionCard.linkedDeckCards = null;
+        }
+        await this.collectionRepository.save(collectionCard);
+      }
+
       // Remove the card from the deck
       await this.deckCardRepository.remove(deckCard);
     } else {
@@ -560,6 +589,20 @@ export class DecksService {
 
     if (!deckCard) {
       throw new NotFoundException(`${cardName} not found in deck`);
+    }
+
+    // Remove this deck from the collection card's linked decks
+    const collectionCard = await this.collectionRepository.findOne({
+      where: { userId, scryfallId: deckCard.scryfallId },
+    });
+    if (collectionCard && collectionCard.linkedDeckCards?.some((l) => l.deckId === deckId)) {
+      collectionCard.linkedDeckCards = collectionCard.linkedDeckCards.filter(
+        (l) => l.deckId !== deckId,
+      );
+      if (collectionCard.linkedDeckCards.length === 0) {
+        collectionCard.linkedDeckCards = null;
+      }
+      await this.collectionRepository.save(collectionCard);
     }
 
     // Remove the card
@@ -725,10 +768,10 @@ export class DecksService {
     cardName: string,
     userId: string,
     collectionCardId?: string, // Optional: specific collection card to link
-    forceUnlink?: boolean, // Force unlink from another deck if already linked
+    _forceUnlink?: boolean, // Kept for API compat but no longer needed with multi-link
   ): Promise<{
     success: boolean;
-    linkedDeckCard?: { deckId: string; deckName: string };
+    linkedDeckCards?: Array<{ deckId: string; deckName: string }>;
     availablePrintings?: Array<{
       id: string;
       scryfallId: string;
@@ -737,11 +780,10 @@ export class DecksService {
       collectorNumber: string;
       quantity: number;
       foilQuantity: number;
-      linkedTo?: { deckId: string; deckName: string };
+      linkedTo?: Array<{ deckId: string; deckName: string }>;
     }>;
     needsSelection?: boolean;
     editionChanged?: boolean;
-    alreadyLinked?: { deckId: string; deckName: string };
   }> {
     console.log(
       `[LinkToCollection] Starting: deckId=${deckId}, cardName=${cardName}, collectionCardId=${collectionCardId}`,
@@ -770,6 +812,15 @@ export class DecksService {
       `[LinkToCollection] Found deck card: ${deckCard.card?.name} (${deckCard.scryfallId})`,
     );
 
+    // Helper to add a deck link to a collection card's array
+    const addDeckLink = (card: CollectionCard): boolean => {
+      const links = card.linkedDeckCards || [];
+      if (links.some((l) => l.deckId === deckId)) return false; // already linked
+      links.push({ deckId: deck.id, deckName: deck.name });
+      card.linkedDeckCards = links;
+      return true;
+    };
+
     // If specific collection card ID provided, use that
     if (collectionCardId) {
       const collectionCard = await this.collectionRepository.findOne({
@@ -788,21 +839,6 @@ export class DecksService {
         );
       }
 
-      // Check if this collection card is already linked to a different deck
-      if (
-        collectionCard.linkedDeckCard &&
-        collectionCard.linkedDeckCard.deckId !== deckId &&
-        !forceUnlink
-      ) {
-        console.log(
-          `[LinkToCollection] Collection card already linked to deck ${collectionCard.linkedDeckCard.deckName}`,
-        );
-        return {
-          success: false,
-          alreadyLinked: collectionCard.linkedDeckCard,
-        };
-      }
-
       let editionChanged = false;
 
       // If the collection card has a different scryfallId than the deck card,
@@ -815,7 +851,6 @@ export class DecksService {
         await this.deckCardRepository.save(deckCard);
         editionChanged = true;
 
-        // Create a version entry for the edition change
         await this.createVersion(
           deck.id,
           userId,
@@ -824,29 +859,32 @@ export class DecksService {
         );
       }
 
-      // Unlink any other collection card that was linked to this deck card
+      // Remove this deck's link from any OTHER collection card with the same name
       const existingLinks = await this.collectionRepository.find({
         where: { userId },
       });
 
       for (const card of existingLinks) {
         if (
-          card.linkedDeckCard?.deckId === deckId &&
+          card.linkedDeckCards?.some((l) => l.deckId === deckId) &&
           card.card?.name?.toLowerCase() === cardName.toLowerCase() &&
           card.id !== collectionCardId
         ) {
-          card.linkedDeckCard = null;
+          card.linkedDeckCards = card.linkedDeckCards.filter(
+            (l) => l.deckId !== deckId,
+          );
+          if (card.linkedDeckCards.length === 0) card.linkedDeckCards = null;
           await this.collectionRepository.save(card);
         }
       }
 
-      // Link the selected collection card
-      collectionCard.linkedDeckCard = { deckId: deck.id, deckName: deck.name };
+      // Add the deck link to the selected collection card
+      addDeckLink(collectionCard);
       await this.collectionRepository.save(collectionCard);
 
       return {
         success: true,
-        linkedDeckCard: { deckId: deck.id, deckName: deck.name },
+        linkedDeckCards: collectionCard.linkedDeckCards || [],
         editionChanged,
       };
     }
@@ -863,27 +901,11 @@ export class DecksService {
     if (collectionCard) {
       console.log(`[LinkToCollection] Found exact match`);
 
-      // Check if this collection card is already linked to a different deck
-      if (
-        collectionCard.linkedDeckCard &&
-        collectionCard.linkedDeckCard.deckId !== deckId &&
-        !forceUnlink
-      ) {
-        console.log(
-          `[LinkToCollection] Collection card already linked to deck ${collectionCard.linkedDeckCard.deckName}`,
-        );
-        return {
-          success: false,
-          alreadyLinked: collectionCard.linkedDeckCard,
-        };
-      }
-
-      // Link it automatically
-      collectionCard.linkedDeckCard = { deckId: deck.id, deckName: deck.name };
+      addDeckLink(collectionCard);
       await this.collectionRepository.save(collectionCard);
       return {
         success: true,
-        linkedDeckCard: { deckId: deck.id, deckName: deck.name },
+        linkedDeckCards: collectionCard.linkedDeckCards || [],
       };
     }
 
@@ -915,21 +937,6 @@ export class DecksService {
       console.log(`[LinkToCollection] Only one printing available`);
       const card = matchingCards[0];
 
-      // Check if this collection card is already linked to a different deck
-      if (
-        card.linkedDeckCard &&
-        card.linkedDeckCard.deckId !== deckId &&
-        !forceUnlink
-      ) {
-        console.log(
-          `[LinkToCollection] Collection card already linked to deck ${card.linkedDeckCard.deckName}`,
-        );
-        return {
-          success: false,
-          alreadyLinked: card.linkedDeckCard,
-        };
-      }
-
       const editionChanged = card.scryfallId !== deckCard.scryfallId;
 
       // Change deck card edition if different
@@ -947,11 +954,11 @@ export class DecksService {
         );
       }
 
-      card.linkedDeckCard = { deckId: deck.id, deckName: deck.name };
+      addDeckLink(card);
       await this.collectionRepository.save(card);
       return {
         success: true,
-        linkedDeckCard: { deckId: deck.id, deckName: deck.name },
+        linkedDeckCards: card.linkedDeckCards || [],
         editionChanged,
       };
     }
@@ -972,8 +979,8 @@ export class DecksService {
         quantity: c.quantity,
         foilQuantity: c.foilQuantity,
         linkedTo:
-          c.linkedDeckCard && c.linkedDeckCard.deckId !== deckId
-            ? c.linkedDeckCard
+          c.linkedDeckCards && c.linkedDeckCards.length > 0
+            ? c.linkedDeckCards.filter((l) => l.deckId !== deckId)
             : undefined,
       })),
     };
@@ -1012,8 +1019,13 @@ export class DecksService {
       },
     });
 
-    if (collectionCard && collectionCard.linkedDeckCard?.deckId === deckId) {
-      collectionCard.linkedDeckCard = null;
+    if (collectionCard && collectionCard.linkedDeckCards?.some((l) => l.deckId === deckId)) {
+      collectionCard.linkedDeckCards = collectionCard.linkedDeckCards.filter(
+        (l) => l.deckId !== deckId,
+      );
+      if (collectionCard.linkedDeckCards.length === 0) {
+        collectionCard.linkedDeckCards = null;
+      }
       await this.collectionRepository.save(collectionCard);
     }
 

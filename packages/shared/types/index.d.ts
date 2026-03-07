@@ -94,7 +94,7 @@ export interface CollectionCard {
     scryfallId: string;
     quantity: number;
     foilQuantity: number;
-    linkedDeckCard: LinkedDeckCard | null;
+    linkedDeckCards: LinkedDeckCard[] | null;
     addedAt: Date;
     updatedAt: Date;
     card?: Card;
@@ -111,7 +111,7 @@ export interface AddToCollectionDto {
 export interface UpdateCollectionCardDto {
     quantity?: number;
     foilQuantity?: number;
-    linkedDeckCard?: LinkedDeckCard | null;
+    linkedDeckCards?: LinkedDeckCard[] | null;
 }
 export interface ChatMessage {
     id: string;

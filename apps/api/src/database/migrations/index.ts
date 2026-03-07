@@ -29,3 +29,5 @@ export { AddOfflineMemberPhoneNumber1740800000000 } from "./1740800000000-AddOff
 export { CreateEventChatMessages1740900000000 } from "./1740900000000-CreateEventChatMessages";
 export { DropOfflineMemberPhoneNumber1741000000000 } from "./1741000000000-DropOfflineMemberPhoneNumber";
 export { AddSystemFlagToEventChat1741100000000 } from "./1741100000000-AddSystemFlagToEventChat";
+export { CleanOrphanedLinkedDeckCards1741200000000 } from "./1741200000000-CleanOrphanedLinkedDeckCards";
+export { LinkedDeckCardToArray1741300000000 } from "./1741300000000-LinkedDeckCardToArray";

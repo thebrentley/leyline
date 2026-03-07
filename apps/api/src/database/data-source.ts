@@ -31,6 +31,8 @@ import {
   CreateEventChatMessages1740900000000,
   DropOfflineMemberPhoneNumber1741000000000,
   AddSystemFlagToEventChat1741100000000,
+  CleanOrphanedLinkedDeckCards1741200000000,
+  LinkedDeckCardToArray1741300000000,
 } from "./migrations";
 
 config();
@@ -66,6 +68,8 @@ export const migrations = [
   CreateEventChatMessages1740900000000,
   DropOfflineMemberPhoneNumber1741000000000,
   AddSystemFlagToEventChat1741100000000,
+  CleanOrphanedLinkedDeckCards1741200000000,
+  LinkedDeckCardToArray1741300000000,
 ];
 
 export const AppDataSource = new DataSource({

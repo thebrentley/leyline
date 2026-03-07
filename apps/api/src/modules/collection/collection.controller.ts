@@ -53,9 +53,10 @@ class UpdateCollectionCardDto {
   foilQuantity?: number;
 
   @IsOptional()
-  @ValidateNested()
+  @IsArray()
+  @ValidateNested({ each: true })
   @Type(() => LinkedDeckCardDto)
-  linkedDeckCard?: LinkedDeckCardDto | null;
+  linkedDeckCards?: LinkedDeckCardDto[] | null;
 }
 
 class BulkImportOptionsDto {

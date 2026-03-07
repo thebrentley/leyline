@@ -149,8 +149,6 @@ export default function DeckDetailScreen() {
     setConfirmDialog,
     printingSelection,
     setPrintingSelection,
-    alreadyLinkedConfirm,
-    setAlreadyLinkedConfirm,
     exportModalVisible,
     setExportModalVisible,
     scryfallSearchVisible,
@@ -603,14 +601,6 @@ export default function DeckDetailScreen() {
         }}
         onClosePrintingSelection={() =>
           setPrintingSelection((prev) => ({ ...prev, visible: false }))
-        }
-        alreadyLinkedConfirm={alreadyLinkedConfirm}
-        onConfirmAlreadyLinked={() => {
-          setAlreadyLinkedConfirm((prev) => ({ ...prev, visible: false }));
-          handleLinkToCollection(alreadyLinkedConfirm.collectionCardId, true);
-        }}
-        onCancelAlreadyLinked={() =>
-          setAlreadyLinkedConfirm((prev) => ({ ...prev, visible: false }))
         }
         scryfallSearchVisible={scryfallSearchVisible}
         onCloseScryfallSearch={() => setScryfallSearchVisible(false)}

@@ -17,7 +17,7 @@ interface AddToCollectionDto {
 interface UpdateCollectionCardDto {
   quantity?: number;
   foilQuantity?: number;
-  linkedDeckCard?: { deckId: string; deckName: string } | null;
+  linkedDeckCards?: Array<{ deckId: string; deckName: string }> | null;
 }
 
 interface CollectionFilterOptions {
@@ -62,12 +62,15 @@ export class CollectionService {
 
     if (options?.deckId) {
       if (options.deckId === 'unlinked') {
-        queryBuilder.andWhere(`${alias}.linkedDeckCard IS NULL`);
+        queryBuilder.andWhere(
+          `(${alias}.linked_deck_card IS NULL OR jsonb_array_length(${alias}.linked_deck_card) = 0)`,
+        );
       } else {
-        // Use raw column name for JSONB operator since TypeORM can't translate property names with JSON operators
-        queryBuilder.andWhere(`${alias}.linked_deck_card->>'deckId' = :deckId`, {
-          deckId: options.deckId,
-        });
+        // Check if any element in the JSONB array has the matching deckId
+        queryBuilder.andWhere(
+          `EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(${alias}.linked_deck_card, '[]'::jsonb)) AS elem WHERE elem->>'deckId' = :deckId)`,
+          { deckId: options.deckId },
+        );
       }
     }
   }
@@ -210,22 +213,22 @@ export class CollectionService {
   // ==================== Deck Groups ====================
 
   async getDeckGroups(userId: string) {
-    // Aggregate deck groups in SQL instead of loading all cards into memory
-    const linkedRows = await this.collectionRepository
-      .createQueryBuilder('cc')
-      .select("cc.linked_deck_card->>'deckId'", 'deckId')
-      .addSelect("cc.linked_deck_card->>'deckName'", 'deckName')
-      .addSelect('COUNT(*)::int', 'cardCount')
-      .addSelect(
-        'COALESCE(SUM(cc.quantity * COALESCE(card.price_usd, 0) + cc.foil_quantity * COALESCE(card.price_usd_foil, 0)), 0)',
-        'totalValue',
-      )
-      .leftJoin('cc.card', 'card')
-      .where('cc.user_id = :userId', { userId })
-      .andWhere('cc.linked_deck_card IS NOT NULL')
-      .groupBy("cc.linked_deck_card->>'deckId'")
-      .addGroupBy("cc.linked_deck_card->>'deckName'")
-      .getRawMany();
+    // Aggregate deck groups by unnesting the JSONB array of linked decks
+    const linkedRows = await this.collectionRepository.query(
+      `SELECT
+        elem->>'deckId' AS "deckId",
+        elem->>'deckName' AS "deckName",
+        COUNT(*)::int AS "cardCount",
+        COALESCE(SUM(cc.quantity * COALESCE(card.price_usd, 0) + cc.foil_quantity * COALESCE(card.price_usd_foil, 0)), 0) AS "totalValue"
+      FROM collection_cards cc
+      LEFT JOIN cards card ON cc.scryfall_id = card.scryfall_id
+      CROSS JOIN jsonb_array_elements(cc.linked_deck_card) AS elem
+      WHERE cc.user_id = $1
+        AND cc.linked_deck_card IS NOT NULL
+        AND jsonb_array_length(cc.linked_deck_card) > 0
+      GROUP BY elem->>'deckId', elem->>'deckName'`,
+      [userId],
+    );
 
     const unlinkedRow = await this.collectionRepository
       .createQueryBuilder('cc')
@@ -236,21 +239,21 @@ export class CollectionService {
       )
       .leftJoin('cc.card', 'card')
       .where('cc.user_id = :userId', { userId })
-      .andWhere('cc.linked_deck_card IS NULL')
+      .andWhere('(cc.linked_deck_card IS NULL OR jsonb_array_length(cc.linked_deck_card) = 0)')
       .getRawOne();
 
-    const decks = linkedRows
+    const decks = (linkedRows as Array<{ deckId: string; deckName: string; cardCount: string; totalValue: string }>)
       .map((row) => ({
         deckId: row.deckId,
         deckName: row.deckName,
         cardCount: parseInt(row.cardCount, 10),
         totalValue: parseFloat(row.totalValue) || 0,
       }))
-      .sort((a, b) => a.deckName.localeCompare(b.deckName));
+      .sort((a: { deckName: string }, b: { deckName: string }) => a.deckName.localeCompare(b.deckName));
 
     const unlinkedCount = parseInt(unlinkedRow?.cardCount, 10) || 0;
     const unlinkedValue = parseFloat(unlinkedRow?.totalValue) || 0;
-    const totalCards = decks.reduce((sum, d) => sum + d.cardCount, 0) + unlinkedCount;
+    const totalCards = decks.reduce((sum: number, d: { cardCount: number }) => sum + d.cardCount, 0) + unlinkedCount;
 
     return { decks, totalCards, unlinkedCount, unlinkedValue };
   }
@@ -305,7 +308,7 @@ export class CollectionService {
       quantity: item.quantity,
       foilQuantity: item.foilQuantity,
       folderId: item.folderId,
-      linkedDeckCard: item.linkedDeckCard,
+      linkedDeckCards: item.linkedDeckCards || [],
       addedAt: item.addedAt,
       name: item.card?.name,
       setCode: item.card?.setCode,
@@ -472,8 +475,8 @@ export class CollectionService {
     if (dto.foilQuantity !== undefined) {
       card.foilQuantity = dto.foilQuantity;
     }
-    if (dto.linkedDeckCard !== undefined) {
-      card.linkedDeckCard = dto.linkedDeckCard;
+    if (dto.linkedDeckCards !== undefined) {
+      card.linkedDeckCards = dto.linkedDeckCards;
     }
 
     return this.collectionRepository.save(card);
@@ -674,33 +677,38 @@ export class CollectionService {
       relations: ['cards'],
     });
 
-    // Build a map of scryfallId -> deck info
-    const deckCardMap = new Map<string, { deckId: string; deckName: string }>();
+    // Build a map of scryfallId -> all deck infos that use this card
+    const deckCardMap = new Map<string, Array<{ deckId: string; deckName: string }>>();
     for (const deck of decks) {
       for (const deckCard of deck.cards) {
-        // Only map if not already mapped (first deck wins)
-        if (!deckCardMap.has(deckCard.scryfallId)) {
-          deckCardMap.set(deckCard.scryfallId, {
-            deckId: deck.id,
-            deckName: deck.name,
-          });
+        const existing = deckCardMap.get(deckCard.scryfallId) || [];
+        if (!existing.some((d) => d.deckId === deck.id)) {
+          existing.push({ deckId: deck.id, deckName: deck.name });
+          deckCardMap.set(deckCard.scryfallId, existing);
         }
       }
     }
 
-    // Get all unlinked collection cards
+    // Get all collection cards
     const collection = await this.collectionRepository.find({
       where: { userId },
     });
 
     const toSave: typeof collection = [];
     for (const collectionCard of collection) {
-      // Skip if already linked
-      if (collectionCard.linkedDeckCard) continue;
+      const deckInfos = deckCardMap.get(collectionCard.scryfallId);
+      if (!deckInfos) continue;
 
-      const deckInfo = deckCardMap.get(collectionCard.scryfallId);
-      if (deckInfo) {
-        collectionCard.linkedDeckCard = deckInfo;
+      const currentLinks = collectionCard.linkedDeckCards || [];
+      let changed = false;
+      for (const info of deckInfos) {
+        if (!currentLinks.some((l) => l.deckId === info.deckId)) {
+          currentLinks.push(info);
+          changed = true;
+        }
+      }
+      if (changed) {
+        collectionCard.linkedDeckCards = currentLinks;
         toSave.push(collectionCard);
       }
     }
@@ -717,7 +725,7 @@ export class CollectionService {
    *
    * For each imported scryfallId:
    * 1. Find the collection card for that scryfallId
-   * 2. Skip if already linked (links are one-to-one; new card goes unfiled)
+   * 2. Skip if already linked to this deck
    * 3. Try exact match: deck has a card with same scryfallId → link
    * 4. If overrideSet: try name match on unlinked deck cards → update deck card's scryfallId to the imported one, then link
    * 5. If addMissing: no match at all → add a new DeckCard to the deck, then link
@@ -760,10 +768,10 @@ export class CollectionService {
     // Track which deck cards have been claimed by a link (to prevent double-linking)
     const claimedDeckCardIds = new Set<string>();
 
-    // Pre-collect linked scryfallIds from existing collection cards to avoid re-querying
-    const existingLinkedScryfallIds = new Set(
+    // Pre-collect scryfallIds already linked to THIS deck
+    const alreadyLinkedToDeck = new Set(
       collectionCards
-        .filter((cc) => cc.linkedDeckCard)
+        .filter((cc) => cc.linkedDeckCards?.some((l) => l.deckId === deckId))
         .map((cc) => cc.scryfallId),
     );
 
@@ -773,12 +781,20 @@ export class CollectionService {
     const deckCardsToSave: DeckCard[] = [];
     const newDeckCardsToSave: DeckCard[] = [];
 
+    const addDeckLink = (card: CollectionCard) => {
+      const links = card.linkedDeckCards || [];
+      if (!links.some((l) => l.deckId === deckId)) {
+        links.push({ deckId, deckName: deck.name });
+        card.linkedDeckCards = links;
+      }
+    };
+
     for (const scryfallId of importedScryfallIds) {
       const collectionCard = collectionMap.get(scryfallId);
       if (!collectionCard) continue;
 
-      // Skip if already linked (one-to-one; this card stays unfiled)
-      if (existingLinkedScryfallIds.has(scryfallId)) continue;
+      // Skip if already linked to this deck
+      if (alreadyLinkedToDeck.has(scryfallId)) continue;
 
       // 1. Try exact scryfallId match in deck
       const exactMatch = deckCards.find(
@@ -786,10 +802,10 @@ export class CollectionService {
       );
 
       if (exactMatch) {
-        collectionCard.linkedDeckCard = { deckId, deckName: deck.name };
+        addDeckLink(collectionCard);
         collectionToSave.push(collectionCard);
         claimedDeckCardIds.add(exactMatch.id);
-        existingLinkedScryfallIds.add(scryfallId);
+        alreadyLinkedToDeck.add(scryfallId);
         linked++;
         continue;
       }
@@ -810,10 +826,10 @@ export class CollectionService {
           deckCardsToSave.push(nameMatch);
 
           // Link the collection card
-          collectionCard.linkedDeckCard = { deckId, deckName: deck.name };
+          addDeckLink(collectionCard);
           collectionToSave.push(collectionCard);
           claimedDeckCardIds.add(nameMatch.id);
-          existingLinkedScryfallIds.add(scryfallId);
+          alreadyLinkedToDeck.add(scryfallId);
           linked++;
           continue;
         }
@@ -830,9 +846,9 @@ export class CollectionService {
         });
         newDeckCardsToSave.push(newDeckCard);
 
-        collectionCard.linkedDeckCard = { deckId, deckName: deck.name };
+        addDeckLink(collectionCard);
         collectionToSave.push(collectionCard);
-        existingLinkedScryfallIds.add(scryfallId);
+        alreadyLinkedToDeck.add(scryfallId);
         linked++;
         added++;
         continue;

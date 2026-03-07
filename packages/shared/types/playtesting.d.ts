@@ -176,7 +176,6 @@ export interface LinkedExile {
 }
 export interface FullPlaytestGameState {
     sessionId: string;
-    userId: string;
     deckId: string;
     opponentDeckId: string;
     deckName: string;

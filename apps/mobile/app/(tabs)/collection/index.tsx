@@ -100,6 +100,7 @@ function CollectionListItem({
   isSelected,
   onLongPress,
   onToggleSelect,
+  onShowLinkedDecks,
 }: {
   card: CollectionCard;
   isDark: boolean;
@@ -109,6 +110,7 @@ function CollectionListItem({
   isSelected?: boolean;
   onLongPress?: () => void;
   onToggleSelect?: () => void;
+  onShowLinkedDecks?: (cardName: string, decks: Array<{ deckId: string; deckName: string }>) => void;
 }) {
   const totalQty = card.quantity + card.foilQuantity;
   // Use current prices for display
@@ -220,13 +222,29 @@ function CollectionListItem({
           >
             {card.setCode?.toUpperCase()} #{card.collectorNumber}
           </Text>
-          {card.linkedDeckCard && (
-            <View className="flex-row items-center gap-1">
-              <View className="h-2 w-2 rounded-full bg-purple-500" />
-              <Text className="text-xs text-purple-500">
-                {card.linkedDeckCard.deckName}
-              </Text>
-            </View>
+          {card.linkedDeckCards && card.linkedDeckCards.length > 0 && (
+            card.linkedDeckCards.length === 1 ? (
+              <View className="flex-row items-center gap-1">
+                <View className="h-2 w-2 rounded-full bg-purple-500" />
+                <Text className="text-xs text-purple-500">
+                  {card.linkedDeckCards[0].deckName}
+                </Text>
+              </View>
+            ) : (
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  onShowLinkedDecks?.(card.name || "", card.linkedDeckCards!);
+                }}
+                className="flex-row items-center gap-1"
+                hitSlop={8}
+              >
+                <View className="h-2 w-2 rounded-full bg-purple-500" />
+                <Text className="text-xs text-purple-500 underline">
+                  Many
+                </Text>
+              </Pressable>
+            )
           )}
         </View>
       </View>
@@ -356,7 +374,7 @@ function CollectionGridItem({
         <View className="absolute top-1 right-1 bg-black/70 rounded-full px-1.5 py-0.5">
           <Text className="text-xs font-bold text-white">{totalQty}x</Text>
         </View>
-        {card.linkedDeckCard && !selectionMode && (
+        {card.linkedDeckCards && card.linkedDeckCards.length > 0 && !selectionMode && (
           <View className="absolute bottom-1 left-1 h-3 w-3 rounded-full bg-purple-500 border border-white" />
         )}
         {selectionMode && (
@@ -795,22 +813,24 @@ function CardDetailModal({
         </View>
       )}
 
-      {/* Linked Deck */}
-      {card.linkedDeckCard && (
+      {/* Linked Decks */}
+      {card.linkedDeckCards && card.linkedDeckCards.length > 0 && (
         <View
           className={`rounded-xl p-4 mb-4 ${isDark ? "bg-slate-900" : "bg-slate-50"}`}
         >
           <Text
             className={`text-sm font-medium mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}
           >
-            Linked to Deck
+            {card.linkedDeckCards.length === 1 ? "Linked to Deck" : "Linked to Decks"}
           </Text>
-          <View className="flex-row items-center gap-2">
-            <View className="h-3 w-3 rounded-full bg-purple-500" />
-            <Text className={isDark ? "text-white" : "text-slate-900"}>
-              {card.linkedDeckCard.deckName}
-            </Text>
-          </View>
+          {card.linkedDeckCards.map((link) => (
+            <View key={link.deckId} className="flex-row items-center gap-2 mb-1">
+              <View className="h-3 w-3 rounded-full bg-purple-500" />
+              <Text className={isDark ? "text-white" : "text-slate-900"}>
+                {link.deckName}
+              </Text>
+            </View>
+          ))}
         </View>
       )}
     </>
@@ -2097,6 +2117,13 @@ export default function CollectionScreen() {
   const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set());
   const pageSize = 50;
 
+  // ---- Linked decks sheet ----
+  const [linkedDecksSheet, setLinkedDecksSheet] = useState<{
+    visible: boolean;
+    cardName: string;
+    decks: Array<{ deckId: string; deckName: string }>;
+  }>({ visible: false, cardName: "", decks: [] });
+
   // ---- Selection mode ----
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(
@@ -2846,6 +2873,9 @@ export default function CollectionScreen() {
           isSelected={selectedCardIds.has(item.id)}
           onLongPress={() => handleEnterSelectionMode(item.id)}
           onToggleSelect={() => handleToggleSelect(item.id)}
+          onShowLinkedDecks={(cardName, decks) =>
+            setLinkedDecksSheet({ visible: true, cardName, decks })
+          }
         />
       );
     },
@@ -3961,6 +3991,38 @@ export default function CollectionScreen() {
         searchContext="collection"
         existingCardIds={existingCardIds}
       />
+
+      {/* Linked Decks Bottom Sheet */}
+      <GlassSheet
+        visible={linkedDecksSheet.visible}
+        onDismiss={() => setLinkedDecksSheet((prev) => ({ ...prev, visible: false }))}
+        isDark={isDark}
+        snapPoints={[280]}
+      >
+        <BottomSheetView style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+          <Text
+            className={`text-lg font-semibold mb-1 ${isDark ? "text-white" : "text-slate-900"}`}
+          >
+            Linked Decks
+          </Text>
+          <Text
+            className={`text-sm mb-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}
+          >
+            {linkedDecksSheet.cardName}
+          </Text>
+          {linkedDecksSheet.decks.map((deck) => (
+            <View
+              key={deck.deckId}
+              className={`flex-row items-center gap-3 py-3 border-b ${isDark ? "border-slate-800" : "border-slate-100"}`}
+            >
+              <View className="h-3 w-3 rounded-full bg-purple-500" />
+              <Text className={`text-base ${isDark ? "text-white" : "text-slate-900"}`}>
+                {deck.deckName}
+              </Text>
+            </View>
+          ))}
+        </BottomSheetView>
+      </GlassSheet>
     </SafeAreaView>
   );
 }

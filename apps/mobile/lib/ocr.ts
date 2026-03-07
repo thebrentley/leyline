@@ -82,13 +82,13 @@ function pickCardNameLine(lines: OCRLine[]): string {
 }
 
 /**
- * Set code pattern: 3-4 uppercase letters only (e.g., MKM, DSK, WOE, PLST).
- * MTG set codes are always pure letters — excludes mixed alphanumeric like "M21" false positives.
+ * Set code pattern: 3-4 uppercase alphanumeric starting with a letter (e.g., MKM, DSK, MH3, M21).
+ * Must start with a letter to reduce false positives from bare numbers.
  */
-const SET_CODE_RE = /\b([A-Z]{3,4})\b/;
+const SET_CODE_RE = /\b([A-Z][A-Z0-9]{2,3})\b/;
 const SET_CODE_FALSE_POSITIVES = new Set([
   "THE", "AND", "FOR", "NOT", "ALL", "ARE", "BUT", "HAS", "ITS", "MAY",
-  "USE", "YOU", "TEN", "TWO", "END", "PUT", "TAP", "ADD",
+  "USE", "YOU", "TEN", "TWO", "END", "PUT", "TAP", "ADD", "LLC", "SAM",
 ]);
 
 /** Strip leading zeros: "035" → "35", but keep "0" as "0" */
@@ -102,7 +102,7 @@ function stripLeadingZeros(num: string): string {
  * Set code: nearby line, separate from collector number (e.g., "WOT · EN")
  */
 function pickCollectorInfo(lines: OCRLine[]): { collectorNumber?: string; setCode?: string } {
-  const wizardsLine = lines.find(l => /wizards|coast/i.test(l.text));
+  const wizardsLine = lines.find(l => /wizards|coast|©|\u00a9/i.test(l.text));
 
   // Bottom area lines for collector number (left of copyright)
   let numCandidates: OCRLine[];
@@ -167,21 +167,19 @@ function pickCollectorInfo(lines: OCRLine[]): { collectorNumber?: string; setCod
 
 /**
  * Check whether the OCR output looks like it came from a real MTG card.
- * Requires copyright text + at least one other MTG structural signal.
+ * Uses a signal-based approach — needs at least 2 of 4 structural signals.
+ * This handles older cards (pre-M15) where copyright text may be too small to OCR.
  */
 function looksLikeMTGCard(lines: OCRLine[]): boolean {
   const allText = lines.map(l => l.text).join(" ");
 
-  // Gate 1: Must find Wizards of the Coast copyright text
-  const hasCopyright = /wizards|coast/i.test(allText);
-  if (!hasCopyright) return false;
-
-  // Gate 2: Need at least one more structural signal
+  const hasCopyright = /wizards|coast|©|\u00a9/i.test(allText);
   const hasTypeLine = lines.some(l => TYPE_LINE_RE.test(l.text));
   const hasCollectorNum = lines.some(l => /\d{1,4}\s*\/\s*\d{1,4}/.test(l.text));
   const hasEnoughLines = lines.length >= 6;
 
-  return hasTypeLine || hasCollectorNum || hasEnoughLines;
+  const signals = [hasCopyright, hasTypeLine, hasCollectorNum, hasEnoughLines];
+  return signals.filter(Boolean).length >= 2;
 }
 
 /**

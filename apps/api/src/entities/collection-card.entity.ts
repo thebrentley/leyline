@@ -43,7 +43,7 @@ export class CollectionCard {
   originalPriceUsdFoil: number | null;
 
   @Column({ name: 'linked_deck_card', type: 'jsonb', nullable: true })
-  linkedDeckCard: LinkedDeckCard | null;
+  linkedDeckCards: LinkedDeckCard[] | null;
 
   @CreateDateColumn({ name: 'added_at' })
   addedAt: Date;

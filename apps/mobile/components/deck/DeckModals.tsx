@@ -138,16 +138,6 @@ interface DeckModalsProps {
   onSelectPrinting: (collectionCardId: string) => void;
   onClosePrintingSelection: () => void;
 
-  // Already linked confirmation
-  alreadyLinkedConfirm: {
-    visible: boolean;
-    cardName: string;
-    linkedDeck: { deckId: string; deckName: string };
-    collectionCardId?: string;
-  };
-  onConfirmAlreadyLinked: () => void;
-  onCancelAlreadyLinked: () => void;
-
   // Scryfall search
   scryfallSearchVisible: boolean;
   onCloseScryfallSearch: () => void;
@@ -410,18 +400,6 @@ export function DeckModals(props: DeckModalsProps) {
         isDark={isDark}
         onSelect={props.onSelectPrinting}
         onClose={props.onClosePrintingSelection}
-      />
-
-      {/* Already Linked Confirmation */}
-      <ConfirmDialog
-        visible={props.alreadyLinkedConfirm.visible}
-        title="Card Already Linked"
-        message={`This card is already linked to your collection in "${props.alreadyLinkedConfirm.linkedDeck.deckName}". Unlink it from that deck and link to this deck instead?`}
-        confirmText="Unlink & Link Here"
-        cancelText="Cancel"
-        destructive={false}
-        onConfirm={props.onConfirmAlreadyLinked}
-        onCancel={props.onCancelAlreadyLinked}
       />
 
       {/* Scryfall Search */}

@@ -244,7 +244,7 @@ export interface CollectionCard {
   quantity: number;
   foilQuantity: number;
   folderId?: string | null;
-  linkedDeckCard?: { deckId: string; deckName: string } | null;
+  linkedDeckCards?: Array<{ deckId: string; deckName: string }>;
   addedAt: string;
   name?: string;
   setCode?: string;
@@ -551,7 +551,7 @@ export const decksApi = {
   ): Promise<
     ApiResponse<{
       success: boolean;
-      linkedDeckCard?: { deckId: string; deckName: string };
+      linkedDeckCards?: Array<{ deckId: string; deckName: string }>;
       availablePrintings?: Array<{
         id: string;
         scryfallId: string;
@@ -560,11 +560,10 @@ export const decksApi = {
         collectorNumber: string;
         quantity: number;
         foilQuantity: number;
-        linkedTo?: { deckId: string; deckName: string };
+        linkedTo?: Array<{ deckId: string; deckName: string }>;
       }>;
       needsSelection?: boolean;
       editionChanged?: boolean;
-      alreadyLinked?: { deckId: string; deckName: string };
     }>
   > {
     return request(`/decks/${deckId}/cards/link`, {
@@ -783,7 +782,7 @@ export const collectionApi = {
     data: {
       quantity?: number;
       foilQuantity?: number;
-      linkedDeckCard?: { deckId: string; deckName: string } | null;
+      linkedDeckCards?: Array<{ deckId: string; deckName: string }> | null;
     },
   ): Promise<ApiResponse<CollectionCard>> {
     return request<CollectionCard>(`/collection/${id}`, {
