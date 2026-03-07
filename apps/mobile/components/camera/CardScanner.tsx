@@ -24,6 +24,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
+import { useKeepAwake } from "expo-keep-awake";
 import { useAudioPlayer } from "expo-audio";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
@@ -52,6 +53,7 @@ export function CardScanner({
   onClose,
   onComplete,
 }: CardScannerProps) {
+  useKeepAwake();
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const insets = useSafeAreaInsets();
@@ -81,6 +83,7 @@ export function CardScanner({
   // Batch list overlay
   const [batchListVisible, setBatchListVisible] = useState(false);
   const batchListClosingRef = useRef(false);
+  const batchListVisibleRef = useRef(false);
 
   // Import settings (folder destination)
   const [importSettings, setImportSettings] = useState<ImportSettingsValue>({
@@ -124,6 +127,7 @@ export function CardScanner({
       if (
         isProcessingRef.current ||
         isPausedRef.current ||
+        batchListVisibleRef.current ||
         !cameraRef.current
       ) {
         return;
@@ -178,7 +182,7 @@ export function CardScanner({
 
       const topMatch = matchResult.data?.matches?.[0];
 
-      if (!topMatch) {
+      if (!topMatch || !topMatch.name || !topMatch.setCode || !topMatch.collectorNumber) {
         isProcessingRef.current = false;
         return;
       }
@@ -226,6 +230,7 @@ export function CardScanner({
         setCode: topMatch.setCode,
         collectorNumber: topMatch.collectorNumber,
         imageSmall: topMatch.imageSmall,
+        priceUsd: topMatch.priceUsd,
       });
 
       isProcessingRef.current = false;
@@ -330,6 +335,7 @@ export function CardScanner({
 
   const closeBatchList = useCallback(() => {
     batchListClosingRef.current = true;
+    batchListVisibleRef.current = false;
     setBatchListVisible(false);
     setTimeout(() => {
       batchListClosingRef.current = false;
@@ -348,9 +354,9 @@ export function CardScanner({
       return;
     }
 
-    // Force stop any processing and close
-    setBatchCards([]);
+    // Stop processing and close — keep batch cards for next session
     isProcessingRef.current = false;
+    lastMatchRef.current = null;
     onClose();
   };
 
@@ -570,7 +576,7 @@ export function CardScanner({
               {/* Batch cards FAB — top right below close */}
               {batchCards.length > 0 && !batchListVisible && (
                 <Pressable
-                  onPress={() => setBatchListVisible(true)}
+                  onPress={() => { batchListVisibleRef.current = true; setBatchListVisible(true); }}
                   className="absolute right-0"
                   style={{ top: insets.top + 64, right: 12 }}
                 >

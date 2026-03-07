@@ -1074,7 +1074,7 @@ Explain in 2-3 sentences why this card specifically fits (or doesn't fit) the de
 
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ padding: 24, alignItems: "center", paddingBottom: Math.max(24, insets.bottom) }}
+          contentContainerStyle={{ padding: 24, alignItems: "center", paddingBottom: onAddToCollection ? 80 + insets.bottom : Math.max(24, insets.bottom) }}
           keyboardShouldPersistTaps="handled"
         >
           {/* Card Image */}

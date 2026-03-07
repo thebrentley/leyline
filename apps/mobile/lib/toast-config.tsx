@@ -39,6 +39,7 @@ export const toastConfig: ToastConfig = {
           numberOfLines={1}
         >
           {props?.setName} · {props?.setCode?.toUpperCase()} · #{props?.collectorNumber}
+          {props?.priceUsd ? ` · $${typeof props.priceUsd === "number" ? props.priceUsd.toFixed(2) : props.priceUsd}` : ""}
         </Text>
       </View>
     </View>

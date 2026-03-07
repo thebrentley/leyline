@@ -40,6 +40,7 @@ export const showToast = {
     setCode: string;
     collectorNumber: string;
     imageSmall?: string;
+    priceUsd?: string | number | null;
   }) => {
     Toast.show({
       type: 'cardScan',
