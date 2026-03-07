@@ -816,7 +816,7 @@ export class DecksService {
     const addDeckLink = (card: CollectionCard): boolean => {
       const links = card.linkedDeckCards || [];
       if (links.some((l) => l.deckId === deckId)) return false; // already linked
-      links.push({ deckId: deck.id, deckName: deck.name });
+      links.push({ deckId: deck.id, deckName: deck.name, quantity: deckCard.quantity });
       card.linkedDeckCards = links;
       return true;
     };
