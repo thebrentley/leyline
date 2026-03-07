@@ -87,7 +87,7 @@ export class CollectionService {
     const countQuery = await this.collectionRepository
       .createQueryBuilder('cc')
       .select('cc.folderId', 'folderId')
-      .addSelect('COUNT(*)::int', 'cardCount')
+      .addSelect('COALESCE(SUM(cc.quantity + cc.foilQuantity), 0)::int', 'cardCount')
       .addSelect(
         'COALESCE(SUM(cc.quantity * COALESCE(card.priceUsd, 0) + cc.foilQuantity * COALESCE(card.priceUsdFoil, 0)), 0)',
         'totalValue',
@@ -218,7 +218,7 @@ export class CollectionService {
       `SELECT
         elem->>'deckId' AS "deckId",
         elem->>'deckName' AS "deckName",
-        COUNT(*)::int AS "cardCount",
+        COALESCE(SUM(cc.quantity + cc.foil_quantity), 0)::int AS "cardCount",
         COALESCE(SUM(cc.quantity * COALESCE(card.price_usd, 0) + cc.foil_quantity * COALESCE(card.price_usd_foil, 0)), 0) AS "totalValue"
       FROM collection_cards cc
       LEFT JOIN cards card ON cc.scryfall_id = card.scryfall_id
@@ -232,7 +232,7 @@ export class CollectionService {
 
     const unlinkedRow = await this.collectionRepository
       .createQueryBuilder('cc')
-      .select('COUNT(*)::int', 'cardCount')
+      .select('COALESCE(SUM(cc.quantity + cc.foil_quantity), 0)::int', 'cardCount')
       .addSelect(
         'COALESCE(SUM(cc.quantity * COALESCE(card.price_usd, 0) + cc.foil_quantity * COALESCE(card.price_usd_foil, 0)), 0)',
         'totalValue',
@@ -253,7 +253,15 @@ export class CollectionService {
 
     const unlinkedCount = parseInt(unlinkedRow?.cardCount, 10) || 0;
     const unlinkedValue = parseFloat(unlinkedRow?.totalValue) || 0;
-    const totalCards = decks.reduce((sum: number, d: { cardCount: number }) => sum + d.cardCount, 0) + unlinkedCount;
+
+    // Total cards = sum of ALL card quantities (not sum of per-deck counts, which double-counts multi-deck cards)
+    const totalRow = await this.collectionRepository.query(
+      `SELECT COALESCE(SUM(cc.quantity + cc.foil_quantity), 0)::int AS "totalCards"
+      FROM collection_cards cc
+      WHERE cc.user_id = $1`,
+      [userId],
+    );
+    const totalCards = parseInt(totalRow[0]?.totalCards, 10) || 0;
 
     return { decks, totalCards, unlinkedCount, unlinkedValue };
   }
